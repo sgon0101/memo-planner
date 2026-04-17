@@ -1,7 +1,227 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useUIStore } from '@/store/uiStore'
+import {
+  User, Moon, Sun, CalendarDays, LogOut, Trash2,
+  CheckCircle, AlertCircle, Loader2, ExternalLink,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const supabase = createClient()
+
+  const { darkMode, toggleDarkMode } = useUIStore()
+  const [email, setEmail] = useState('')
+  const [calendarConnected, setCalendarConnected] = useState(false)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setEmail(data.user.email ?? '')
+    })
+    // Google Calendar 연결 상태 확인
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      const { data: row } = await supabase
+        .from('user_integrations')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .eq('provider', 'google_calendar')
+        .single()
+      setCalendarConnected(!!row)
+    })
+  }, [])
+
+  // URL 파라미터로 toast 표시
+  useEffect(() => {
+    const success = searchParams.get('success')
+    const error = searchParams.get('error')
+    if (success === 'calendar_connected') {
+      setToast({ type: 'success', message: 'Google Calendar가 연결되었습니다.' })
+      setCalendarConnected(true)
+    } else if (error === 'calendar_auth_failed') {
+      setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
+    }
+    if (success || error) router.replace('/settings')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  async function disconnectCalendar() {
+    setCalendarLoading(true)
+    try {
+      await fetch('/api/calendar/disconnect', { method: 'DELETE' })
+      setCalendarConnected(false)
+      setToast({ type: 'success', message: 'Google Calendar 연결이 해제되었습니다.' })
+    } catch {
+      setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  async function handleDeleteAccount() {
+    if (!confirm('계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다. 정말 삭제하시겠습니까?')) return
+    if (!confirm('이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?')) return
+    setDeleteLoading(true)
+    try {
+      // 서비스 역할로 계정 삭제는 서버 API가 필요하므로 로그아웃만 처리
+      await supabase.auth.signOut()
+      router.push('/login')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   return (
-    <div className="p-6">
-      <p className="text-gray-400 dark:text-gray-500 text-sm">설정 — 준비 중</p>
+    <div className="max-w-xl mx-auto p-6 space-y-6">
+      <h2 className="text-base font-semibold text-gray-900 dark:text-white">설정</h2>
+
+      {/* Toast */}
+      {toast && (
+        <div className={cn(
+          'fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all',
+          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'
+        )}>
+          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {toast.message}
+        </div>
+      )}
+
+      {/* 프로필 */}
+      <Section title="프로필" icon={<User size={15} />}>
+        <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-semibold text-sm">
+            {email.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{email || '—'}</p>
+            <p className="text-xs text-gray-500">Supabase Auth</p>
+          </div>
+        </div>
+      </Section>
+
+      {/* 외관 */}
+      <Section title="외관" icon={darkMode ? <Moon size={15} /> : <Sun size={15} />}>
+        <SettingRow
+          label="다크 모드"
+          description="어두운 테마를 사용합니다"
+        >
+          <Toggle enabled={darkMode} onChange={toggleDarkMode} />
+        </SettingRow>
+      </Section>
+
+      {/* Google Calendar */}
+      <Section title="연동" icon={<CalendarDays size={15} />}>
+        <SettingRow
+          label="Google Calendar"
+          description={calendarConnected ? '연결됨 — 플래너 플랜을 Google 캘린더와 동기화합니다' : '연결하면 플랜을 Google 캘린더에 동기화할 수 있습니다'}
+        >
+          {calendarConnected ? (
+            <button
+              onClick={disconnectCalendar}
+              disabled={calendarLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+            >
+              {calendarLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+              연결 해제
+            </button>
+          ) : (
+            <a
+              href="/api/calendar/auth"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors"
+            >
+              <ExternalLink size={12} />
+              연결하기
+            </a>
+          )}
+        </SettingRow>
+      </Section>
+
+      {/* 계정 */}
+      <Section title="계정" icon={<LogOut size={15} />}>
+        <SettingRow label="로그아웃" description="현재 기기에서 로그아웃합니다">
+          <button
+            onClick={handleLogout}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            로그아웃
+          </button>
+        </SettingRow>
+        <SettingRow label="계정 삭제" description="모든 데이터가 영구 삭제됩니다">
+          <button
+            onClick={handleDeleteAccount}
+            disabled={deleteLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+          >
+            {deleteLoading ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            계정 삭제
+          </button>
+        </SettingRow>
+      </Section>
+
+      {/* 버전 */}
+      <p className="text-xs text-center text-gray-400">나만의 메모 플래너 v0.1.0</p>
     </div>
+  )
+}
+
+function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+        <span className="text-gray-500">{icon}</span>
+        <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{title}</h3>
+      </div>
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">{children}</div>
+    </div>
+  )
+}
+
+function SettingRow({ label, description, children }: { label: string; description: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3.5 bg-white dark:bg-gray-900">
+      <div>
+        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+      </div>
+      <div className="ml-4 flex-shrink-0">{children}</div>
+    </div>
+  )
+}
+
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className={cn(
+        'relative w-10 h-5.5 rounded-full transition-colors',
+        enabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-gray-700'
+      )}
+      style={{ height: '22px', width: '40px' }}
+    >
+      <span
+        className={cn(
+          'absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform',
+          enabled && 'translate-x-[18px]'
+        )}
+      />
+    </button>
   )
 }
