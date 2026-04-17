@@ -453,8 +453,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 ## Git 전략
 
 ### 레포지토리
-- **GitHub 주소**: https://github.com/[내 아이디]/memo-planner
-  - 처음 연결 시 위 주소를 실제 주소로 업데이트해줘
+- **GitHub 주소**: https://github.com/sgon0101/memo-planner
 - **기본 브랜치**: `main` (배포 브랜치) / `dev` (개발 브랜치)
 
 ### 브랜치 규칙
