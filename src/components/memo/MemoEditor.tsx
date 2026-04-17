@@ -41,6 +41,7 @@ function toMemo(row: Record<string, unknown>): Memo {
     isPinned: (row.is_pinned as boolean) ?? false,
     isStarred: (row.is_starred as boolean) ?? false,
     isLocked: (row.is_locked as boolean) ?? false,
+    lockedContent: (row.locked_content as string) ?? null,
     isDeleted: (row.is_deleted as boolean) ?? false,
     deletedAt: (row.deleted_at as string) ?? null,
     tags: (row.tags as string[]) ?? [],

@@ -21,6 +21,7 @@ export interface Memo {
   isPinned: boolean
   isStarred: boolean
   isLocked: boolean
+  lockedContent: string | null
   isDeleted: boolean
   deletedAt: string | null
   tags: string[]

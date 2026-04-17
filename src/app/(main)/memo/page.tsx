@@ -1,4 +1,5 @@
 import FolderPanel from '@/components/memo/FolderPanel'
+import MemoList from '@/components/memo/MemoList'
 
 export default function MemoPage() {
   return (
@@ -8,10 +9,10 @@ export default function MemoPage() {
         <FolderPanel />
       </aside>
 
-      {/* 메모 목록 영역 (6단계에서 구현) */}
-      <main className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">
-        폴더를 선택하거나 메모를 만들어보세요
-      </main>
+      {/* 메모 목록 */}
+      <div className="flex-1 min-w-0">
+        <MemoList />
+      </div>
     </div>
   )
 }
