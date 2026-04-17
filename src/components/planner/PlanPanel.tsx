@@ -1,0 +1,133 @@
+'use client'
+
+import { X, Plus, Check, Trash2, Clock } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { ko } from 'date-fns/locale'
+import { cn } from '@/lib/utils'
+import { usePlannerStore } from '@/store/plannerStore'
+import { usePlanner } from '@/hooks/usePlanner'
+import type { Plan } from '@/types'
+
+interface PlanPanelProps {
+  date: string
+  onNewPlan: () => void
+  onClose: () => void
+}
+
+export default function PlanPanel({ date, onNewPlan, onClose }: PlanPanelProps) {
+  const { plans } = usePlannerStore()
+  const { toggleComplete, removePlan } = usePlanner()
+
+  const dayPlans = plans.filter((p) => {
+    if (p.date === date) return true
+    if (p.startDate && p.endDate) {
+      return p.startDate <= date && p.endDate >= date
+    }
+    return false
+  })
+
+  const displayDate = format(parseISO(date), 'M월 d일 (EEE)', { locale: ko })
+  const isToday = date === format(new Date(), 'yyyy-MM-dd')
+
+  return (
+    <div className="w-72 flex-shrink-0 flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+        <div>
+          <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
+            {displayDate}
+          </p>
+          {isToday && <p className="text-xs text-violet-500">오늘</p>}
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <X size={15} />
+        </button>
+      </div>
+
+      {/* 플랜 목록 */}
+      <div className="flex-1 overflow-y-auto">
+        {dayPlans.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 text-gray-400 gap-2">
+            <Clock size={20} className="opacity-40" />
+            <p className="text-xs">플랜이 없습니다</p>
+          </div>
+        ) : (
+          <ul className="p-2 space-y-1">
+            {dayPlans.map((plan) => (
+              <PlanItem
+                key={plan.id}
+                plan={plan}
+                onToggle={() => toggleComplete(plan.id, plan.isCompleted).catch(console.error)}
+                onDelete={() => {
+                  if (confirm('플랜을 삭제할까요?')) removePlan(plan.id).catch(console.error)
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* 새 플랜 버튼 */}
+      <div className="p-3 border-t border-gray-200 dark:border-gray-800">
+        <button
+          onClick={onNewPlan}
+          className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/20 rounded-lg transition-colors"
+        >
+          <Plus size={15} /> 새 플랜 추가
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PlanItem({ plan, onToggle, onDelete }: { plan: Plan; onToggle: () => void; onDelete: () => void }) {
+  const isRange = plan.startDate && plan.endDate
+
+  return (
+    <li className="group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
+      {/* 완료 체크 */}
+      <button
+        onClick={onToggle}
+        className={cn(
+          'flex-shrink-0 mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
+          plan.isCompleted
+            ? 'border-transparent'
+            : 'border-gray-300 dark:border-gray-600 hover:border-violet-400'
+        )}
+        style={plan.isCompleted ? { backgroundColor: plan.color } : {}}
+      >
+        {plan.isCompleted && <Check size={10} className="text-white" />}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} />
+          <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate', plan.isCompleted && 'line-through text-gray-400')}>
+            {plan.title}
+          </span>
+        </div>
+
+        {/* 시간 표시 */}
+        {!plan.isAllDay && plan.startTime && (
+          <p className="text-xs text-gray-400 mt-0.5 ml-3.5">
+            {plan.startTime.slice(0, 5)}{plan.endTime ? ` ~ ${plan.endTime.slice(0, 5)}` : ''}
+          </p>
+        )}
+
+        {/* 범위 플랜 날짜 */}
+        {isRange && (
+          <p className="text-xs text-gray-400 mt-0.5 ml-3.5">
+            {plan.startDate} ~ {plan.endDate}
+          </p>
+        )}
+      </div>
+
+      <button
+        onClick={onDelete}
+        className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
+      >
+        <Trash2 size={13} />
+      </button>
+    </li>
+  )
+}
