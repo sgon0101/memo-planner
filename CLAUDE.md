@@ -373,7 +373,7 @@ export interface PlanTemplate {
 - [x] 12. AI 인사이트 — Claude API + 4개 탭
 - [x] 13. 설정 페이지
 - [x] 14. 내보내기 / 가져오기 / 백업
-- [ ] 15. PWA + 다크모드 + 반응형
+- [x] 15. PWA + 다크모드 + 반응형
 - [ ] 16. 배포 (Vercel)
 
 ---
@@ -465,6 +465,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 12단계 완료 | AI 인사이트 — AIChat(스트리밍), GapAnalysis, BubbleChart, MindMap, RetroReport(캐시), 5탭 레이아웃, lib/ai/* 3파일, API 3개 | 100% |
 | 2026-04-18 | 13단계 완료 | 설정 페이지 — 프로필, 다크모드 토글, Google Calendar 연결/해제, 로그아웃, 계정삭제, toast 알림 | 100% |
 | 2026-04-18 | 14단계 완료 | 내보내기/가져오기/백업 — Markdown 내보내기, JSON 전체 백업, PDF 인쇄, JSON 가져오기(복원), /api/export GET/POST | 100% |
+| 2026-04-18 | 15단계 완료 | PWA + 다크모드 + 반응형 — manifest.json, SVG 아이콘, sw.js(Service Worker), ServiceWorkerRegister, PWA 메타태그, 모바일 PlanPanel 바텀시트, turbopack 설정 | 100% |
 | 2026-04-17 | 3단계 완료 | Supabase Auth 인증 — 로그인/회원가입 페이지, proxy.ts 미들웨어, auth/callback 라우트, lib/supabase client/server | 100% |
 | 2026-04-17 | 4단계 완료 | 레이아웃 — Sidebar/Header/MobileNav/DarkModeProvider/SidebarSpacer 컴포넌트, (main) 레이아웃, placeholder 페이지 4개, uiStore | 100% |
 | 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |

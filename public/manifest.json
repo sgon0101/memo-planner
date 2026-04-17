@@ -1,0 +1,18 @@
+{
+  "name": "나만의 메모 플래너",
+  "short_name": "메모 플래너",
+  "description": "메모장 + 플래너 통합 AI 시스템",
+  "start_url": "/memo",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7F77DD",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

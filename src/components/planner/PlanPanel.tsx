@@ -31,7 +31,7 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
   const isToday = date === format(new Date(), 'yyyy-MM-dd')
 
   return (
-    <div className="w-72 flex-shrink-0 flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
         <div>

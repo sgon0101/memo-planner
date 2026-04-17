@@ -285,14 +285,23 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {/* 플랜 패널 */}
+      {/* 플랜 패널 — 데스크탑: 사이드, 모바일: 바텀 시트 */}
       {panelOpen && (
-        <PlanPanel
-          date={selectedDate}
-          onNewPlan={() => setFormState({ open: true, date: selectedDate })}
-          onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
-          onClose={() => selectDate('')}
-        />
+        <>
+          {/* 모바일 오버레이 배경 */}
+          <div
+            className="fixed inset-0 z-30 bg-black/30 md:hidden"
+            onClick={() => selectDate('')}
+          />
+          <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:flex-shrink-0">
+            <PlanPanel
+              date={selectedDate}
+              onNewPlan={() => setFormState({ open: true, date: selectedDate })}
+              onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
+              onClose={() => selectDate('')}
+            />
+          </div>
+        </>
       )}
 
       {/* 플랜 작성 모달 */}
