@@ -1,6 +1,6 @@
 'use client'
 
-import { X, Plus, Check, Trash2, Clock } from 'lucide-react'
+import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -11,10 +11,11 @@ import type { Plan } from '@/types'
 interface PlanPanelProps {
   date: string
   onNewPlan: () => void
+  onEditPlan: (plan: Plan) => void
   onClose: () => void
 }
 
-export default function PlanPanel({ date, onNewPlan, onClose }: PlanPanelProps) {
+export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
   const { plans } = usePlannerStore()
   const { toggleComplete, removePlan } = usePlanner()
 
@@ -58,6 +59,7 @@ export default function PlanPanel({ date, onNewPlan, onClose }: PlanPanelProps) 
                 key={plan.id}
                 plan={plan}
                 onToggle={() => toggleComplete(plan.id, plan.isCompleted).catch(console.error)}
+                onEdit={() => onEditPlan(plan)}
                 onDelete={() => {
                   if (confirm('플랜을 삭제할까요?')) removePlan(plan.id).catch(console.error)
                 }}
@@ -80,8 +82,22 @@ export default function PlanPanel({ date, onNewPlan, onClose }: PlanPanelProps) 
   )
 }
 
-function PlanItem({ plan, onToggle, onDelete }: { plan: Plan; onToggle: () => void; onDelete: () => void }) {
+function PlanItem({
+  plan,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  plan: Plan
+  onToggle: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
   const isRange = plan.startDate && plan.endDate
+
+  const repeatLabel: Record<string, string> = {
+    daily: '매일', weekly: '매주', monthly: '매월',
+  }
 
   return (
     <li className="group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -107,27 +123,43 @@ function PlanItem({ plan, onToggle, onDelete }: { plan: Plan; onToggle: () => vo
           </span>
         </div>
 
-        {/* 시간 표시 */}
+        {/* 시간 */}
         {!plan.isAllDay && plan.startTime && (
           <p className="text-xs text-gray-400 mt-0.5 ml-3.5">
             {plan.startTime.slice(0, 5)}{plan.endTime ? ` ~ ${plan.endTime.slice(0, 5)}` : ''}
           </p>
         )}
 
-        {/* 범위 플랜 날짜 */}
+        {/* 범위 날짜 */}
         {isRange && (
           <p className="text-xs text-gray-400 mt-0.5 ml-3.5">
             {plan.startDate} ~ {plan.endDate}
           </p>
         )}
+
+        {/* 반복 */}
+        {plan.repeatType && (
+          <p className="text-xs text-violet-400 mt-0.5 ml-3.5">
+            {repeatLabel[plan.repeatType]}
+          </p>
+        )}
       </div>
 
-      <button
-        onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all"
-      >
-        <Trash2 size={13} />
-      </button>
+      {/* 수정/삭제 버튼 */}
+      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-all">
+        <button
+          onClick={onEdit}
+          className="p-0.5 rounded text-gray-400 hover:text-violet-500 transition-colors"
+        >
+          <Pencil size={12} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-0.5 rounded text-gray-400 hover:text-red-500 transition-colors"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
     </li>
   )
 }

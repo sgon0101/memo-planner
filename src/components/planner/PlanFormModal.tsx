@@ -2,13 +2,22 @@
 
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
+import TimePicker from './TimePicker'
 import type { Plan } from '@/types'
 
 const PRESET_COLORS = [
   '#7F77DD', '#3B82F6', '#10B981', '#F59E0B',
   '#EF4444', '#EC4899', '#8B5CF6', '#6B7280',
 ]
+
+const REPEAT_OPTIONS = [
+  { value: null,      label: '반복 없음' },
+  { value: 'daily',   label: '매일' },
+  { value: 'weekly',  label: '매주' },
+  { value: 'monthly', label: '매월' },
+] as const
 
 interface PlanFormModalProps {
   date: string
@@ -20,16 +29,19 @@ interface PlanFormModalProps {
 export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanFormModalProps) {
   const { createPlan, editPlan } = usePlanner()
 
-  const [title, setTitle] = useState(plan?.title ?? '')
-  const [color, setColor] = useState(plan?.color ?? '#7F77DD')
-  const [isRange, setIsRange] = useState(!!(plan?.startDate))
+  const [title, setTitle]         = useState(plan?.title ?? '')
+  const [color, setColor]         = useState(plan?.color ?? '#7F77DD')
+  const [isRange, setIsRange]     = useState(!!(plan?.startDate))
   const [startDate, setStartDate] = useState(plan?.startDate ?? date)
-  const [endDate, setEndDate] = useState(plan?.endDate ?? date)
+  const [endDate, setEndDate]     = useState(plan?.endDate ?? date)
   const [startTime, setStartTime] = useState(plan?.startTime?.slice(0, 5) ?? '')
-  const [endTime, setEndTime] = useState(plan?.endTime?.slice(0, 5) ?? '')
-  const [isAllDay, setIsAllDay] = useState(plan?.isAllDay ?? true)
+  const [endTime, setEndTime]     = useState(plan?.endTime?.slice(0, 5) ?? '')
+  const [isAllDay, setIsAllDay]   = useState(plan?.isAllDay ?? true)
+  const [repeatType, setRepeatType] = useState<'daily' | 'weekly' | 'monthly' | null>(
+    plan?.repeatType ?? null
+  )
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -45,6 +57,7 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
         endDate: isRange ? endDate : null,
         startTime: isAllDay ? null : (startTime || null),
         endTime: isAllDay ? null : (endTime || null),
+        repeatType,
       }
       if (plan) {
         await editPlan(plan.id, data)
@@ -52,7 +65,7 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
         await createPlan(data)
       }
       onSaved()
-    } catch (e) {
+    } catch {
       setError('저장 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
@@ -98,7 +111,7 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
             </div>
           </div>
 
-          {/* 날짜 유형 */}
+          {/* 날짜 유형 + 종일 */}
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
               <input type="checkbox" checked={isRange} onChange={(e) => setIsRange(e.target.checked)} className="accent-violet-600" />
@@ -135,18 +148,32 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
           {/* 시간 (종일 아닐 때) */}
           {!isAllDay && (
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">시작 시간</p>
-                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">종료 시간</p>
-                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
-              </div>
+              <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
+              <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} />
             </div>
           )}
+
+          {/* 반복 */}
+          <div>
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">반복</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {REPEAT_OPTIONS.map((opt) => (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  onClick={() => setRepeatType(opt.value as typeof repeatType)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs rounded-lg border transition-colors',
+                    repeatType === opt.value
+                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">{error}</p>}
 
@@ -158,9 +185,4 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
       </div>
     </div>
   )
-}
-
-// cn 임포트 누락 방지
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ')
 }

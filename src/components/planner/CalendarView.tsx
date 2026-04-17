@@ -256,6 +256,7 @@ export default function CalendarView() {
         <PlanPanel
           date={selectedDate}
           onNewPlan={() => setFormState({ open: true, date: selectedDate })}
+          onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
           onClose={() => selectDate('')}
         />
       )}

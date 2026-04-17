@@ -355,7 +355,7 @@ export interface PlanTemplate {
 - [x] 7. 메모장 — 메모 CRUD + 잠금/중요/고정
 - [x] 8. 메모장 — 버전 이력 + 휴지통
 - [x] 9. 플래너 — 캘린더 UI + 범위 플랜
-- [ ] 10. 플래너 — 플랜 CRUD + 시간 + 반복
+- [x] 10. 플래너 — 플랜 CRUD + 시간 + 반복
 - [ ] 11. 플래너 — Google Calendar 연동
 - [ ] 12. AI 인사이트 — Claude API + 4개 탭
 - [ ] 13. 설정 페이지
@@ -447,6 +447,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-17 | 2단계 완료 | Supabase 프로젝트 생성, 테이블 7개 + RLS 정책 적용 | 100% |
 | 2026-04-17 | 3~8단계 완료 | Auth, 레이아웃, 메모 CRUD, 에디터, 잠금, 버전이력, 휴지통 | 100% |
 | 2026-04-17 | 9단계 완료 | 플래너 캘린더 UI (월/주/일 뷰), 범위 플랜 바, PlanPanel, PlanFormModal | 100% |
+| 2026-04-17 | 10단계 완료 | 플랜 CRUD 고도화 — 반복 설정(daily/weekly/monthly), TimePicker 컴포넌트, PlanPanel 수정 버튼, editPlan 흐름 연결 | 100% |
 | 2026-04-17 | 3단계 완료 | Supabase Auth 인증 — 로그인/회원가입 페이지, proxy.ts 미들웨어, auth/callback 라우트, lib/supabase client/server | 100% |
 | 2026-04-17 | 4단계 완료 | 레이아웃 — Sidebar/Header/MobileNav/DarkModeProvider/SidebarSpacer 컴포넌트, (main) 레이아웃, placeholder 페이지 4개, uiStore | 100% |
 | 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |
