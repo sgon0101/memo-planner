@@ -7,7 +7,9 @@ import { useUIStore } from '@/store/uiStore'
 import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
+  Download, Upload, FileText, FileJson,
 } from 'lucide-react'
+import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage() {
@@ -20,6 +22,8 @@ export default function SettingsPage() {
   const [calendarConnected, setCalendarConnected] = useState(false)
   const [calendarLoading, setCalendarLoading] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
@@ -74,6 +78,56 @@ export default function SettingsPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  async function exportData(format: 'json' | 'markdown' | 'pdf') {
+    setExportLoading(true)
+    try {
+      if (format === 'pdf') {
+        const res = await fetch('/api/export?format=markdown')
+        const md = await res.text()
+        printToPdf(markdownToHtml(md), '메모 내보내기')
+        return
+      }
+      const res = await fetch(`/api/export?format=${format}`)
+      const blob = await res.blob()
+      const ext = format === 'markdown' ? 'md' : 'json'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `backup-${new Date().toISOString().slice(0, 10)}.${ext}`
+      a.click()
+      URL.revokeObjectURL(url)
+      setToast({ type: 'success', message: '내보내기가 완료되었습니다.' })
+    } catch {
+      setToast({ type: 'error', message: '내보내기 중 오류가 발생했습니다.' })
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  async function importData(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImportLoading(true)
+    try {
+      const text = await file.text()
+      const json = JSON.parse(text)
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(json),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      const { results } = data
+      setToast({ type: 'success', message: `가져오기 완료: 폴더 ${results.folders}개, 메모 ${results.memos}개, 플랜 ${results.plans}개` })
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : '가져오기 중 오류가 발생했습니다.' })
+    } finally {
+      setImportLoading(false)
+    }
   }
 
   async function handleDeleteAccount() {
@@ -151,6 +205,52 @@ export default function SettingsPage() {
               연결하기
             </a>
           )}
+        </SettingRow>
+      </Section>
+
+      {/* 내보내기 / 가져오기 */}
+      <Section title="내보내기 / 백업" icon={<Download size={15} />}>
+        <SettingRow label="Markdown 내보내기" description="메모를 .md 파일로 저장합니다">
+          <button
+            onClick={() => exportData('markdown')}
+            disabled={exportLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {exportLoading ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+            내보내기
+          </button>
+        </SettingRow>
+        <SettingRow label="JSON 전체 백업" description="메모·플랜·폴더를 .json 파일로 백업합니다">
+          <button
+            onClick={() => exportData('json')}
+            disabled={exportLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {exportLoading ? <Loader2 size={12} className="animate-spin" /> : <FileJson size={12} />}
+            백업
+          </button>
+        </SettingRow>
+        <SettingRow label="PDF 인쇄" description="메모를 PDF로 인쇄하거나 저장합니다">
+          <button
+            onClick={() => exportData('pdf')}
+            disabled={exportLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {exportLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            PDF
+          </button>
+        </SettingRow>
+        <SettingRow label="JSON 가져오기" description="백업 파일에서 데이터를 복원합니다 (중복 제외)">
+          <label className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer',
+            importLoading
+              ? 'border-gray-200 text-gray-400 opacity-50 pointer-events-none'
+              : 'border-violet-200 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/20'
+          )}>
+            {importLoading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            가져오기
+            <input type="file" accept=".json" className="hidden" onChange={importData} disabled={importLoading} />
+          </label>
         </SettingRow>
       </Section>
 
