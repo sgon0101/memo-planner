@@ -7,7 +7,7 @@ import {
   isSameMonth, isSameDay, addMonths, subMonths, parseISO,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
@@ -31,6 +31,27 @@ export default function CalendarView() {
   const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan }>({
     open: false, date: '',
   })
+  const [syncing, setSyncing] = useState(false)
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/calendar/sync', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        if (json.error === 'Google Calendar not connected') {
+          window.location.href = '/api/calendar/auth'
+        }
+        return
+      }
+      await load()
+      alert(`Google Calendar 동기화 완료 (${json.synced}개 추가)`)
+    } catch {
+      alert('동기화 중 오류가 발생했습니다.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
@@ -110,8 +131,20 @@ export default function CalendarView() {
             </button>
           </div>
 
-          {/* 뷰 토글 */}
-          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="flex items-center gap-2">
+            {/* Google Calendar 동기화 */}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              title="Google Calendar 동기화"
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+              Google 동기화
+            </button>
+
+            {/* 뷰 토글 */}
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {(['month', 'week', 'day'] as const).map((mode) => (
               <button
                 key={mode}
@@ -126,6 +159,7 @@ export default function CalendarView() {
                 {{ month: '월', week: '주', day: '일' }[mode]}
               </button>
             ))}
+            </div>
           </div>
         </div>
 
