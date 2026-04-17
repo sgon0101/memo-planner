@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pin, Star, Lock, Trash2, MoreVertical, Unlock } from 'lucide-react'
+import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -16,10 +16,13 @@ interface MemoCardProps {
   onDelete: (id: string) => void
   onLock: (id: string, content: Record<string, unknown>, password: string) => Promise<void>
   onUnlock: (id: string, lockedContent: string, password: string) => Promise<void>
+  onRestore: (id: string) => void
+  onPermanentDelete: (id: string) => void
   view: 'card' | 'list'
+  isTrash?: boolean
 }
 
-export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, view }: MemoCardProps) {
+export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, view, isTrash = false }: MemoCardProps) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
@@ -27,6 +30,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const timeAgo = formatDistanceToNow(new Date(memo.updatedAt), { addSuffix: true, locale: ko })
 
   function handleClick() {
+    if (isTrash) return
     if (memo.isLocked) {
       setLockModal('unlock')
     } else {
@@ -58,9 +62,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             <span className="text-xs text-gray-400">{timeAgo}</span>
             <CardMenu
               memo={memo}
+              isTrash={isTrash}
               onPin={onPin}
               onStar={onStar}
               onDelete={onDelete}
+              onRestore={onRestore}
+              onPermanentDelete={onPermanentDelete}
               onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
               open={menuOpen}
               setOpen={setMenuOpen}
@@ -118,9 +125,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
             <CardMenu
               memo={memo}
+              isTrash={isTrash}
               onPin={onPin}
               onStar={onStar}
               onDelete={onDelete}
+              onRestore={onRestore}
+              onPermanentDelete={onPermanentDelete}
               onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
               open={menuOpen}
               setOpen={setMenuOpen}
@@ -141,12 +151,15 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
 }
 
 function CardMenu({
-  memo, onPin, onStar, onDelete, onLockClick, open, setOpen,
+  memo, isTrash = false, onPin, onStar, onDelete, onRestore, onPermanentDelete, onLockClick, open, setOpen,
 }: {
   memo: Memo
+  isTrash?: boolean
   onPin: (id: string, current: boolean) => void
   onStar: (id: string, current: boolean) => void
   onDelete: (id: string) => void
+  onRestore: (id: string) => void
+  onPermanentDelete: (id: string) => void
   onLockClick: () => void
   open: boolean
   setOpen: (v: boolean) => void
@@ -162,32 +175,38 @@ function CardMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
-          <div className="absolute right-0 bottom-6 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
-            <MenuItem
-              icon={<Pin size={13} />}
-              label={memo.isPinned ? '고정 해제' : '고정'}
-              onClick={() => { onPin(memo.id, memo.isPinned); setOpen(false) }}
-            />
-            <MenuItem
-              icon={<Star size={13} />}
-              label={memo.isStarred ? '중요 해제' : '중요'}
-              onClick={() => { onStar(memo.id, memo.isStarred); setOpen(false) }}
-            />
-            <MenuItem
-              icon={memo.isLocked ? <Unlock size={13} /> : <Lock size={13} />}
-              label={memo.isLocked ? '잠금 해제' : '잠금'}
-              onClick={() => { onLockClick(); setOpen(false) }}
-            />
-            <hr className="my-1 border-gray-100 dark:border-gray-700" />
-            <MenuItem
-              icon={<Trash2 size={13} />}
-              label="삭제"
-              danger
-              onClick={() => {
-                setOpen(false)
-                if (confirm('메모를 삭제할까요?')) onDelete(memo.id)
-              }}
-            />
+          <div className="absolute right-0 bottom-6 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-40">
+            {isTrash ? (
+              <>
+                <MenuItem
+                  icon={<RotateCcw size={13} />}
+                  label="복원"
+                  onClick={() => { setOpen(false); onRestore(memo.id) }}
+                />
+                <hr className="my-1 border-gray-100 dark:border-gray-700" />
+                <MenuItem
+                  icon={<Trash2 size={13} />}
+                  label="영구 삭제"
+                  danger
+                  onClick={() => {
+                    setOpen(false)
+                    if (confirm('영구 삭제하면 복구할 수 없습니다. 삭제할까요?')) onPermanentDelete(memo.id)
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <MenuItem icon={<Pin size={13} />} label={memo.isPinned ? '고정 해제' : '고정'} onClick={() => { onPin(memo.id, memo.isPinned); setOpen(false) }} />
+                <MenuItem icon={<Star size={13} />} label={memo.isStarred ? '중요 해제' : '중요'} onClick={() => { onStar(memo.id, memo.isStarred); setOpen(false) }} />
+                <MenuItem
+                  icon={memo.isLocked ? <Unlock size={13} /> : <Lock size={13} />}
+                  label={memo.isLocked ? '잠금 해제' : '잠금'}
+                  onClick={() => { onLockClick(); setOpen(false) }}
+                />
+                <hr className="my-1 border-gray-100 dark:border-gray-700" />
+                <MenuItem icon={<Trash2 size={13} />} label="삭제" danger onClick={() => { setOpen(false); if (confirm('메모를 삭제할까요?')) onDelete(memo.id) }} />
+              </>
+            )}
           </div>
         </>
       )}

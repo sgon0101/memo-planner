@@ -5,6 +5,7 @@ import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, Chev
 import { cn } from '@/lib/utils'
 import { useFolders } from '@/hooks/useFolders'
 import { useFolderStore } from '@/store/folderStore'
+import { TRASH_ID } from '@/hooks/useMemos'
 import ColorWheelModal from './ColorWheelModal'
 import type { Folder as FolderType } from '@/types'
 
@@ -214,6 +215,20 @@ export default function FolderPanel() {
           </div>
         </>
       )}
+
+      {/* 휴지통 */}
+      <div
+        className={cn(
+          'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm border-t border-gray-100 dark:border-gray-800 transition-colors',
+          selectedFolderId === TRASH_ID
+            ? 'bg-red-50 dark:bg-red-950/20 text-red-500 dark:text-red-400'
+            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+        )}
+        onClick={() => selectFolder(TRASH_ID)}
+      >
+        <Trash2 size={14} />
+        <span>휴지통</span>
+      </div>
 
       {/* 색상 변경 모달 */}
       {colorTarget && (

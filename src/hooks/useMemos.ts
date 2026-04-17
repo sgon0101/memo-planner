@@ -29,11 +29,24 @@ export function toMemo(row: Record<string, unknown>): Memo {
   }
 }
 
+export const TRASH_ID = '__trash__'
+
 export function useMemos(folderId: string | null | undefined) {
   const { memos, setMemos, addMemo, updateMemo, deleteMemo } = useMemoStore()
   const supabase = createClient()
+  const isTrash = folderId === TRASH_ID
 
   const load = useCallback(async () => {
+    if (isTrash) {
+      const { data } = await supabase
+        .from('memos')
+        .select('*')
+        .eq('is_deleted', true)
+        .order('deleted_at', { ascending: false })
+      if (data) setMemos(data.map(toMemo))
+      return
+    }
+
     let query = supabase
       .from('memos')
       .select('*')
@@ -49,7 +62,7 @@ export function useMemos(folderId: string | null | undefined) {
 
     const { data } = await query
     if (data) setMemos(data.map(toMemo))
-  }, [folderId])
+  }, [folderId, isTrash])
 
   useEffect(() => { load() }, [load])
 
@@ -118,5 +131,28 @@ export function useMemos(folderId: string | null | undefined) {
     updateMemo(id, { isLocked: false, lockedContent: null, content })
   }, [])
 
-  return { memos, createMemo, togglePin, toggleStar, softDelete, lockMemo, unlockMemo, refresh: load }
+  const restoreMemo = useCallback(async (id: string) => {
+    await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).eq('id', id)
+    deleteMemo(id)
+  }, [])
+
+  const permanentDelete = useCallback(async (id: string) => {
+    await supabase.from('memos').delete().eq('id', id)
+    deleteMemo(id)
+  }, [])
+
+  const emptyTrash = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
+    setMemos([])
+  }, [])
+
+  return {
+    memos, isTrash,
+    createMemo, togglePin, toggleStar, softDelete,
+    lockMemo, unlockMemo,
+    restoreMemo, permanentDelete, emptyTrash,
+    refresh: load,
+  }
 }

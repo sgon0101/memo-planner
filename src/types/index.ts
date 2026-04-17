@@ -51,6 +51,15 @@ export interface Plan {
   updatedAt: string
 }
 
+export interface MemoVersion {
+  id: string
+  memoId: string
+  content: Record<string, unknown>
+  contentText: string
+  title: string
+  createdAt: string
+}
+
 export interface PlanTemplate {
   id: string
   userId: string

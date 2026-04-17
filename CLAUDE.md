@@ -353,7 +353,7 @@ export interface PlanTemplate {
 - [x] 5. 메모장 — 폴더 CRUD + Color Wheel
 - [x] 6. 메모장 — Tiptap 에디터
 - [x] 7. 메모장 — 메모 CRUD + 잠금/중요/고정
-- [ ] 8. 메모장 — 버전 이력 + 휴지통
+- [x] 8. 메모장 — 버전 이력 + 휴지통
 - [ ] 9. 플래너 — 캘린더 UI + 범위 플랜
 - [ ] 10. 플래너 — 플랜 CRUD + 시간 + 반복
 - [ ] 11. 플래너 — Google Calendar 연동
@@ -450,6 +450,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |
 | 2026-04-17 | 6단계 완료 | Tiptap 에디터 — MemoEditor(자동저장 1.5s debounce), EditorToolbar(전체 서식), memo/[id] 페이지, memoStore, typography 플러그인 | 100% |
 | 2026-04-17 | 7단계 완료 | 메모 CRUD — MemoList(카드/리스트뷰, 검색, 정렬), MemoCard(고정/중요/잠금/삭제), LockModal(AES-256), lib/crypto/lock.ts, useMemos 훅 | 100% |
+| 2026-04-17 | 8단계 완료 | 버전 이력 + 휴지통 — VersionHistory 패널, useVersions 훅(5분 쿨다운, 최대 20개), MemoEditor 이력 버튼, FolderPanel 휴지통, 복원/영구삭제/비우기 | 100% |
 
 ---
 
