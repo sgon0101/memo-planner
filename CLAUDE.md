@@ -351,7 +351,7 @@ export interface PlanTemplate {
 - [x] 3. 인증 (Supabase Auth)
 - [x] 4. 레이아웃 (헤더 + 사이드바)
 - [x] 5. 메모장 — 폴더 CRUD + Color Wheel
-- [ ] 6. 메모장 — Tiptap 에디터
+- [x] 6. 메모장 — Tiptap 에디터
 - [ ] 7. 메모장 — 메모 CRUD + 잠금/중요/고정
 - [ ] 8. 메모장 — 버전 이력 + 휴지통
 - [ ] 9. 플래너 — 캘린더 UI + 범위 플랜
@@ -448,6 +448,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-17 | 3단계 완료 | Supabase Auth 인증 — 로그인/회원가입 페이지, proxy.ts 미들웨어, auth/callback 라우트, lib/supabase client/server | 100% |
 | 2026-04-17 | 4단계 완료 | 레이아웃 — Sidebar/Header/MobileNav/DarkModeProvider/SidebarSpacer 컴포넌트, (main) 레이아웃, placeholder 페이지 4개, uiStore | 100% |
 | 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |
+| 2026-04-17 | 6단계 완료 | Tiptap 에디터 — MemoEditor(자동저장 1.5s debounce), EditorToolbar(전체 서식), memo/[id] 페이지, memoStore, typography 플러그인 | 100% |
 
 ---
 
