@@ -28,10 +28,16 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlError = searchParams.get('error')
+  const urlMsg = searchParams.get('msg')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
-  const [error, setError] = useState(urlError ? 'Google 로그인에 실패했습니다. 다시 시도해주세요.' : '')
+  const [error, setError] = useState(() => {
+    if (!urlError) return ''
+    if (urlMsg) return `Google 로그인 실패: ${decodeURIComponent(urlMsg)}`
+    if (urlError === 'timeout') return '로그인 처리 시간이 초과됐습니다. 다시 시도해주세요.'
+    return 'Google 로그인에 실패했습니다. 다시 시도해주세요.'
+  })
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
