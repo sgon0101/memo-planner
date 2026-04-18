@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, FileText, CalendarDays, Sparkles, Settings } from 'lucide-react'
+import { Home, FileText, CalendarDays, Network, Sparkles, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { href: '/home', label: '홈', icon: Home },
   { href: '/memo', label: '메모', icon: FileText },
   { href: '/planner', label: '플래너', icon: CalendarDays },
+  { href: '/graph', label: '그래프', icon: Network },
   { href: '/insights', label: '인사이트', icon: Sparkles },
   { href: '/settings', label: '설정', icon: Settings },
 ]

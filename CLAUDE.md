@@ -493,6 +493,16 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 11개 기능 2차 #6 | 메모 목록 월별 필터 칩 — 월 클릭 시 해당 월 메모만 표시, 복수 월 있을 때만 노출 | 100% |
 | 2026-04-18 | 11개 기능 2차 #7 | 폴더 정보 표시 + 폴더 이동 — 카드 하단 폴더명/색상, 에디터 폴더 선택 드롭다운, 카드 메뉴 폴더 이동 | 100% |
 | 2026-04-18 | 11개 기능 2차 #10 | 플랜 상세 패널 — PlanDetailPanel 슬라이드 오버레이, 날짜/시간/설명/연결메모/반복 표시, 수정/삭제 버튼 | 100% |
+| 2026-04-18 | 그래프 뷰 완성 | GraphView D3 Canvas + 슬리핑 시뮬, GraphSettings/Tooltip, useGraphData, /api/graph/analyze, /graph 라우팅, Sidebar/MobileNav 메뉴, from=graph 버튼, [[ 위키 자동완성, wiki_links 저장 | 100% |
+
+---
+
+## DB 추가 작업 (Supabase에서 직접 실행 필요)
+
+```sql
+-- wiki_links 컬럼 추가 (그래프 뷰 필요)
+ALTER TABLE memos ADD COLUMN IF NOT EXISTS wiki_links text[] DEFAULT '{}';
+```
 
 ---
 

@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import MemoEditor from '@/components/memo/MemoEditor'
@@ -15,12 +16,14 @@ export default async function MemoEditorPage({ params }: Props) {
   // 신규 메모: 빈 에디터 렌더링 (클라이언트에서 저장 시 레코드 생성)
   if (id === 'new') {
     return (
-      <MemoEditor
-        memoId="new"
-        initialTitle=""
-        initialContent={{}}
-        isNew
-      />
+      <Suspense>
+        <MemoEditor
+          memoId="new"
+          initialTitle=""
+          initialContent={{}}
+          isNew
+        />
+      </Suspense>
     )
   }
 
@@ -35,13 +38,15 @@ export default async function MemoEditorPage({ params }: Props) {
   if (!memo) notFound()
 
   return (
-    <MemoEditor
-      memoId={memo.id}
-      initialTitle={memo.title ?? ''}
-      initialContent={(memo.content as Record<string, unknown>) ?? {}}
-      initialIsStarred={memo.is_starred ?? false}
-      initialIsPinned={memo.is_pinned ?? false}
-      initialFolderId={memo.folder_id ?? null}
-    />
+    <Suspense>
+      <MemoEditor
+        memoId={memo.id}
+        initialTitle={memo.title ?? ''}
+        initialContent={(memo.content as Record<string, unknown>) ?? {}}
+        initialIsStarred={memo.is_starred ?? false}
+        initialIsPinned={memo.is_pinned ?? false}
+        initialFolderId={memo.folder_id ?? null}
+      />
+    </Suspense>
   )
 }
