@@ -81,3 +81,68 @@ body {
 .tiptap ul[data-type="taskList"] li > div {
   flex: 1;
 }
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+.dark .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+  color: #6b7280;
+}
+
+/* Syntax highlighting (lowlight / highlight.js) */
+.tiptap pre { background: #f9fafb; }
+.dark .tiptap pre { background: #030712; }
+
+.tiptap .hljs-comment,
+.tiptap .hljs-quote { color: #6b7280; font-style: italic; }
+.tiptap .hljs-keyword,
+.tiptap .hljs-selector-tag,
+.tiptap .hljs-built_in { color: #7c3aed; }
+.tiptap .hljs-string,
+.tiptap .hljs-attr { color: #059669; }
+.tiptap .hljs-number,
+.tiptap .hljs-literal { color: #2563eb; }
+.tiptap .hljs-title,
+.tiptap .hljs-title.function_ { color: #b45309; }
+.tiptap .hljs-type,
+.tiptap .hljs-class .hljs-title { color: #0891b2; }
+.tiptap .hljs-tag { color: #dc2626; }
+.tiptap .hljs-name { color: #7c3aed; }
+.tiptap .hljs-attribute { color: #be185d; }
+.tiptap .hljs-variable,
+.tiptap .hljs-template-variable { color: #b45309; }
+.tiptap .hljs-regexp,
+.tiptap .hljs-link { color: #059669; }
+.tiptap .hljs-symbol,
+.tiptap .hljs-bullet { color: #7c3aed; }
+.tiptap .hljs-section { color: #7c3aed; font-weight: bold; }
+.tiptap .hljs-emphasis { font-style: italic; }
+.tiptap .hljs-strong { font-weight: bold; }
+.tiptap .hljs-addition { color: #059669; background: #d1fae5; }
+.tiptap .hljs-deletion { color: #dc2626; background: #fee2e2; }
+
+.dark .tiptap .hljs-comment,
+.dark .tiptap .hljs-quote { color: #9ca3af; }
+.dark .tiptap .hljs-keyword,
+.dark .tiptap .hljs-selector-tag,
+.dark .tiptap .hljs-built_in { color: #a78bfa; }
+.dark .tiptap .hljs-string,
+.dark .tiptap .hljs-attr { color: #34d399; }
+.dark .tiptap .hljs-number,
+.dark .tiptap .hljs-literal { color: #60a5fa; }
+.dark .tiptap .hljs-title,
+.dark .tiptap .hljs-title.function_ { color: #fbbf24; }
+.dark .tiptap .hljs-type,
+.dark .tiptap .hljs-class .hljs-title { color: #22d3ee; }
+.dark .tiptap .hljs-tag { color: #f87171; }
+.dark .tiptap .hljs-name { color: #a78bfa; }
+.dark .tiptap .hljs-attribute { color: #f472b6; }
+.dark .tiptap .hljs-variable,
+.dark .tiptap .hljs-template-variable { color: #fbbf24; }
+.dark .tiptap .hljs-regexp,
+.dark .tiptap .hljs-link { color: #34d399; }
+.dark .tiptap .hljs-symbol,
+.dark .tiptap .hljs-bullet { color: #a78bfa; }
+.dark .tiptap .hljs-section { color: #a78bfa; font-weight: bold; }
+.dark .tiptap .hljs-addition { color: #34d399; background: #064e3b; }
+.dark .tiptap .hljs-deletion { color: #f87171; background: #450a0a; }
