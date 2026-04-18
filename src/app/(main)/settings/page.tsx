@@ -22,6 +22,9 @@ export default function SettingsPage() {
   const [email, setEmail] = useState('')
   const [calendarConnected, setCalendarConnected] = useState(false)
   const [calendarLoading, setCalendarLoading] = useState(false)
+  const [driveConnected, setDriveConnected] = useState(false)
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [integrationsLoading, setIntegrationsLoading] = useState(true)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
@@ -31,32 +34,37 @@ export default function SettingsPage() {
     originalBytes: number
     compressedBytes: number
   } | null>(null)
-  const [driveConnected, setDriveConnected] = useState(false)
   const [driveBackupLoading, setDriveBackupLoading] = useState(false)
   const [lastBackup, setLastBackup] = useState<string | null>(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('lastDriveBackup')
     return null
   })
 
+  // 연결 상태를 user_integrations에서 직접 조회 (access_token 유무로 판단)
+  async function fetchIntegrationStatus() {
+    setIntegrationsLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: integrations } = await supabase
+        .from('user_integrations')
+        .select('provider, access_token')
+        .eq('user_id', user.id)
+        .in('provider', ['google_drive', 'google_calendar'])
+      setDriveConnected(!!(integrations?.some((i) => i.provider === 'google_drive' && i.access_token)))
+      setCalendarConnected(!!(integrations?.some((i) => i.provider === 'google_calendar' && i.access_token)))
+    } finally {
+      setIntegrationsLoading(false)
+    }
+  }
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setEmail(data.user.email ?? '')
     })
-    // Drive 연결 상태 + 마지막 백업
-    fetch('/api/backup/google-drive').then((r) => r.json()).then((d) => {
-      setDriveConnected(d.connected)
-    }).catch(() => {})
-    // Google Calendar 연결 상태 + 스토리지 통계
+    fetchIntegrationStatus()
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
-      const { data: row } = await supabase
-        .from('user_integrations')
-        .select('id')
-        .eq('user_id', data.user.id)
-        .eq('provider', 'google_calendar')
-        .single()
-      setCalendarConnected(!!row)
-
       const { data: files } = await supabase
         .from('uploaded_files')
         .select('original_size, compressed_size')
@@ -69,28 +77,28 @@ export default function SettingsPage() {
         })
       }
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // URL 파라미터로 toast 표시
+  // URL 파라미터로 toast 표시 + 상태 재조회
   useEffect(() => {
-    const success = searchParams.get('success')
+    const connected = searchParams.get('connected')
     const error = searchParams.get('error')
-    if (!success && !error) return
-    // URL 파라미터 처리 후 상태 반영 — 마운트 직후 1회 실행
+    if (!connected && !error) return
     queueMicrotask(() => {
-      if (success === 'calendar_connected') {
+      if (connected === 'calendar') {
         setToast({ type: 'success', message: 'Google Calendar가 연결되었습니다.' })
-        setCalendarConnected(true)
+      } else if (connected === 'drive') {
+        setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
       } else if (error === 'calendar_auth_failed') {
         setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
-      } else if (success === 'drive_connected') {
-        setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
-        setDriveConnected(true)
       } else if (error === 'drive_auth_failed') {
         setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
       }
+      fetchIntegrationStatus()
       router.replace('/settings')
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   useEffect(() => {
@@ -109,6 +117,21 @@ export default function SettingsPage() {
       setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
     } finally {
       setCalendarLoading(false)
+    }
+  }
+
+  async function disconnectDrive() {
+    setDriveLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('user_integrations').delete().eq('user_id', user.id).eq('provider', 'google_drive')
+      setDriveConnected(false)
+      setToast({ type: 'success', message: 'Google Drive 연결이 해제되었습니다.' })
+    } catch {
+      setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
+    } finally {
+      setDriveLoading(false)
     }
   }
 
@@ -247,13 +270,21 @@ export default function SettingsPage() {
       <Section title="연동" icon={<CalendarDays size={15} />}>
         <SettingRow
           label="Google Calendar"
-          description={calendarConnected ? '연결됨 — 플래너 플랜을 Google 캘린더와 동기화합니다' : '연결하면 플랜을 Google 캘린더에 동기화할 수 있습니다'}
+          description={
+            integrationsLoading ? '연결 확인 중...' :
+            calendarConnected ? `${email} 계정으로 연결됨 ✅` :
+            '연결하면 플랜을 Google 캘린더에 동기화할 수 있습니다'
+          }
         >
-          {calendarConnected ? (
+          {integrationsLoading ? (
+            <button disabled className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-60">
+              <Loader2 size={12} className="animate-spin" /> 연결 중...
+            </button>
+          ) : calendarConnected ? (
             <button
               onClick={disconnectCalendar}
               disabled={calendarLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
             >
               {calendarLoading ? <Loader2 size={12} className="animate-spin" /> : null}
               연결 해제
@@ -320,12 +351,25 @@ export default function SettingsPage() {
       <Section title="Google Drive 백업" icon={<CloudUpload size={15} />}>
         <SettingRow
           label="Google Drive 연결"
-          description={driveConnected ? '연결됨 — 메모를 Drive에 Markdown으로 백업합니다' : '연결하면 메모를 Google Drive에 자동 백업할 수 있습니다'}
+          description={
+            integrationsLoading ? '연결 확인 중...' :
+            driveConnected ? `${email} 계정으로 연결됨 ✅` :
+            '연결하면 메모를 Google Drive에 자동 백업할 수 있습니다'
+          }
         >
-          {driveConnected ? (
-            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-              <CheckCircle size={12} /> 연결됨
-            </span>
+          {integrationsLoading ? (
+            <button disabled className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-60">
+              <Loader2 size={12} className="animate-spin" /> 연결 중...
+            </button>
+          ) : driveConnected ? (
+            <button
+              onClick={disconnectDrive}
+              disabled={driveLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+            >
+              {driveLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+              연결 해제
+            </button>
           ) : (
             <a
               href="/api/drive/auth"

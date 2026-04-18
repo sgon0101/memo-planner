@@ -23,5 +23,5 @@ export async function GET(req: NextRequest) {
     token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
   }, { onConflict: 'user_id,provider' })
 
-  return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/settings?success=calendar_connected`)
+  return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/settings?connected=calendar`)
 }
