@@ -99,11 +99,11 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
   const today = format(new Date(), 'yyyy년 M월 d일 EEEE', { locale: ko })
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-2xl mx-auto px-4 py-10 space-y-8">
       {/* 인사말 */}
       <div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{today}</p>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 tracking-wide uppercase">{today}</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
           {greeting(userEmail)}
         </h1>
       </div>
@@ -111,45 +111,46 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
       {/* 통계 카드 */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard
-          icon={<FileText size={18} className="text-violet-500" />}
+          icon={<FileText size={16} className="text-violet-600" />}
+          iconBg="bg-violet-100 dark:bg-violet-950/60"
           label="총 메모"
           value={totalMemos}
-          bg="bg-violet-50 dark:bg-violet-950/20"
           onClick={() => router.push('/memo')}
         />
         <StatCard
-          icon={<CheckSquare size={18} className="text-emerald-500" />}
+          icon={<CheckSquare size={16} className="text-emerald-600" />}
+          iconBg="bg-emerald-100 dark:bg-emerald-950/60"
           label="완료한 플랜"
           value={completedPlans}
-          bg="bg-emerald-50 dark:bg-emerald-950/20"
           onClick={() => router.push('/planner')}
         />
         <StatCard
-          icon={<Sparkles size={18} className="text-cyan-500" />}
+          icon={<Sparkles size={16} className="text-cyan-600" />}
+          iconBg="bg-cyan-100 dark:bg-cyan-950/60"
           label="AI 인사이트"
-          value="분석하기"
-          bg="bg-cyan-50 dark:bg-cyan-950/20"
+          value="분석"
           onClick={() => router.push('/insights')}
         />
       </div>
 
       {/* 빠른 메모 입력 */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">빠른 메모</p>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
+        <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-3 tracking-wide">빠른 메모</p>
         <form onSubmit={handleQuickMemo} className="flex gap-2">
           <input
             type="text"
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
-            className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+            className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
           />
           <button
             type="submit"
             disabled={creating || !quickTitle.trim()}
-            className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-10 h-10 flex items-center justify-center bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition-colors duration-150 cursor-pointer flex-shrink-0"
+            aria-label="메모 추가"
           >
-            <Plus size={14} />
+            <Plus size={15} />
           </button>
         </form>
       </div>
@@ -157,12 +158,12 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
       {/* 최근 메모 */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">최근 메모</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">최근 메모</h2>
           <button
             onClick={() => router.push('/memo')}
-            className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline"
+            className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
           >
-            전체 보기 <ArrowRight size={11} />
+            전체 보기 <ArrowRight size={10} />
           </button>
         </div>
         {recentMemos.length === 0 ? (
@@ -172,12 +173,12 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
             onAction={() => router.push('/memo/new')}
           />
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {recentMemos.map((m) => (
               <button
                 key={m.id}
                 onClick={() => router.push(`/memo/${m.id}`)}
-                className="w-full flex items-start gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all text-left"
+                className="w-full flex items-start gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all duration-150 text-left cursor-pointer"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -187,8 +188,8 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
                     )}>
                       {m.title || '제목 없음'}
                     </span>
-                    {m.isStarred && <Star size={11} className="text-amber-400 fill-amber-400 flex-shrink-0" />}
-                    {m.isPinned && <Pin size={11} className="text-violet-400 flex-shrink-0" />}
+                    {m.isStarred && <Star size={10} className="text-amber-400 fill-amber-400 flex-shrink-0" />}
+                    {m.isPinned && <Pin size={10} className="text-violet-400 flex-shrink-0" />}
                   </div>
                   {m.contentText && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{m.contentText}</p>
@@ -204,14 +205,14 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
       </section>
 
       {/* 이번 주 플랜 */}
-      <section className="pb-8">
+      <section className="pb-10">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">이번 주 플랜</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">이번 주 플랜</h2>
           <button
             onClick={() => router.push('/planner')}
-            className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline"
+            className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
           >
-            플래너 열기 <ArrowRight size={11} />
+            플래너 열기 <ArrowRight size={10} />
           </button>
         </div>
         {weekPlans.length === 0 ? (
@@ -227,15 +228,18 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
                 key={p.id}
                 className={cn(
                   'flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800',
-                  p.isCompleted && 'opacity-50'
+                  p.isCompleted && 'opacity-50',
                 )}
               >
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                {/* 컬러 스트립 */}
+                <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
                 <div className="flex-1 min-w-0">
-                  <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate block', p.isCompleted && 'line-through')}>{p.title}</span>
+                  <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate block', p.isCompleted && 'line-through')}>
+                    {p.title}
+                  </span>
                 </div>
                 {p.date && (
-                  <span className="text-xs text-gray-400 flex-shrink-0">
+                  <span className="text-xs text-gray-400 flex-shrink-0 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded">
                     {format(new Date(p.date), 'M/d (E)', { locale: ko })}
                   </span>
                 )}
@@ -248,30 +252,34 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
   )
 }
 
-function StatCard({ icon, label, value, bg, onClick }: {
+function StatCard({ icon, iconBg, label, value, onClick }: {
   icon: React.ReactNode
+  iconBg: string
   label: string
   value: number | string
-  bg: string
   onClick: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className={cn('flex flex-col items-center gap-2 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow', bg)}
+      className="flex flex-col gap-3 p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all duration-150 cursor-pointer text-left w-full"
     >
-      {icon}
-      <span className="text-xl font-bold text-gray-900 dark:text-white">{value}</span>
-      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', iconBg)}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-xl font-bold text-gray-900 dark:text-white leading-none">{value}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+      </div>
     </button>
   )
 }
 
 function EmptyState({ message, action, onAction }: { message: string; action: string; onAction: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-8 bg-white dark:bg-gray-900 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 gap-2">
+    <div className="flex flex-col items-center justify-center py-8 bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 gap-2">
       <p className="text-xs text-gray-400">{message}</p>
-      <button onClick={onAction} className="text-xs text-violet-600 dark:text-violet-400 hover:underline">{action}</button>
+      <button onClick={onAction} className="text-xs text-violet-600 dark:text-violet-400 hover:underline cursor-pointer">{action}</button>
     </div>
   )
 }

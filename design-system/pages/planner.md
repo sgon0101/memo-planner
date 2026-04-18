@@ -1,32 +1,21 @@
-# Design Override — Planner Page
+# MemoPlanner — Planner Page Override
 
-> Inherits from MASTER.md. Only deviations listed here.
+## Calendar
+- Today cell: bg-violet-600 text-white rounded-full (date number)
+- Selected cell: ring-2 ring-violet-400
+- Range bar: rounded-full, height 20px, opacity-90
+- Weekend columns: slightly muted text (text-gray-400)
+- Current time line: 1px border-red-400 with dot indicator
 
-## Calendar Grid
-- Today cell: `bg-violet-600 text-white` circle (w-6 h-6 rounded-full)
-- Selected date: `bg-violet-50/60 dark:bg-violet-950/20`
-- Weekend Sun: `text-red-400`, Sat: `text-blue-400`
-- Out-of-month: `text-gray-300 dark:text-gray-700 bg-gray-50/60`
+## View Tabs (월/주/일)
+- Active: text-violet-600 border-b-2 border-violet-600
+- Inactive: text-gray-500 hover:text-gray-700
 
-## Plan Blocks (inline)
-- Background: `{plan.color}22` (10% opacity hex)
-- Left border: `border-l-2 border-{plan.color}`
-- Text: `{plan.color}` with truncate
-- Completed: `opacity-50 line-through`
+## Plan Panel (right)
+- Card: rounded-xl border p-3, color-coded left border (4px)
+- Completed: opacity-60, line-through title
+- Time badge: text-xs bg-gray-100 rounded px-2 py-0.5
 
-## Week/Day View
-- Hour height: 60px grid
-- Current time line: `bg-red-500` with circle dot (w-2 h-2)
-- Time label: `text-xs text-gray-400`
-- Column hover: subtle `bg-gray-50/50 dark:bg-gray-800/30`
-
-## PlanPanel (sidebar)
-- Width: 320px desktop, full-width mobile bottom-sheet
-- Header: date title + "새 플랜" button (`bg-violet-600 text-white`)
-- Plan item: left `border-l-4 border-{color}` card
-
-## Colors for plans (preset)
-```
-#7F77DD #3B82F6 #10B981 #F59E0B
-#EF4444 #EC4899 #8B5CF6 #6B7280
-```
+## Today Button
+- Viewing today: bg-gray-100 text-gray-400 (disabled look)
+- Not today: bg-violet-600 text-white hover:bg-violet-700
