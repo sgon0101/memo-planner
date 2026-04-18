@@ -21,12 +21,14 @@ export default function MemoList() {
     createMemo, togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, permanentDelete, emptyTrash,
+    moveMemoToFolder,
   } = useMemos(selectedFolderId)
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('updated')
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [activeMonth, setActiveMonth] = useState<string | null>(null)
 
   const folderName = isTrash
     ? '휴지통'
@@ -41,6 +43,13 @@ export default function MemoList() {
     return Array.from(set)
   }, [memos])
 
+  // 월별 목록 수집 (최신순)
+  const allMonths = useMemo(() => {
+    const set = new Set<string>()
+    memos.forEach((m) => set.add(m.updatedAt.slice(0, 7)))
+    return Array.from(set).sort().reverse()
+  }, [memos])
+
   const filtered = useMemo(() => {
     let list = [...memos]
 
@@ -53,6 +62,10 @@ export default function MemoList() {
 
     if (activeTag) {
       list = list.filter((m) => m.tags?.includes(activeTag))
+    }
+
+    if (activeMonth) {
+      list = list.filter((m) => m.updatedAt.startsWith(activeMonth))
     }
 
     if (!isTrash) {
@@ -74,7 +87,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, search, sort, isTrash, activeTag])
+  }, [memos, search, sort, isTrash, activeTag, activeMonth])
 
   // 타임라인: 날짜별 그룹핑
   const timelineGroups = useMemo(() => {
@@ -97,6 +110,7 @@ export default function MemoList() {
     onUnlock: (id: string, locked: string, pw: string) => unlockMemo(id, locked, pw),
     onRestore: (id: string) => restoreMemo(id).catch(console.error),
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
+    onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
   }
 
   const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -198,6 +212,20 @@ export default function MemoList() {
               #{tag}
             </button>
           ))}
+          {allMonths.length > 1 && allMonths.map((month) => (
+            <button
+              key={month}
+              onClick={() => setActiveMonth(activeMonth === month ? null : month)}
+              className={cn(
+                'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
+                activeMonth === month
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+              )}
+            >
+              {month.replace('-', '.')}
+            </button>
+          ))}
         </div>
       )}
 
@@ -252,7 +280,7 @@ export default function MemoList() {
   )
 }
 
-function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete }: {
+function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }: {
   memos: ReturnType<typeof useMemos>['memos']
   view: 'card' | 'list'
   isTrash?: boolean
@@ -263,8 +291,9 @@ function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, on
   onUnlock: (id: string, locked: string, pw: string) => Promise<void>
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
+  onMoveToFolder?: (id: string, folderId: string | null) => void
 }) {
-  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete }
+  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }
   if (view === 'card') {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">

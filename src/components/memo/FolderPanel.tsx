@@ -9,10 +9,114 @@ import { TRASH_ID } from '@/hooks/useMemos'
 import ColorWheelModal from './ColorWheelModal'
 import type { Folder as FolderType } from '@/types'
 
-interface MenuState {
-  folderId: string
-  x: number
-  y: number
+interface MenuState { folderId: string; x: number; y: number }
+
+// FolderItem은 FolderPanel 외부에 정의하여 리마운트 버그 방지
+interface FolderItemProps {
+  folder: FolderType
+  depth: number
+  allFolders: FolderType[]
+  expanded: Set<string>
+  selectedFolderId: string | null
+  editingId: string | null
+  editValue: string
+  editInputRef: React.RefObject<HTMLInputElement | null>
+  onSelect: (id: string) => void
+  onToggleExpand: (id: string) => void
+  onOpenMenu: (e: React.MouseEvent, id: string) => void
+  onEditValueChange: (value: string) => void
+  onCommitEdit: (id: string) => void
+  onCancelEdit: () => void
+}
+
+function FolderItem({
+  folder, depth, allFolders, expanded, selectedFolderId,
+  editingId, editValue, editInputRef,
+  onSelect, onToggleExpand, onOpenMenu,
+  onEditValueChange, onCommitEdit, onCancelEdit,
+}: FolderItemProps) {
+  const isSelected = selectedFolderId === folder.id
+  const isExpanded = expanded.has(folder.id)
+  const isEditing = editingId === folder.id
+  const children = allFolders
+    .filter((f) => f.parentId === folder.id)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+  const hasChildren = children.length > 0
+  const folderColor = `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)`
+
+  return (
+    <div>
+      <div
+        className={cn(
+          'group flex items-center gap-1.5 rounded-lg cursor-pointer select-none text-sm transition-colors py-1.5 pr-2',
+          isSelected
+            ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+        )}
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        onClick={() => onSelect(folder.id)}
+      >
+        <button
+          className={cn('flex-shrink-0 transition-transform', !hasChildren && 'invisible')}
+          onClick={(e) => { e.stopPropagation(); onToggleExpand(folder.id) }}
+        >
+          <ChevronRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} />
+        </button>
+
+        {isExpanded || isSelected ? (
+          <FolderOpen size={15} className="flex-shrink-0" style={{ color: folderColor }} />
+        ) : (
+          <Folder size={15} className="flex-shrink-0" style={{ color: folderColor }} />
+        )}
+
+        {isEditing ? (
+          <input
+            ref={editInputRef}
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onBlur={() => onCommitEdit(folder.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); onCommitEdit(folder.id) }
+              if (e.key === 'Escape') { e.preventDefault(); onCancelEdit() }
+            }}
+            className="flex-1 bg-transparent outline-none text-sm min-w-0 border-b border-violet-400 dark:border-violet-500"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="flex-1 truncate text-sm">{folder.name}</span>
+        )}
+
+        {!isEditing && (
+          <button
+            className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-opacity"
+            onClick={(e) => onOpenMenu(e, folder.id)}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        )}
+      </div>
+
+      {isExpanded && children.map((child) => (
+        <FolderItem
+          key={child.id}
+          folder={child}
+          depth={depth + 1}
+          allFolders={allFolders}
+          expanded={expanded}
+          selectedFolderId={selectedFolderId}
+          editingId={editingId}
+          editValue={editValue}
+          editInputRef={editInputRef}
+          onSelect={onSelect}
+          onToggleExpand={onToggleExpand}
+          onOpenMenu={onOpenMenu}
+          onEditValueChange={onEditValueChange}
+          onCommitEdit={onCommitEdit}
+          onCancelEdit={onCancelEdit}
+        />
+      ))}
+    </div>
+  )
 }
 
 export default function FolderPanel() {
@@ -21,37 +125,64 @@ export default function FolderPanel() {
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false)
+  const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const editRef = useRef<HTMLInputElement>(null)
+  const editInputRef = useRef<HTMLInputElement | null>(null)
 
-  const topLevel = folders.filter((f) => f.parentId === null).sort((a, b) => a.orderIndex - b.orderIndex)
+  const topLevel = folders
+    .filter((f) => f.parentId === null)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
 
   function openMenu(e: React.MouseEvent, folderId: string) {
     e.stopPropagation()
     setMenu({ folderId, x: e.clientX, y: e.clientY })
   }
 
-  function startEdit(folder: FolderType) {
-    setEditingId(folder.id)
-    setEditValue(folder.name)
+  function startEdit(folderId: string, currentName: string) {
+    setEditingId(folderId)
+    setEditValue(currentName)
     setMenu(null)
-    setTimeout(() => editRef.current?.focus(), 50)
+    setTimeout(() => editInputRef.current?.focus(), 50)
   }
 
   async function commitEdit(id: string) {
-    if (editValue.trim() && editValue !== folders.find((f) => f.id === id)?.name) {
+    const original = folders.find((f) => f.id === id)?.name ?? ''
+    if (editValue.trim() && editValue.trim() !== original) {
       await renameFolder(id, editValue.trim()).catch(console.error)
     }
     setEditingId(null)
   }
 
-  async function handleAddFolder(parentId: string | null = null) {
+  function cancelEdit() {
+    setEditingId(null)
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function handleSelect(id: string) {
+    selectFolder(selectedFolderId === id ? null : id)
+  }
+
+  async function handleNewFolderConfirm(h: number, s: number, l: number, name?: string) {
+    setShowNewFolderModal(false)
+    if (!name?.trim()) return
     try {
-      const folder = await createFolder('새 폴더', parentId)
-      startEdit(folder)
-      if (parentId) setExpanded((prev) => new Set([...prev, parentId]))
+      const folder = await createFolder(name.trim(), newFolderParentId)
+      if (h !== 260 || s !== 60 || l !== 80) {
+        await updateColor(folder.id, h, s, l).catch(console.error)
+      }
+      if (newFolderParentId) {
+        setExpanded((prev) => new Set([...prev, newFolderParentId as string]))
+      }
     } catch (e) {
       console.error(e)
     }
@@ -64,84 +195,6 @@ export default function FolderPanel() {
     if (selectedFolderId === id) selectFolder(null)
   }
 
-  function FolderItem({ folder, depth = 0 }: { folder: FolderType; depth?: number }) {
-    const isSelected = selectedFolderId === folder.id
-    const isExpanded = expanded.has(folder.id)
-    const children = folders.filter((f) => f.parentId === folder.id).sort((a, b) => a.orderIndex - b.orderIndex)
-    const hasChildren = children.length > 0
-    const folderColor = `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)`
-
-    return (
-      <div>
-        <div
-          className={cn(
-            'group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer select-none text-sm transition-colors',
-            isSelected
-              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-          )}
-          style={{ paddingLeft: `${8 + depth * 16}px` }}
-          onClick={() => selectFolder(isSelected ? null : folder.id)}
-        >
-          {/* 확장 토글 */}
-          <button
-            className={cn('flex-shrink-0 transition-transform', !hasChildren && 'invisible')}
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpanded((prev) => {
-                const next = new Set(prev)
-                next.has(folder.id) ? next.delete(folder.id) : next.add(folder.id)
-                return next
-              })
-            }}
-          >
-            <ChevronRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} />
-          </button>
-
-          {/* 폴더 아이콘 */}
-          {isExpanded || isSelected ? (
-            <FolderOpen size={15} className="flex-shrink-0" style={{ color: folderColor }} />
-          ) : (
-            <Folder size={15} className="flex-shrink-0" style={{ color: folderColor }} />
-          )}
-
-          {/* 이름 (편집 모드) */}
-          {editingId === folder.id ? (
-            <input
-              ref={editRef}
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={() => commitEdit(folder.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitEdit(folder.id)
-                if (e.key === 'Escape') setEditingId(null)
-              }}
-              className="flex-1 bg-transparent outline-none text-sm min-w-0"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span className="flex-1 truncate text-sm">{folder.name}</span>
-          )}
-
-          {/* 컨텍스트 메뉴 버튼 */}
-          {editingId !== folder.id && (
-            <button
-              className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-opacity"
-              onClick={(e) => openMenu(e, folder.id)}
-            >
-              <MoreHorizontal size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* 서브폴더 */}
-        {isExpanded && children.map((child) => (
-          <FolderItem key={child.id} folder={child} depth={depth + 1} />
-        ))}
-      </div>
-    )
-  }
-
   const menuFolder = menu ? folders.find((f) => f.id === menu.folderId) : null
 
   return (
@@ -150,7 +203,7 @@ export default function FolderPanel() {
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">폴더</span>
         <button
-          onClick={() => handleAddFolder(null)}
+          onClick={() => { setNewFolderParentId(null); setShowNewFolderModal(true) }}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           title="폴더 추가"
         >
@@ -175,7 +228,23 @@ export default function FolderPanel() {
       {/* 폴더 목록 */}
       <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
         {topLevel.map((folder) => (
-          <FolderItem key={folder.id} folder={folder} />
+          <FolderItem
+            key={folder.id}
+            folder={folder}
+            depth={0}
+            allFolders={folders}
+            expanded={expanded}
+            selectedFolderId={selectedFolderId}
+            editingId={editingId}
+            editValue={editValue}
+            editInputRef={editInputRef}
+            onSelect={handleSelect}
+            onToggleExpand={toggleExpand}
+            onOpenMenu={openMenu}
+            onEditValueChange={setEditValue}
+            onCommitEdit={commitEdit}
+            onCancelEdit={cancelEdit}
+          />
         ))}
       </div>
 
@@ -189,7 +258,7 @@ export default function FolderPanel() {
           >
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              onClick={() => { startEdit(menuFolder) }}
+              onClick={() => startEdit(menuFolder.id, menuFolder.name)}
             >
               <Pencil size={14} /> 이름 변경
             </button>
@@ -201,7 +270,11 @@ export default function FolderPanel() {
             </button>
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              onClick={() => handleAddFolder(menuFolder.id)}
+              onClick={() => {
+                setNewFolderParentId(menuFolder.id)
+                setMenu(null)
+                setShowNewFolderModal(true)
+              }}
             >
               <Plus size={14} /> 하위 폴더
             </button>
@@ -229,6 +302,16 @@ export default function FolderPanel() {
         <Trash2 size={14} />
         <span>휴지통</span>
       </div>
+
+      {/* 새 폴더 생성 모달 */}
+      {showNewFolderModal && (
+        <ColorWheelModal
+          showNameInput
+          initialName=""
+          onConfirm={handleNewFolderConfirm}
+          onClose={() => setShowNewFolderModal(false)}
+        />
+      )}
 
       {/* 색상 변경 모달 */}
       {colorTarget && (

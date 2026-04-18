@@ -141,6 +141,11 @@ export function useMemos(folderId: string | null | undefined) {
     deleteMemo(id)
   }, [])
 
+  const moveMemoToFolder = useCallback(async (id: string, folderId: string | null) => {
+    await supabase.from('memos').update({ folder_id: folderId }).eq('id', id)
+    updateMemo(id, { folderId })
+  }, [])
+
   const emptyTrash = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -153,6 +158,7 @@ export function useMemos(folderId: string | null | undefined) {
     createMemo, togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, permanentDelete, emptyTrash,
+    moveMemoToFolder,
     refresh: load,
   }
 }

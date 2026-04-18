@@ -4,10 +4,12 @@ import { useState, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
 
 interface ColorWheelModalProps {
+  showNameInput?: boolean
+  initialName?: string
   initialH?: number
   initialS?: number
   initialL?: number
-  onConfirm: (h: number, s: number, l: number) => void
+  onConfirm: (h: number, s: number, l: number, name?: string) => void
   onClose: () => void
 }
 
@@ -24,12 +26,15 @@ const PRESETS = [
 ]
 
 export default function ColorWheelModal({
+  showNameInput = false,
+  initialName = '',
   initialH = 260, initialS = 60, initialL = 80,
   onConfirm, onClose,
 }: ColorWheelModalProps) {
   const [h, setH] = useState(initialH)
   const [s, setS] = useState(initialS)
   const [l, setL] = useState(initialL)
+  const [name, setName] = useState(initialName)
 
   const wheelRef = useRef<HTMLDivElement>(null)
 
@@ -42,9 +47,8 @@ export default function ColorWheelModal({
     const angle = Math.atan2(dy, dx) * (180 / Math.PI)
     const hue = (angle + 360) % 360
     const dist = Math.min(Math.sqrt(dx * dx + dy * dy) / cx, 1)
-    const sat = Math.round(dist * 100)
     setH(Math.round(hue))
-    setS(sat)
+    setS(Math.round(dist * 100))
   }, [])
 
   const preview = `hsl(${h}, ${s}%, ${l}%)`
@@ -56,11 +60,28 @@ export default function ColorWheelModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">폴더 색상 선택</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            {showNameInput ? '새 폴더' : '폴더 색상 선택'}
+          </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={16} />
           </button>
         </div>
+
+        {/* 폴더 이름 입력 (신규 폴더 모드) */}
+        {showNameInput && (
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && name.trim()) onConfirm(h, s, l, name.trim())
+            }}
+            placeholder="폴더 이름"
+            autoFocus
+            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+          />
+        )}
 
         {/* 컬러 휠 */}
         <div
@@ -76,12 +97,10 @@ export default function ColorWheelModal({
           }}
           onClick={handleWheelClick}
         >
-          {/* 채도 오버레이 (중앙으로 갈수록 흰색) */}
           <div
             className="absolute inset-0 rounded-full pointer-events-none"
             style={{ background: 'radial-gradient(circle, white 0%, transparent 70%)' }}
           />
-          {/* 핸들 */}
           <div
             className="absolute w-4 h-4 rounded-full border-2 border-white shadow-md pointer-events-none -translate-x-1/2 -translate-y-1/2"
             style={{
@@ -99,9 +118,7 @@ export default function ColorWheelModal({
             type="range" min={30} max={90} value={l}
             onChange={(e) => setL(Number(e.target.value))}
             className="w-full accent-violet-500"
-            style={{
-              background: `linear-gradient(to right, hsl(${h},${s}%,30%), hsl(${h},${s}%,90%))`,
-            }}
+            style={{ background: `linear-gradient(to right, hsl(${h},${s}%,30%), hsl(${h},${s}%,90%))` }}
           />
         </div>
 
@@ -131,10 +148,14 @@ export default function ColorWheelModal({
             hsl({h}, {s}%, {l}%)
           </span>
           <button
-            onClick={() => onConfirm(h, s, l)}
-            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+            onClick={() => {
+              if (showNameInput && !name.trim()) return
+              onConfirm(h, s, l, showNameInput ? name.trim() : undefined)
+            }}
+            disabled={showNameInput && !name.trim()}
+            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors"
           >
-            적용
+            {showNameInput ? '만들기' : '적용'}
           </button>
         </div>
       </div>

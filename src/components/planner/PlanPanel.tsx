@@ -1,11 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
 
 interface PlanPanelProps {
@@ -18,6 +20,7 @@ interface PlanPanelProps {
 export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
   const { plans } = usePlannerStore()
   const { toggleComplete, removePlan } = usePlanner()
+  const [detailPlan, setDetailPlan] = useState<Plan | null>(null)
 
   const dayPlans = plans.filter((p) => {
     if (p.date === date) return true
@@ -63,6 +66,7 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
                 onDelete={() => {
                   if (confirm('플랜을 삭제할까요?')) removePlan(plan.id).catch(console.error)
                 }}
+                onDetail={() => setDetailPlan(plan)}
               />
             ))}
           </ul>
@@ -78,6 +82,15 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
           <Plus size={15} /> 새 플랜 추가
         </button>
       </div>
+
+      {/* 플랜 상세 패널 */}
+      {detailPlan && (
+        <PlanDetailPanel
+          plan={detailPlan}
+          onEdit={() => { setDetailPlan(null); onEditPlan(detailPlan) }}
+          onClose={() => setDetailPlan(null)}
+        />
+      )}
     </div>
   )
 }
@@ -87,11 +100,13 @@ function PlanItem({
   onToggle,
   onEdit,
   onDelete,
+  onDetail,
 }: {
   plan: Plan
   onToggle: () => void
   onEdit: () => void
   onDelete: () => void
+  onDetail: () => void
 }) {
   const isRange = plan.startDate && plan.endDate
 
@@ -100,10 +115,10 @@ function PlanItem({
   }
 
   return (
-    <li className="group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
+    <li className="group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" onClick={onDetail}>
       {/* 완료 체크 */}
       <button
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle() }}
         className={cn(
           'flex-shrink-0 mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
           plan.isCompleted
@@ -148,13 +163,13 @@ function PlanItem({
       {/* 수정/삭제 버튼 */}
       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-all">
         <button
-          onClick={onEdit}
+          onClick={(e) => { e.stopPropagation(); onEdit() }}
           className="p-0.5 rounded text-gray-400 hover:text-violet-500 transition-colors"
         >
           <Pencil size={12} />
         </button>
         <button
-          onClick={onDelete}
+          onClick={(e) => { e.stopPropagation(); onDelete() }}
           className="p-0.5 rounded text-gray-400 hover:text-red-500 transition-colors"
         >
           <Trash2 size={13} />
