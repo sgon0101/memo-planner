@@ -8,6 +8,10 @@ export default async function HomePage() {
   if (!user) redirect('/login')
 
   // 통계 데이터
+  const now = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
+  const weekLaterStr = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10)
+
   const [{ count: totalMemos }, { count: completedPlans }, { data: recentMemos }, { data: weekPlans }] =
     await Promise.all([
       supabase.from('memos').select('*', { count: 'exact', head: true })
@@ -19,8 +23,8 @@ export default async function HomePage() {
         .order('updated_at', { ascending: false }).limit(5),
       supabase.from('plans').select('id, title, color, date, start_date, end_date, is_completed, is_all_day')
         .eq('user_id', user.id)
-        .gte('date', new Date().toISOString().slice(0, 10))
-        .lte('date', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10))
+        .gte('date', todayStr)
+        .lte('date', weekLaterStr)
         .order('date', { ascending: true }).limit(10),
     ])
 

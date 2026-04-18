@@ -65,7 +65,7 @@ export function chatSystemPrompt(memoTexts: string[], planTitles: string[]) {
 
 ## 사용자 데이터 컨텍스트
 최근 메모 (${memoTexts.length}개):
-${memoTexts.slice(0, 10).map((t, i) => `- ${t}`).join('\n')}
+${memoTexts.slice(0, 10).map((t) => `- ${t}`).join('\n')}
 
 최근 플랜 (${planTitles.length}개):
 ${planTitles.slice(0, 15).map((t) => `- ${t}`).join('\n')}

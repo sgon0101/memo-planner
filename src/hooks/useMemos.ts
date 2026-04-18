@@ -43,7 +43,7 @@ export const memoKeys = {
 }
 
 export function useMemos(folderId: string | null | undefined) {
-  const { memos, setMemos, appendMemos, addMemo, updateMemo, deleteMemo } = useMemoStore()
+  const { memos, setMemos, addMemo, updateMemo, deleteMemo } = useMemoStore()
   const supabase = createClient()
   const queryClient = useQueryClient()
   const isTrash = folderId === TRASH_ID

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, parseISO } from 'date-fns'
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
 import type { Plan } from '@/types'
