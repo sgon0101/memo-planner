@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -77,11 +77,16 @@ export function useMemos(folderId: string | null | undefined) {
     return result
   }, [folderId, isTrash])
 
-  const { isLoading } = useQuery({
+  const { isLoading, data } = useQuery({
     queryKey: memoKeys.list(folderId, isTrash),
     queryFn: fetchMemos,
     staleTime: 30_000,
   })
+
+  // 캐시 히트 시에도 Zustand 동기화 (폴더 전환 시 stale data 방지)
+  useEffect(() => {
+    if (data) setMemos(data)
+  }, [data])
 
   // Zustand 낙관적 업데이트 후 React Query 캐시 무효화
   const optimisticPatch = useCallback(
