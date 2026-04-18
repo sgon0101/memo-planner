@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
 import MemoCard from './MemoCard'
+import TimelineFilter from './TimelineFilter'
 
 type SortKey = 'updated' | 'created' | 'title' | 'starred' | 'pinned'
 type ViewMode = 'card' | 'list' | 'timeline'
@@ -29,6 +30,10 @@ export default function MemoList() {
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [activeMonth, setActiveMonth] = useState<string | null>(null)
+  // 타임라인 전용 필터
+  const [tlStartDate, setTlStartDate] = useState<string | null>(null)
+  const [tlEndDate, setTlEndDate] = useState<string | null>(null)
+  const [tlMonth, setTlMonth] = useState<string | null>(null)
 
   const folderName = isTrash
     ? '휴지통'
@@ -89,17 +94,40 @@ export default function MemoList() {
     return { pinned, rest, all: list }
   }, [memos, search, sort, isTrash, activeTag, activeMonth])
 
-  // 타임라인: 날짜별 그룹핑
+  // 타임라인 전용 필터 적용
+  const timelineFiltered = useMemo(() => {
+    let list = [...filtered.all]
+    if (tlMonth) {
+      list = list.filter((m) => m.updatedAt.startsWith(tlMonth))
+    } else {
+      if (tlStartDate) list = list.filter((m) => m.updatedAt.slice(0, 10) >= tlStartDate)
+      if (tlEndDate) list = list.filter((m) => m.updatedAt.slice(0, 10) <= tlEndDate)
+    }
+    return list
+  }, [filtered.all, tlStartDate, tlEndDate, tlMonth])
+
+  // 타임라인: 연·월 → 일별 2단계 그룹핑
   const timelineGroups = useMemo(() => {
-    const groups: { label: string; memos: typeof memos }[] = []
-    const map = new Map<string, typeof memos>()
-    filtered.all.forEach((m) => {
-      const key = format(parseISO(m.updatedAt), 'yyyy년 M월', { locale: ko })
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(m)
+    const monthMap = new Map<string, Map<string, typeof memos>>()
+    timelineFiltered.forEach((m) => {
+      const mKey = format(parseISO(m.updatedAt), 'yyyy년 M월', { locale: ko })
+      const dKey = format(parseISO(m.updatedAt), 'MM.dd (EEE)', { locale: ko })
+      if (!monthMap.has(mKey)) monthMap.set(mKey, new Map())
+      const dm = monthMap.get(mKey)!
+      if (!dm.has(dKey)) dm.set(dKey, [])
+      dm.get(dKey)!.push(m)
     })
-    map.forEach((ms, label) => groups.push({ label, memos: ms }))
-    return groups
+    return [...monthMap.entries()].map(([monthLabel, dm]) => ({
+      monthLabel,
+      days: [...dm.entries()].map(([dayLabel, ms]) => ({ dayLabel, memos: ms })),
+    }))
+  }, [timelineFiltered])
+
+  // 타임라인 필터용 월 목록 (현재 filtered.all 기준)
+  const tlAllMonths = useMemo(() => {
+    const set = new Set<string>()
+    filtered.all.forEach((m) => set.add(m.updatedAt.slice(0, 7)))
+    return [...set].sort().reverse()
   }, [filtered.all])
 
   const cardActions = {
@@ -229,6 +257,19 @@ export default function MemoList() {
         </div>
       )}
 
+      {/* 타임라인 필터 */}
+      {view === 'timeline' && !isTrash && (
+        <TimelineFilter
+          startDate={tlStartDate}
+          endDate={tlEndDate}
+          onDateRangeApply={(s, e) => { setTlStartDate(s); setTlEndDate(e); setTlMonth(null) }}
+          allMonths={tlAllMonths}
+          activeMonth={tlMonth}
+          onMonthChange={(m) => { setTlMonth(m); setTlStartDate(null); setTlEndDate(null) }}
+          onClearFilter={() => { setTlStartDate(null); setTlEndDate(null); setTlMonth(null) }}
+        />
+      )}
+
       {/* 메모 목록 */}
       <div className="flex-1 overflow-y-auto">
         {memos.length === 0 ? (
@@ -247,15 +288,23 @@ export default function MemoList() {
         ) : view === 'timeline' ? (
           /* 타임라인 뷰 */
           <div className="p-4 space-y-6">
-            {timelineGroups.map(({ label, memos: gMemos }) => (
-              <div key={label}>
+            {timelineGroups.length === 0 ? (
+              <div className="text-center text-sm text-gray-400 py-12">해당 기간에 메모가 없습니다</div>
+            ) : timelineGroups.map(({ monthLabel, days }) => (
+              <div key={monthLabel}>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-400">{monthLabel}</span>
                   <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
-                  <span className="text-xs text-gray-400">{gMemos.length}개</span>
                 </div>
-                <div className="space-y-1">
-                  {gMemos.map((m) => <MemoCard key={m.id} memo={m} view="list" {...cardActions} />)}
+                <div className="space-y-4 ml-1">
+                  {days.map(({ dayLabel, memos: dayMemos }) => (
+                    <div key={dayLabel}>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium mb-1 pl-1">{dayLabel}</p>
+                      <div className="space-y-0.5">
+                        {dayMemos.map((m) => <MemoCard key={m.id} memo={m} view="list" {...cardActions} />)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
