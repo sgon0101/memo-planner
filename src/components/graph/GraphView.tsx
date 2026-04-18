@@ -33,6 +33,15 @@ function nodeRadius(n: GraphNode, base: number): number {
   return base * 1.4
 }
 
+// 줌 기반 라벨 투명도 계산
+function getLabelOpacity(zoom: number): number {
+  const FADE_START = 0.4
+  const FADE_END = 0.8
+  if (zoom <= FADE_START) return 0
+  if (zoom >= FADE_END) return 1
+  return (zoom - FADE_START) / (FADE_END - FADE_START)
+}
+
 export default function GraphView() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -43,6 +52,9 @@ export default function GraphView() {
   const simRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null)
   const rafRef = useRef<number | null>(null)
   const transformRef = useRef({ x: 0, y: 0, k: 1 })
+  const labelOpacityRef = useRef(1) // 초기 zoom=1 → opacity=1
+  const labelAnimRafRef = useRef<number | null>(null)
+  const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
@@ -161,19 +173,61 @@ export default function GraphView() {
         ctx.strokeStyle = 'rgba(124,58,237,0.85)'; ctx.lineWidth = 2; ctx.stroke()
       }
 
-      if (k >= 0.8 && n.linkCount >= settings.labelMinLinks) {
-        ctx.globalAlpha = opac
-        ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
-        ctx.font = `${Math.max(9, Math.min(13, 10 + (k - 1) * 3))}px sans-serif`
-        ctx.textAlign = 'center'
-        const lbl = n.label.length > 20 ? n.label.slice(0, 20) + '…' : n.label
-        ctx.fillText(lbl, n.x!, n.y! + r + 11)
+      // 줌 연동 라벨 렌더링
+      {
+        const baseOp = labelOpacityRef.current
+        const isHub = n.type === 'wiki' || n.type === 'tag'
+        const hubOp = Math.max(0.4, baseOp)
+        const labelOp = (isHub ? hubOp : baseOp) * opac
+        const showLabel = isHub
+          ? labelOp > 0.01
+          : baseOp > 0.01 && n.linkCount >= settings.labelMinLinks
+
+        if (showLabel) {
+          ctx.globalAlpha = labelOp
+          const isDark = document.documentElement.classList.contains('dark')
+          ctx.fillStyle = isDark ? '#D3D1C7' : '#2C2C2A'
+          const fontWeight = isHub ? '500' : '400'
+          const fontSize = Math.max(10, 11 + (k - 1) * 2)
+          ctx.font = `${fontWeight} ${fontSize}px sans-serif`
+          ctx.textAlign = 'center'
+          const lbl = n.label.length > 12 ? n.label.slice(0, 12) + '…' : n.label
+          const lx = n.x!
+          const ly = n.y! + r + 14
+          // 텍스트 외곽선 (가독성)
+          ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)'
+          ctx.lineWidth = 3 / k  // 화면 기준 3px 두께
+          ctx.strokeText(lbl, lx, ly)
+          ctx.fillText(lbl, lx, ly)
+        }
       }
     }
 
     ctx.globalAlpha = 1
     ctx.restore()
   }, [settings, selectedNodeId])
+
+  // drawRef 동기화 (RAF 콜백에서 항상 최신 draw 사용)
+  drawRef.current = draw
+
+  // 라벨 투명도 lerp 애니메이션 (시뮬레이션이 잠든 상태에서도 동작)
+  const startLabelAnimation = useCallback(() => {
+    if (labelAnimRafRef.current) return
+    function tick() {
+      const target = getLabelOpacity(transformRef.current.k)
+      const diff = target - labelOpacityRef.current
+      if (Math.abs(diff) < 0.004) {
+        labelOpacityRef.current = target
+        drawRef.current()
+        labelAnimRafRef.current = null
+        return
+      }
+      labelOpacityRef.current += diff * 0.12
+      drawRef.current()
+      labelAnimRafRef.current = requestAnimationFrame(tick)
+    }
+    labelAnimRafRef.current = requestAnimationFrame(tick)
+  }, [])
 
   const wake = useCallback((energy = 0.4) => {
     const sim = simRef.current
@@ -213,7 +267,11 @@ export default function GraphView() {
 
   useEffect(() => {
     buildSim()
-    return () => { simRef.current?.stop(); if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    return () => {
+      simRef.current?.stop()
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (labelAnimRafRef.current) cancelAnimationFrame(labelAnimRafRef.current)
+    }
   }, [buildSim])
 
   // 설정 변경 wake
@@ -353,6 +411,7 @@ export default function GraphView() {
     transformRef.current.x = mx - (mx - x) * (nk / k)
     transformRef.current.y = my - (my - y) * (nk / k)
     transformRef.current.k = nk
+    startLabelAnimation()
     draw()
   }
 
