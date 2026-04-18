@@ -115,7 +115,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [folderId, setFolderId] = useState<string | null>(initialFolderId)
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
-  const [showSidePanel, setShowSidePanel] = useState(false)
+  const [showSidePanel, setShowSidePanel] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const saved = localStorage.getItem('memoPanelOpen')
+    return saved !== 'false'
+  })
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
   const [wikiQuery, setWikiQuery] = useState<string | null>(null)
   const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
@@ -495,7 +499,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
             {/* 메모 목록 패널 토글 */}
             <button
-              onClick={() => setShowSidePanel((v) => !v)}
+              onClick={() => setShowSidePanel((v) => {
+                const next = !v
+                if (typeof window !== 'undefined') localStorage.setItem('memoPanelOpen', String(next))
+                return next
+              })}
               title="메모 목록 패널"
               className={cn(
                 'p-1.5 rounded transition-colors',
