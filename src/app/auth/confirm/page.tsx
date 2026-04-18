@@ -1,38 +1,56 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Suspense } from 'react'
 
-// hash fragment(#access_token=...) 방식의 OAuth 토큰을 처리하는 클라이언트 페이지
-export default function AuthConfirmPage() {
+function ConfirmInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const done = useRef(false)
 
   useEffect(() => {
+    if (done.current) return
+    done.current = true
+
     const supabase = createClient()
+    const code = searchParams.get('code')
 
-    // Supabase가 hash fragment를 자동으로 처리해 세션을 설정함
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        router.replace('/memo')
-      } else if (event === 'SIGNED_OUT' || !session) {
-        // 짧게 대기 후 세션 재확인
-        setTimeout(async () => {
-          const { data: { session: s } } = await supabase.auth.getSession()
-          if (s) {
-            router.replace('/memo')
-          } else {
-            router.replace('/login?error=auth_failed')
-          }
-        }, 1500)
+    async function handle() {
+      // 1) code가 있으면 PKCE exchange 시도
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (!error) {
+          router.replace('/memo')
+          return
+        }
       }
-    })
 
-    // 페이지 로드 시 이미 세션이 있으면 바로 이동
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/memo')
-    })
-  }, [router])
+      // 2) hash fragment 방식 (implicit flow) — Supabase가 자동 처리
+      // onAuthStateChange가 SIGNED_IN 이벤트를 발생시킬 때까지 대기
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.replace('/memo')
+        return
+      }
+
+      // 3) 이벤트 대기 (최대 5초)
+      const timeout = setTimeout(() => {
+        router.replace('/login?error=timeout')
+      }, 5000)
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          clearTimeout(timeout)
+          subscription.unsubscribe()
+          router.replace('/memo')
+        }
+      })
+    }
+
+    handle()
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -41,5 +59,17 @@ export default function AuthConfirmPage() {
         <p className="text-sm">로그인 처리 중...</p>
       </div>
     </div>
+  )
+}
+
+export default function AuthConfirmPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ConfirmInner />
+    </Suspense>
   )
 }
