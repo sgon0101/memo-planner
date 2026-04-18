@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { encryptContent, decryptContent } from '@/lib/crypto/lock'
 import type { Memo } from '@/types'
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+// content, locked_content 제외 — 목록 페이로드 경량화
+const LIST_COLS =
+  'id, user_id, title, content_text, folder_id, is_pinned, is_starred, is_locked, is_deleted, deleted_at, tags, wiki_links, linked_plan_ids, created_at, updated_at'
 
 export function toMemo(row: Record<string, unknown>): Memo {
   return {
@@ -23,6 +28,7 @@ export function toMemo(row: Record<string, unknown>): Memo {
     isDeleted: (row.is_deleted as boolean) ?? false,
     deletedAt: (row.deleted_at as string) ?? null,
     tags: (row.tags as string[]) ?? [],
+    wikiLinks: (row.wiki_links as string[]) ?? [],
     linkedPlanIds: (row.linked_plan_ids as string[]) ?? [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -31,40 +37,69 @@ export function toMemo(row: Record<string, unknown>): Memo {
 
 export const TRASH_ID = '__trash__'
 
+export const memoKeys = {
+  list: (folderId: string | null | undefined, isTrash: boolean) =>
+    ['memos', folderId ?? 'all', isTrash] as const,
+}
+
 export function useMemos(folderId: string | null | undefined) {
-  const { memos, setMemos, addMemo, updateMemo, deleteMemo } = useMemoStore()
+  const { memos, setMemos, appendMemos, addMemo, updateMemo, deleteMemo } = useMemoStore()
   const supabase = createClient()
+  const queryClient = useQueryClient()
   const isTrash = folderId === TRASH_ID
 
-  const load = useCallback(async () => {
+  const fetchMemos = useCallback(async (): Promise<Memo[]> => {
     if (isTrash) {
       const { data } = await supabase
         .from('memos')
-        .select('*')
+        .select(LIST_COLS)
         .eq('is_deleted', true)
         .order('deleted_at', { ascending: false })
-      if (data) setMemos(data.map(toMemo))
-      return
+      const result = (data ?? []).map(toMemo)
+      setMemos(result)
+      return result
     }
 
     let query = supabase
       .from('memos')
-      .select('*')
+      .select(LIST_COLS)
       .eq('is_deleted', false)
       .order('is_pinned', { ascending: false })
       .order('updated_at', { ascending: false })
 
     if (folderId !== undefined) {
-      query = folderId === null
-        ? query
-        : query.eq('folder_id', folderId)
+      if (folderId !== null) query = query.eq('folder_id', folderId)
     }
 
     const { data } = await query
-    if (data) setMemos(data.map(toMemo))
+    const result = (data ?? []).map(toMemo)
+    setMemos(result)
+    return result
   }, [folderId, isTrash])
 
-  useEffect(() => { load() }, [load])
+  const { isLoading } = useQuery({
+    queryKey: memoKeys.list(folderId, isTrash),
+    queryFn: fetchMemos,
+    staleTime: 30_000,
+  })
+
+  // Zustand 낙관적 업데이트 후 React Query 캐시 무효화
+  const optimisticPatch = useCallback(
+    async (id: string, patch: Partial<Memo>, dbPatch: Record<string, unknown>) => {
+      updateMemo(id, patch)
+      const { error } = await supabase.from('memos').update(dbPatch).eq('id', id)
+      if (error) {
+        // 롤백 — 반전 패치
+        const rollback = Object.fromEntries(
+          Object.entries(patch).map(([k]) => [k, memos.find((m) => m.id === id)?.[k as keyof Memo]])
+        ) as Partial<Memo>
+        updateMemo(id, rollback)
+        throw error
+      }
+      queryClient.invalidateQueries({ queryKey: memoKeys.list(folderId, isTrash) })
+    },
+    [memos, folderId, isTrash]
+  )
 
   const createMemo = useCallback(async () => {
     const { data, error } = await supabase
@@ -80,18 +115,21 @@ export function useMemos(folderId: string | null | undefined) {
     if (error) throw error
     const memo = toMemo(data)
     addMemo(memo)
+    queryClient.invalidateQueries({ queryKey: memoKeys.list(folderId, isTrash) })
     return memo
-  }, [folderId])
+  }, [folderId, isTrash])
 
-  const togglePin = useCallback(async (id: string, current: boolean) => {
-    await supabase.from('memos').update({ is_pinned: !current }).eq('id', id)
-    updateMemo(id, { isPinned: !current })
-  }, [])
+  const togglePin = useCallback(
+    (id: string, current: boolean) =>
+      optimisticPatch(id, { isPinned: !current }, { is_pinned: !current }),
+    [optimisticPatch]
+  )
 
-  const toggleStar = useCallback(async (id: string, current: boolean) => {
-    await supabase.from('memos').update({ is_starred: !current }).eq('id', id)
-    updateMemo(id, { isStarred: !current })
-  }, [])
+  const toggleStar = useCallback(
+    (id: string, current: boolean) =>
+      optimisticPatch(id, { isStarred: !current }, { is_starred: !current }),
+    [optimisticPatch]
+  )
 
   const softDelete = useCallback(async (id: string) => {
     await supabase
@@ -99,14 +137,25 @@ export function useMemos(folderId: string | null | undefined) {
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
     deleteMemo(id)
-  }, [])
+    queryClient.invalidateQueries({ queryKey: memoKeys.list(folderId, isTrash) })
+  }, [folderId, isTrash])
 
   const lockMemo = useCallback(async (
     id: string,
     content: Record<string, unknown>,
     password: string
   ) => {
-    const encrypted = await encryptContent(JSON.stringify(content), password)
+    // 목록에서 잠금 시 content가 {} 일 수 있으므로 서버에서 가져옴
+    let targetContent = content
+    if (!content || Object.keys(content).length === 0) {
+      const { data } = await supabase
+        .from('memos')
+        .select('content')
+        .eq('id', id)
+        .single()
+      if (data?.content) targetContent = data.content as Record<string, unknown>
+    }
+    const encrypted = await encryptContent(JSON.stringify(targetContent), password)
     await supabase.from('memos').update({
       is_locked: true,
       locked_content: encrypted,
@@ -134,6 +183,7 @@ export function useMemos(folderId: string | null | undefined) {
   const restoreMemo = useCallback(async (id: string) => {
     await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).eq('id', id)
     deleteMemo(id)
+    queryClient.invalidateQueries({ queryKey: memoKeys.list(null, false) })
   }, [])
 
   const permanentDelete = useCallback(async (id: string) => {
@@ -141,9 +191,10 @@ export function useMemos(folderId: string | null | undefined) {
     deleteMemo(id)
   }, [])
 
-  const moveMemoToFolder = useCallback(async (id: string, folderId: string | null) => {
-    await supabase.from('memos').update({ folder_id: folderId }).eq('id', id)
-    updateMemo(id, { folderId })
+  const moveMemoToFolder = useCallback(async (id: string, targetFolderId: string | null) => {
+    await supabase.from('memos').update({ folder_id: targetFolderId }).eq('id', id)
+    updateMemo(id, { folderId: targetFolderId })
+    queryClient.invalidateQueries({ queryKey: ['memos'] })
   }, [])
 
   const emptyTrash = useCallback(async () => {
@@ -151,14 +202,23 @@ export function useMemos(folderId: string | null | undefined) {
     if (!user) return
     await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
     setMemos([])
+    queryClient.invalidateQueries({ queryKey: memoKeys.list(TRASH_ID, true) })
   }, [])
 
   return {
-    memos, isTrash,
-    createMemo, togglePin, toggleStar, softDelete,
-    lockMemo, unlockMemo,
-    restoreMemo, permanentDelete, emptyTrash,
+    memos,
+    isLoading,
+    isTrash,
+    createMemo,
+    togglePin,
+    toggleStar,
+    softDelete,
+    lockMemo,
+    unlockMemo,
+    restoreMemo,
+    permanentDelete,
+    emptyTrash,
     moveMemoToFolder,
-    refresh: load,
+    refresh: fetchMemos,
   }
 }

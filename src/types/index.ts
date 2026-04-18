@@ -25,6 +25,7 @@ export interface Memo {
   isDeleted: boolean
   deletedAt: string | null
   tags: string[]
+  wikiLinks: string[]
   linkedPlanIds: string[]
   createdAt: string
   updatedAt: string

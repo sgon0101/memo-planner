@@ -1,10 +1,16 @@
 import { Suspense } from 'react'
-import GraphView from '@/components/graph/GraphView'
+import dynamic from 'next/dynamic'
+import { GraphSkeleton } from '@/components/ui/Skeleton'
+
+const GraphView = dynamic(() => import('@/components/graph/GraphView'), {
+  loading: () => <GraphSkeleton />,
+  ssr: false,
+})
 
 export default function GraphPage() {
   return (
     <div className="h-full">
-      <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-gray-400">그래프 로딩 중...</div>}>
+      <Suspense fallback={<GraphSkeleton />}>
         <GraphView />
       </Suspense>
     </div>

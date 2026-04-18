@@ -61,6 +61,7 @@ function toMemo(row: Record<string, unknown>): Memo {
     isDeleted: (row.is_deleted as boolean) ?? false,
     deletedAt: (row.deleted_at as string) ?? null,
     tags: (row.tags as string[]) ?? [],
+    wikiLinks: (row.wiki_links as string[]) ?? [],
     linkedPlanIds: (row.linked_plan_ids as string[]) ?? [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,

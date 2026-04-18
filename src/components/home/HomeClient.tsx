@@ -83,6 +83,7 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
         isDeleted: false,
         deletedAt: null,
         tags: [],
+        wikiLinks: [],
         linkedPlanIds: [],
         createdAt: data.created_at,
         updatedAt: data.updated_at,
