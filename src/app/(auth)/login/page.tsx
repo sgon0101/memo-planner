@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function GoogleIcon() {
@@ -17,11 +17,21 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-sm" />}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlError = searchParams.get('error')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(urlError ? 'Google 로그인에 실패했습니다. 다시 시도해주세요.' : '')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
