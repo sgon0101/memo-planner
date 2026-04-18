@@ -109,7 +109,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
   const saveVersionRef = useRef(saveVersion)
   saveVersionRef.current = saveVersion
 
-  const save = useCallback(async (content: Record<string, unknown>, text: string) => {
+  const save = useCallback(async (
+    content: Record<string, unknown>,
+    text: string,
+    { skipNavigate = false }: { skipNavigate?: boolean } = {}
+  ) => {
     setSaveStatus('saving')
     try {
       const id = createdIdRef.current
@@ -128,9 +132,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
           saveVersionRef.current(content, text, titleRef.current).catch(console.error)
         }
       } else {
+        const { data: { user } } = await supabase.auth.getUser()
         const { data, error } = await supabase
           .from('memos')
-          .insert({ title: titleRef.current, content, content_text: text })
+          .insert({
+            user_id: user?.id,
+            title: titleRef.current,
+            content,
+            content_text: text,
+          })
           .select()
           .single()
         if (error) throw error
@@ -139,7 +149,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
         setCreatedId(newMemo.id)
         setCurrentMemo(newMemo)
         addMemo(newMemo)
-        router.replace(`/memo/${newMemo.id}`)
+        if (!skipNavigate) {
+          router.replace(`/memo/${newMemo.id}`)
+        }
       }
 
       hasUnsavedRef.current = false
@@ -260,6 +272,21 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
     }
   }, [])
 
+  async function handleBackToList() {
+    if (newMemoTimerRef.current) {
+      clearTimeout(newMemoTimerRef.current)
+      newMemoTimerRef.current = null
+    }
+    if (hasUnsavedRef.current && editorRef.current) {
+      const json = editorRef.current.getJSON() as Record<string, unknown>
+      const text = editorRef.current.getText()
+      if (text.trim() || titleRef.current.trim() || createdIdRef.current) {
+        await saveRef.current(json, text, { skipNavigate: true })
+      }
+    }
+    router.push('/memo')
+  }
+
   function handleManualSave() {
     if (!editor) return
     const json = editor.getJSON() as Record<string, unknown>
@@ -282,7 +309,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
         {/* 상단 바 */}
         <div className="flex items-center justify-between px-8 py-2 border-b border-gray-100 dark:border-gray-800">
           <button
-            onClick={() => router.push('/memo')}
+            onClick={handleBackToList}
             className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             ← 메모 목록
