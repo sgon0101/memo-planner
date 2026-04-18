@@ -467,6 +467,8 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 14단계 완료 | 내보내기/가져오기/백업 — Markdown 내보내기, JSON 전체 백업, PDF 인쇄, JSON 가져오기(복원), /api/export GET/POST | 100% |
 | 2026-04-18 | 15단계 완료 | PWA + 다크모드 + 반응형 — manifest.json, SVG 아이콘, sw.js(Service Worker), ServiceWorkerRegister, PWA 메타태그, 모바일 PlanPanel 바텀시트, turbopack 설정 | 100% |
 | 2026-04-18 | 16단계 완료 | Vercel 배포 — dev→main PR merge, 환경변수 설정 안내 | 100% |
+| 2026-04-18 | 추가 기능 | Google 소셜 로그인/회원가입, 로그인 상태 유지 체크박스, Google Cloud Console OAuth 리디렉션 URI 4개 + Calendar 스코프 설정 완료 | 100% |
+| 2026-04-18 | 최종 완료 | 전체 16단계 + 추가 기능 완성. 프로덕션 URL: https://memo-planner.vercel.app | 100% |
 | 2026-04-17 | 3단계 완료 | Supabase Auth 인증 — 로그인/회원가입 페이지, proxy.ts 미들웨어, auth/callback 라우트, lib/supabase client/server | 100% |
 | 2026-04-17 | 4단계 완료 | 레이아웃 — Sidebar/Header/MobileNav/DarkModeProvider/SidebarSpacer 컴포넌트, (main) 레이아웃, placeholder 페이지 4개, uiStore | 100% |
 | 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |
