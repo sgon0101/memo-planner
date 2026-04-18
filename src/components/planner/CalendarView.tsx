@@ -11,6 +11,7 @@ import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { expandRecurringPlans } from '@/lib/planner/expandRecurringPlans'
 import RangeBar from './RangeBar'
 import PlanPanel from './PlanPanel'
 import PlanFormModal from './PlanFormModal'
@@ -27,9 +28,24 @@ export default function CalendarView() {
     currentMonth, setCurrentMonth,
     currentWeek, setCurrentWeek,
     viewMode, setViewMode,
+    recurringCompletions,
   } = usePlannerStore()
 
   const { load } = usePlanner()
+
+  // 반복 플랜 전개
+  const expandedPlans = useMemo(() => {
+    const monthStart = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 })
+    const monthEnd = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 })
+    const weekEnd = addDays(currentWeek, 6)
+    const dayDate = selectedDate ? parseISO(selectedDate) : new Date()
+
+    const candidates = [monthStart, currentWeek, dayDate]
+    const viewStart = candidates.reduce((a, b) => a < b ? a : b)
+    const viewEnd = [monthEnd, weekEnd, dayDate].reduce((a, b) => a > b ? a : b)
+
+    return expandRecurringPlans(plans, viewStart, viewEnd, recurringCompletions)
+  }, [plans, recurringCompletions, currentMonth, currentWeek, selectedDate])
 
   const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string }>({
     open: false, date: '',
@@ -78,9 +94,9 @@ export default function CalendarView() {
     return { weeks }
   }, [currentMonth])
 
-  // 특정 날짜의 단일일 플랜
+  // 특정 날짜의 단일일 플랜 (반복 전개 포함)
   function getDayPlans(dayStr: string): Plan[] {
-    return plans.filter((p) => p.date === dayStr)
+    return expandedPlans.filter((p) => p.date === dayStr)
   }
 
   // 특정 주에 걸리는 범위 플랜 (startCol, endCol, slot 포함)
@@ -89,7 +105,7 @@ export default function CalendarView() {
     const weekStart = weekStrs[0]
     const weekEnd = weekStrs[6]
 
-    const overlapping = plans
+    const overlapping = expandedPlans
       .filter((p) => p.startDate && p.endDate)
       .filter((p) => p.startDate! <= weekEnd && p.endDate! >= weekStart)
 
@@ -304,7 +320,7 @@ export default function CalendarView() {
           {viewMode === 'week' && (
             <WeekView
               weekStart={currentWeek}
-              plans={plans}
+              plans={expandedPlans}
               today={today}
               selectedDate={selectedDate}
               onSelectDate={selectDate}
@@ -320,7 +336,7 @@ export default function CalendarView() {
           {viewMode === 'day' && (
             <DayView
               date={selectedDate || today}
-              plans={plans}
+              plans={expandedPlans}
               onNewPlan={(date, time) => setFormState({ open: true, date, initialTime: time })}
               onEditPlan={(plan) => setFormState({ open: true, date: plan.date ?? selectedDate, plan })}
             />

@@ -10,6 +10,8 @@ import { usePlanner } from '@/hooks/usePlanner'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
 
+type DeleteMode = null | 'confirm' | 'recurring'
+
 interface PlanPanelProps {
   date: string
   onNewPlan: () => void
@@ -18,11 +20,12 @@ interface PlanPanelProps {
 }
 
 export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
-  const { plans } = usePlannerStore()
-  const { toggleComplete, removePlan } = usePlanner()
+  const { expandedPlans } = usePlannerStore()
+  const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [detailPlan, setDetailPlan] = useState<Plan | null>(null)
+  const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null)
 
-  const dayPlans = plans.filter((p) => {
+  const dayPlans = expandedPlans.filter((p) => {
     if (p.date === date) return true
     if (p.startDate && p.endDate) {
       return p.startDate <= date && p.endDate >= date
@@ -61,11 +64,15 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
               <PlanItem
                 key={plan.id}
                 plan={plan}
-                onToggle={() => toggleComplete(plan.id, plan.isCompleted).catch(console.error)}
-                onEdit={() => onEditPlan(plan)}
-                onDelete={() => {
-                  if (confirm('플랜을 삭제할까요?')) removePlan(plan.id).catch(console.error)
+                onToggle={() => {
+                  if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
+                    toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
+                  } else {
+                    toggleComplete(plan.id, plan.isCompleted).catch(console.error)
+                  }
                 }}
+                onEdit={() => onEditPlan(plan)}
+                onDelete={() => setDeletingPlan(plan)}
                 onDetail={() => setDetailPlan(plan)}
               />
             ))}
@@ -88,8 +95,57 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
         <PlanDetailPanel
           plan={detailPlan}
           onEdit={() => { setDetailPlan(null); onEditPlan(detailPlan) }}
+          onDelete={(mode) => {
+            const p = detailPlan
+            setDetailPlan(null)
+            if (!p.isRecurringInstance || !p.originalPlanId || !p.date) {
+              removePlan(p.id).catch(console.error)
+            } else if (mode === 'this') {
+              skipRecurringInstance(p.originalPlanId, p.date).catch(console.error)
+            } else if (mode === 'after') {
+              stopRecurringFromDate(p.originalPlanId, p.date).catch(console.error)
+            } else {
+              removePlan(p.originalPlanId).catch(console.error)
+            }
+          }}
           onClose={() => setDetailPlan(null)}
         />
+      )}
+
+      {/* 반복 플랜 삭제 모달 */}
+      {deletingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeletingPlan(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl p-5 w-72 mx-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">플랜 삭제</p>
+            {deletingPlan.isRecurringInstance ? (
+              <>
+                <p className="text-xs text-gray-500 mb-4">반복 일정입니다. 어떻게 삭제할까요?</p>
+                <div className="space-y-2">
+                  <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    onClick={() => { skipRecurringInstance(deletingPlan.originalPlanId!, deletingPlan.date!).catch(console.error); setDeletingPlan(null) }}>
+                    이 일정만 삭제
+                  </button>
+                  <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    onClick={() => { stopRecurringFromDate(deletingPlan.originalPlanId!, deletingPlan.date!).catch(console.error); setDeletingPlan(null) }}>
+                    이 일정 및 이후 모두 삭제
+                  </button>
+                  <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500"
+                    onClick={() => { removePlan(deletingPlan.originalPlanId!).catch(console.error); setDeletingPlan(null) }}>
+                    모든 반복 일정 삭제
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 mb-4">이 플랜을 삭제할까요?</p>
+                <div className="flex gap-2">
+                  <button className="flex-1 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300" onClick={() => setDeletingPlan(null)}>취소</button>
+                  <button className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white" onClick={() => { removePlan(deletingPlan.id).catch(console.error); setDeletingPlan(null) }}>삭제</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

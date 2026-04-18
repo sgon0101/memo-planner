@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -12,6 +13,7 @@ import type { Plan } from '@/types'
 interface PlanDetailPanelProps {
   plan: Plan
   onEdit: () => void
+  onDelete?: (mode: 'this' | 'after' | 'all') => void
   onClose: () => void
 }
 
@@ -21,25 +23,44 @@ const REPEAT_LABEL: Record<string, string> = {
   monthly: '매월 반복',
 }
 
-export default function PlanDetailPanel({ plan, onEdit, onClose }: PlanDetailPanelProps) {
+export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: PlanDetailPanelProps) {
   const router = useRouter()
   const { memos } = useMemoStore()
-  const { toggleComplete, removePlan } = usePlanner()
+  const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
+  const [showDeleteMenu, setShowDeleteMenu] = useState(false)
 
   const linkedMemos = (plan.linkedMemoIds ?? [])
     .map((id) => memos.find((m) => m.id === id))
     .filter(Boolean)
 
-  async function handleDelete() {
-    if (!confirm('플랜을 삭제할까요?')) return
-    await removePlan(plan.id).catch(console.error)
-    onClose()
+  function handleDelete() {
+    if (onDelete) {
+      // PlanPanel이 모달 처리
+      onDelete('all')
+      return
+    }
+    if (plan.isRecurringInstance) {
+      setShowDeleteMenu(true)
+    } else {
+      if (confirm('플랜을 삭제할까요?')) {
+        removePlan(plan.id).catch(console.error)
+        onClose()
+      }
+    }
+  }
+
+  function handleToggleComplete() {
+    if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
+      toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
+    } else {
+      toggleComplete(plan.id, plan.isCompleted).catch(console.error)
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div
-        className="w-full max-w-sm h-full bg-white dark:bg-gray-900 shadow-2xl flex flex-col overflow-y-auto"
+        className="relative w-full max-w-sm h-full bg-white dark:bg-gray-900 shadow-2xl flex flex-col overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -58,7 +79,7 @@ export default function PlanDetailPanel({ plan, onEdit, onClose }: PlanDetailPan
         {/* 완료 상태 */}
         <div className="px-5 py-3 border-b border-gray-50 dark:border-gray-800/50">
           <button
-            onClick={() => toggleComplete(plan.id, plan.isCompleted).catch(console.error)}
+            onClick={handleToggleComplete}
             className={cn(
               'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
               plan.isCompleted
@@ -105,10 +126,13 @@ export default function PlanDetailPanel({ plan, onEdit, onClose }: PlanDetailPan
           )}
 
           {/* 반복 */}
-          {plan.repeatType && (
+          {(plan.repeatType || plan.isRecurringInstance) && (
             <div className="flex items-center gap-3">
               <RepeatIcon size={15} className="text-violet-400 flex-shrink-0" />
-              <span className="text-sm text-violet-600 dark:text-violet-400">{REPEAT_LABEL[plan.repeatType]}</span>
+              <span className="text-sm text-violet-600 dark:text-violet-400">
+                {plan.repeatType ? REPEAT_LABEL[plan.repeatType] : '반복 일정'}
+                {plan.isRecurringInstance && <span className="ml-1.5 text-xs bg-violet-100 dark:bg-violet-950/30 text-violet-500 px-1.5 py-0.5 rounded">인스턴스</span>}
+              </span>
             </div>
           )}
 
@@ -157,6 +181,30 @@ export default function PlanDetailPanel({ plan, onEdit, onClose }: PlanDetailPan
             <Trash2 size={13} />
           </button>
         </div>
+
+        {/* 반복 삭제 메뉴 */}
+        {showDeleteMenu && (
+          <div className="absolute inset-0 flex items-end justify-center bg-black/30 rounded-r-none z-10" onClick={() => setShowDeleteMenu(false)}>
+            <div className="w-full bg-white dark:bg-gray-900 rounded-t-xl p-4 space-y-2 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <p className="text-xs font-medium text-gray-500 mb-3">반복 일정 삭제</p>
+              <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                onClick={() => { skipRecurringInstance(plan.originalPlanId!, plan.date!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                이 일정만 삭제
+              </button>
+              <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                onClick={() => { stopRecurringFromDate(plan.originalPlanId!, plan.date!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                이 일정 및 이후 모두 삭제
+              </button>
+              <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500"
+                onClick={() => { removePlan(plan.originalPlanId!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                모든 반복 일정 삭제
+              </button>
+              <button className="w-full py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 mt-1" onClick={() => setShowDeleteMenu(false)}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

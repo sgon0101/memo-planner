@@ -124,6 +124,10 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
 
   const timeAgo = formatDistanceToNow(new Date(memo.updatedAt), { addSuffix: true, locale: ko })
 
+  const trashDaysLeft = isTrash && memo.deletedAt
+    ? Math.max(0, 30 - Math.floor((Date.now() - new Date(memo.deletedAt).getTime()) / 86400000))
+    : null
+
   function handleClick() {
     if (isTrash) return
     if (memo.isLocked) {
@@ -167,6 +171,11 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           <div className="flex items-center gap-2 flex-shrink-0">
             {memo.isPinned && <Pin size={12} className="text-violet-500" />}
             {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
+            {trashDaysLeft !== null && (
+              <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', trashDaysLeft <= 7 ? 'bg-red-100 dark:bg-red-950/30 text-red-500' : 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600')}>
+                {trashDaysLeft}일 후 삭제
+              </span>
+            )}
             <span className="text-xs text-gray-400">{timeAgo}</span>
             <CardMenu
               memo={memo}
@@ -263,7 +272,14 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
 
           {/* 하단: 날짜 + 뱃지 + 메뉴 */}
           <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-gray-400">{timeAgo}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">{timeAgo}</span>
+              {trashDaysLeft !== null && (
+                <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', trashDaysLeft <= 7 ? 'bg-red-100 dark:bg-red-950/30 text-red-500' : 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600')}>
+                  {trashDaysLeft}일
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1.5">
               {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
               <CardMenu
