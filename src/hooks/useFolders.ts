@@ -36,10 +36,11 @@ export function useFolders() {
   }, [])
 
   const createFolder = useCallback(async (name: string, parentId: string | null = null) => {
+    const { data: { user } } = await supabase.auth.getUser()
     const maxOrder = folders.filter((f) => f.parentId === parentId).length
     const { data, error } = await supabase
       .from('folders')
-      .insert({ name, parent_id: parentId, order_index: maxOrder, color_h: 260, color_s: 60, color_l: 80 })
+      .insert({ user_id: user?.id, name, parent_id: parentId, order_index: maxOrder, color_h: 260, color_s: 60, color_l: 80 })
       .select()
       .single()
     if (error) throw error
