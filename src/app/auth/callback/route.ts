@@ -1,26 +1,20 @@
-import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+// 서버에서 직접 code exchange 하지 않고 클라이언트로 넘김
+// (Vercel 환경에서 쿠키 전달 문제 방지)
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')
-  const next = searchParams.get('next') ?? '/memo'
 
-  // OAuth 에러가 있는 경우
   if (error) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}`)
   }
 
   if (code) {
-    const supabase = await createClient()
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-    if (!exchangeError) {
-      return NextResponse.redirect(`${origin}${next}`)
-    }
-    return NextResponse.redirect(`${origin}/login?error=exchange_failed`)
+    // 클라이언트 페이지로 code를 전달해 브라우저에서 직접 exchange
+    return NextResponse.redirect(`${origin}/auth/confirm?code=${encodeURIComponent(code)}`)
   }
 
-  // code가 없으면 클라이언트 사이드에서 hash fragment 처리
   return NextResponse.redirect(`${origin}/auth/confirm`)
 }
