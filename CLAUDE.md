@@ -271,6 +271,9 @@ CLOUDFLARE_R2_ACCESS_KEY_ID=
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=
 CLOUDFLARE_R2_BUCKET_NAME=
 CLOUDFLARE_R2_PUBLIC_URL=
+
+# Google Drive 백업
+GOOGLE_DRIVE_BACKUP_FOLDER_ID=
 ```
 
 ---
@@ -506,6 +509,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 3개 기능 추가 #3 | 타임라인 뷰 기간 필터링 — CalendarPicker(범위 하이라이트), TimelineFilter(2탭), 월별 칩, 날짜별 2단계 그룹핑 | 100% |
 | 2026-04-18 | 그래프 줌 연동 라벨 | 줌 레벨 연동 노드 라벨 페이드 인/아웃 — getLabelOpacity(lerp), drawRef 패턴, 허브 최소 0.4, 텍스트 외곽선(strokeText), 12자 truncation | 100% |
 | 2026-04-19 | R2 이미지 압축 | Cloudflare R2 연동 + 이미지 자동 압축 — aws-sdk/sharp, WebP(85%)/1920px, /api/upload, 드래그앤드랍/붙여넣기, 압축률 토스트, 설정 스토리지 현황, 마이그레이션 스크립트 | 100% |
+| 2026-04-19 | Google Drive 백업 | Tiptap→Markdown 변환(전체 노드 타입), drive.file OAuth, /api/drive/auth+callback, /api/backup/google-drive(individual/combined), 설정 Drive 섹션 | 100% |
 
 ---
 
