@@ -8,6 +8,7 @@ import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
   Download, Upload, FileText, FileJson, HardDrive,
+  CloudUpload,
 } from 'lucide-react'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
@@ -30,11 +31,21 @@ export default function SettingsPage() {
     originalBytes: number
     compressedBytes: number
   } | null>(null)
+  const [driveConnected, setDriveConnected] = useState(false)
+  const [driveBackupLoading, setDriveBackupLoading] = useState(false)
+  const [lastBackup, setLastBackup] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setEmail(data.user.email ?? '')
     })
+    // Drive 연결 상태 + 마지막 백업
+    fetch('/api/backup/google-drive').then((r) => r.json()).then((d) => {
+      setDriveConnected(d.connected)
+    }).catch(() => {})
+    const savedBackup = localStorage.getItem('lastDriveBackup')
+    if (savedBackup) setLastBackup(savedBackup)
+
     // Google Calendar 연결 상태 + 스토리지 통계
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
@@ -69,6 +80,11 @@ export default function SettingsPage() {
       setCalendarConnected(true)
     } else if (error === 'calendar_auth_failed') {
       setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
+    } else if (success === 'drive_connected') {
+      setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
+      setDriveConnected(true)
+    } else if (error === 'drive_auth_failed') {
+      setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
     }
     if (success || error) router.replace('/settings')
   }, [searchParams])
@@ -95,6 +111,31 @@ export default function SettingsPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  async function handleDriveBackup(mode: 'individual' | 'combined') {
+    if (!driveConnected) {
+      window.location.href = '/api/drive/auth'
+      return
+    }
+    setDriveBackupLoading(true)
+    try {
+      const res = await fetch('/api/backup/google-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? '백업 실패')
+      const now = new Date().toLocaleString('ko-KR')
+      setLastBackup(now)
+      localStorage.setItem('lastDriveBackup', now)
+      setToast({ type: 'success', message: `${data.message} (메모 ${data.count}개)` })
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : '백업 중 오류가 발생했습니다.' })
+    } finally {
+      setDriveBackupLoading(false)
+    }
   }
 
   async function exportData(format: 'json' | 'markdown' | 'pdf') {
@@ -269,6 +310,63 @@ export default function SettingsPage() {
             <input type="file" accept=".json" className="hidden" onChange={importData} disabled={importLoading} />
           </label>
         </SettingRow>
+      </Section>
+
+      {/* Google Drive 백업 */}
+      <Section title="Google Drive 백업" icon={<CloudUpload size={15} />}>
+        <SettingRow
+          label="Google Drive 연결"
+          description={driveConnected ? '연결됨 — 메모를 Drive에 Markdown으로 백업합니다' : '연결하면 메모를 Google Drive에 자동 백업할 수 있습니다'}
+        >
+          {driveConnected ? (
+            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+              <CheckCircle size={12} /> 연결됨
+            </span>
+          ) : (
+            <a
+              href="/api/drive/auth"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors"
+            >
+              <ExternalLink size={12} />
+              연결하기
+            </a>
+          )}
+        </SettingRow>
+        {driveConnected && (
+          <>
+            <SettingRow
+              label="폴더별 개별 백업"
+              description="메모를 폴더 구조대로 개별 .md 파일로 Drive에 저장합니다"
+            >
+              <button
+                onClick={() => handleDriveBackup('individual')}
+                disabled={driveBackupLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors disabled:opacity-50"
+              >
+                {driveBackupLoading ? <Loader2 size={12} className="animate-spin" /> : <CloudUpload size={12} />}
+                폴더별 백업
+              </button>
+            </SettingRow>
+            <SettingRow
+              label="단일 파일 백업"
+              description="전체 메모를 하나의 .md 파일로 통합해 Drive에 저장합니다"
+            >
+              <button
+                onClick={() => handleDriveBackup('combined')}
+                disabled={driveBackupLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                {driveBackupLoading ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+                단일 파일
+              </button>
+            </SettingRow>
+            {lastBackup && (
+              <div className="px-4 py-2.5 text-xs text-gray-400 dark:text-gray-500">
+                마지막 백업: {lastBackup}
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       {/* 스토리지 현황 */}
