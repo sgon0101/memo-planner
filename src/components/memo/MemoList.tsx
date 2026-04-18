@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -8,8 +8,11 @@ import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
+import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import TimelineFilter from './TimelineFilter'
+
+const PAGE_SIZE = 20
 
 type SortKey = 'updated' | 'created' | 'title' | 'starred' | 'pinned'
 type ViewMode = 'card' | 'list' | 'timeline'
@@ -18,12 +21,28 @@ export default function MemoList() {
   const router = useRouter()
   const { selectedFolderId, folders } = useFolderStore()
   const {
-    memos, isTrash,
+    memos, isLoading, isTrash,
     createMemo, togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, permanentDelete, emptyTrash,
     moveMemoToFolder,
   } = useMemos(selectedFolderId)
+
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  const loadMore = useCallback(() => setDisplayCount((n) => n + PAGE_SIZE), [])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) loadMore() }, { threshold: 0.1 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [loadMore])
+
+  // 폴더 변경 시 표시 개수 초기화
+  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [selectedFolderId])
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('updated')
@@ -272,7 +291,9 @@ export default function MemoList() {
 
       {/* 메모 목록 */}
       <div className="flex-1 overflow-y-auto">
-        {memos.length === 0 ? (
+        {isLoading ? (
+          <MemoListSkeleton />
+        ) : memos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
             <p className="text-sm">{isTrash ? '휴지통이 비어 있습니다' : '메모가 없습니다'}</p>
             {!isTrash && (
@@ -283,7 +304,8 @@ export default function MemoList() {
           </div>
         ) : isTrash ? (
           <div className={view === 'card' ? 'p-4' : ''}>
-            <MemoSection memos={filtered.all} view={view === 'timeline' ? 'list' : view} isTrash {...cardActions} />
+            <MemoSection memos={filtered.all.slice(0, displayCount)} view={view === 'timeline' ? 'list' : view} isTrash {...cardActions} />
+            {filtered.all.length > displayCount && <div ref={sentinelRef} className="h-8" />}
           </div>
         ) : view === 'timeline' ? (
           /* 타임라인 뷰 */
@@ -315,13 +337,16 @@ export default function MemoList() {
             {filtered.pinned.length > 0 && (
               <>
                 {view === 'card' && <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">고정됨</p>}
-                <MemoSection memos={filtered.pinned} view={view} {...cardActions} />
+                <MemoSection memos={filtered.pinned.slice(0, displayCount)} view={view} {...cardActions} />
                 {filtered.rest.length > 0 && view === 'card' && (
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mt-4 mb-2">메모</p>
                 )}
               </>
             )}
-            <MemoSection memos={filtered.rest} view={view} {...cardActions} />
+            <MemoSection memos={filtered.rest.slice(0, Math.max(0, displayCount - filtered.pinned.length))} view={view} {...cardActions} />
+            {(filtered.pinned.length + filtered.rest.length) > displayCount && (
+              <div ref={sentinelRef} className="h-8" />
+            )}
           </div>
         )}
       </div>

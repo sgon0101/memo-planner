@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { MessageCircle, TrendingUp, PieChart, Network, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import AIChat from '@/components/insights/AIChat'
-import GapAnalysis from '@/components/insights/GapAnalysis'
-import BubbleChart from '@/components/insights/BubbleChart'
-import MindMap from '@/components/insights/MindMap'
-import RetroReport from '@/components/insights/RetroReport'
+import { InsightsSkeleton } from '@/components/ui/Skeleton'
+
+const AIChat     = dynamic(() => import('@/components/insights/AIChat'),     { loading: () => <InsightsSkeleton />, ssr: false })
+const GapAnalysis = dynamic(() => import('@/components/insights/GapAnalysis'), { loading: () => <InsightsSkeleton />, ssr: false })
+const BubbleChart = dynamic(() => import('@/components/insights/BubbleChart'), { loading: () => <InsightsSkeleton />, ssr: false })
+const MindMap    = dynamic(() => import('@/components/insights/MindMap'),    { loading: () => <InsightsSkeleton />, ssr: false })
+const RetroReport = dynamic(() => import('@/components/insights/RetroReport'), { loading: () => <InsightsSkeleton />, ssr: false })
 
 const TABS = [
   { id: 'chat',    label: 'AI 대화',    icon: MessageCircle },
@@ -47,11 +50,13 @@ export default function InsightsPage() {
 
       {/* 탭 콘텐츠 */}
       <div className="flex-1 overflow-y-auto">
-        {tab === 'chat'    && <AIChat />}
-        {tab === 'gap'     && <GapAnalysis />}
-        {tab === 'bubble'  && <BubbleChart />}
-        {tab === 'mindmap' && <MindMap />}
-        {tab === 'retro'   && <RetroReport />}
+        <Suspense fallback={<InsightsSkeleton />}>
+          {tab === 'chat'    && <AIChat />}
+          {tab === 'gap'     && <GapAnalysis />}
+          {tab === 'bubble'  && <BubbleChart />}
+          {tab === 'mindmap' && <MindMap />}
+          {tab === 'retro'   && <RetroReport />}
+        </Suspense>
       </div>
     </div>
   )
