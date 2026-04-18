@@ -57,7 +57,7 @@ const DEFAULT_SETTINGS: GraphSettings = {
   tension: 4,
   repulsion: 5,
   linkDistance: 90,
-  labelMinLinks: 1,
+  labelMinLinks: 0,
   showIsolated: true,
   showWiki: true,
   showTag: true,

@@ -181,7 +181,7 @@ export default function GraphView() {
         const labelOp = (isHub ? hubOp : baseOp) * opac
         const showLabel = isHub
           ? labelOp > 0.01
-          : baseOp > 0.01 && n.linkCount >= settings.labelMinLinks
+          : labelOp > 0.01 && n.linkCount >= settings.labelMinLinks
 
         if (showLabel) {
           ctx.globalAlpha = labelOp
