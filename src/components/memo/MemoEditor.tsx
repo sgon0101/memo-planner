@@ -15,10 +15,11 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, Pin, ArrowLeft, PanelRight } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
+import { useFolderStore } from '@/store/folderStore'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -40,6 +41,7 @@ interface MemoEditorProps {
   initialContent: Record<string, unknown>
   initialIsStarred?: boolean
   initialIsPinned?: boolean
+  initialFolderId?: string | null
   isNew?: boolean
 }
 
@@ -86,10 +88,11 @@ function formatRelativeTime(date: Date): string {
   return `${Math.floor(diff / 86400)}일 전`
 }
 
-export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, isNew = false }: MemoEditorProps) {
+export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const supabase = createClient()
   const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
+  const { folders } = useFolderStore()
 
   const [title, setTitle] = useState(initialTitle)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -101,6 +104,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [tick, setTick] = useState(0)
   const [isStarred, setIsStarred] = useState(initialIsStarred)
   const [isPinned, setIsPinned] = useState(initialIsPinned)
+  const [folderId, setFolderId] = useState<string | null>(initialFolderId)
+  const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showSidePanel, setShowSidePanel] = useState(false)
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
@@ -334,6 +339,16 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     }
   }
 
+  async function handleChangeFolder(newFolderId: string | null) {
+    setFolderId(newFolderId)
+    setShowFolderDropdown(false)
+    const id = createdIdRef.current
+    if (id) {
+      await supabase.from('memos').update({ folder_id: newFolderId }).eq('id', id)
+      updateMemo(id, { folderId: newFolderId })
+    }
+  }
+
   function handleManualSave() {
     if (!editor) return
     const json = editor.getJSON() as Record<string, unknown>
@@ -452,13 +467,48 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           </div>
         </div>
 
+        {/* 폴더 선택 */}
+        <div className="relative px-8 pt-4">
+          <button
+            onClick={() => setShowFolderDropdown((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            <Folder size={12} />
+            <span>{folderId ? (folders.find((f) => f.id === folderId)?.name ?? '폴더') : '폴더 없음'}</span>
+            <ChevronDown size={10} />
+          </button>
+          {showFolderDropdown && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowFolderDropdown(false)} />
+              <div className="absolute left-8 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-44">
+                <button
+                  onClick={() => handleChangeFolder(null)}
+                  className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors', !folderId ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700')}
+                >
+                  <Folder size={12} /> 폴더 없음
+                </button>
+                {folders.filter((f) => !f.parentId).map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => handleChangeFolder(f.id)}
+                    className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors', folderId === f.id ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700')}
+                  >
+                    <Folder size={12} style={{ color: `hsl(${f.colorH},${f.colorS}%,${f.colorL}%)` }} />
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* 제목 */}
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="제목 없음"
-          className="w-full px-8 pt-8 pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          className="w-full px-8 pt-4 pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 */}

@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw } from 'lucide-react'
+import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw, FolderInput, Folder } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { useFolderStore } from '@/store/folderStore'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
@@ -36,14 +37,19 @@ interface MemoCardProps {
   onUnlock: (id: string, lockedContent: string, password: string) => Promise<void>
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
+  onMoveToFolder?: (id: string, folderId: string | null) => void
   view: 'card' | 'list'
   isTrash?: boolean
 }
 
-export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, view, isTrash = false }: MemoCardProps) {
+export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false }: MemoCardProps) {
   const router = useRouter()
+  const { folders } = useFolderStore()
   const [menuOpen, setMenuOpen] = useState(false)
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
+  const [showFolderPicker, setShowFolderPicker] = useState(false)
+
+  const currentFolder = memo.folderId ? folders.find((f) => f.id === memo.folderId) : null
 
   const timeAgo = formatDistanceToNow(new Date(memo.updatedAt), { addSuffix: true, locale: ko })
 
@@ -73,6 +79,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             <span className={cn('text-sm font-medium text-gray-800 dark:text-gray-200 truncate block', !memo.title && 'text-gray-400 dark:text-gray-500 italic')}>
               {memo.title || '제목 없음'}
             </span>
+            {currentFolder && (
+              <span className="text-xs mt-0.5 flex items-center gap-0.5" style={{ color: `hsl(${currentFolder.colorH},${currentFolder.colorS}%,${currentFolder.colorL - 15}%)` }}>
+                <Folder size={10} />
+                {currentFolder.name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {memo.isPinned && <Pin size={12} className="text-violet-500" />}
@@ -87,6 +99,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               onRestore={onRestore}
               onPermanentDelete={onPermanentDelete}
               onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
+              onMoveToFolderClick={onMoveToFolder ? () => setShowFolderPicker(true) : undefined}
               open={menuOpen}
               setOpen={setMenuOpen}
             />
@@ -97,6 +110,14 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             mode={lockModal}
             onConfirm={lockModal === 'unlock' ? handleUnlock : (pw) => onLock(memo.id, memo.content, pw)}
             onClose={() => setLockModal(null)}
+          />
+        )}
+        {showFolderPicker && onMoveToFolder && (
+          <FolderPickerPopup
+            folders={folders}
+            currentFolderId={memo.folderId}
+            onSelect={(fid) => { onMoveToFolder(memo.id, fid); setShowFolderPicker(false) }}
+            onClose={() => setShowFolderPicker(false)}
           />
         )}
       </>
@@ -147,6 +168,14 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             </>
           )}
 
+          {/* 폴더 표시 */}
+          {currentFolder && (
+            <div className="mt-2 flex items-center gap-1" style={{ color: `hsl(${currentFolder.colorH},${currentFolder.colorS}%,${currentFolder.colorL - 15}%)` }}>
+              <Folder size={10} />
+              <span className="text-xs truncate">{currentFolder.name}</span>
+            </div>
+          )}
+
           {/* 하단: 날짜 + 뱃지 + 메뉴 */}
           <div className="flex items-center justify-between mt-3">
             <span className="text-xs text-gray-400">{timeAgo}</span>
@@ -161,6 +190,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 onRestore={onRestore}
                 onPermanentDelete={onPermanentDelete}
                 onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
+                onMoveToFolderClick={onMoveToFolder ? () => setShowFolderPicker(true) : undefined}
                 open={menuOpen}
                 setOpen={setMenuOpen}
               />
@@ -176,12 +206,20 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           onClose={() => setLockModal(null)}
         />
       )}
+      {showFolderPicker && onMoveToFolder && (
+        <FolderPickerPopup
+          folders={folders}
+          currentFolderId={memo.folderId}
+          onSelect={(fid) => { onMoveToFolder(memo.id, fid); setShowFolderPicker(false) }}
+          onClose={() => setShowFolderPicker(false)}
+        />
+      )}
     </>
   )
 }
 
 function CardMenu({
-  memo, isTrash = false, onPin, onStar, onDelete, onRestore, onPermanentDelete, onLockClick, open, setOpen,
+  memo, isTrash = false, onPin, onStar, onDelete, onRestore, onPermanentDelete, onLockClick, onMoveToFolderClick, open, setOpen,
 }: {
   memo: Memo
   isTrash?: boolean
@@ -191,6 +229,7 @@ function CardMenu({
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
   onLockClick: () => void
+  onMoveToFolderClick?: () => void
   open: boolean
   setOpen: (v: boolean) => void
 }) {
@@ -233,6 +272,9 @@ function CardMenu({
                   label={memo.isLocked ? '잠금 해제' : '잠금'}
                   onClick={() => { onLockClick(); setOpen(false) }}
                 />
+                {onMoveToFolderClick && (
+                  <MenuItem icon={<FolderInput size={13} />} label="폴더 이동" onClick={() => { setOpen(false); onMoveToFolderClick() }} />
+                )}
                 <hr className="my-1 border-gray-100 dark:border-gray-700" />
                 <MenuItem icon={<Trash2 size={13} />} label="삭제" danger onClick={() => { setOpen(false); if (confirm('메모를 삭제할까요?')) onDelete(memo.id) }} />
               </>
@@ -259,5 +301,48 @@ function MenuItem({ icon, label, onClick, danger = false }: {
     >
       {icon}{label}
     </button>
+  )
+}
+
+import type { Folder as FolderType } from '@/types'
+
+function FolderPickerPopup({ folders, currentFolderId, onSelect, onClose }: {
+  folders: FolderType[]
+  currentFolderId: string | null
+  onSelect: (folderId: string | null) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={(e) => { e.stopPropagation(); onClose() }}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl py-2 w-52 max-h-80 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-4 pt-1 pb-2">폴더 선택</p>
+        <button
+          onClick={() => onSelect(null)}
+          className={cn(
+            'w-full flex items-center gap-2 px-4 py-2 text-sm text-left transition-colors',
+            !currentFolderId ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+          )}
+        >
+          <Folder size={14} className="flex-shrink-0" />
+          <span>폴더 없음</span>
+        </button>
+        {folders.filter((f) => !f.parentId).map((folder) => {
+          const color = `hsl(${folder.colorH},${folder.colorS}%,${folder.colorL}%)`
+          return (
+            <button
+              key={folder.id}
+              onClick={() => onSelect(folder.id)}
+              className={cn(
+                'w-full flex items-center gap-2 px-4 py-2 text-sm text-left transition-colors',
+                currentFolderId === folder.id ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+              )}
+            >
+              <Folder size={14} className="flex-shrink-0" style={{ color }} />
+              <span className="truncate">{folder.name}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }

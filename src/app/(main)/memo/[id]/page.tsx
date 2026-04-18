@@ -41,6 +41,7 @@ export default async function MemoEditorPage({ params }: Props) {
       initialContent={(memo.content as Record<string, unknown>) ?? {}}
       initialIsStarred={memo.is_starred ?? false}
       initialIsPinned={memo.is_pinned ?? false}
+      initialFolderId={memo.folder_id ?? null}
     />
   )
 }

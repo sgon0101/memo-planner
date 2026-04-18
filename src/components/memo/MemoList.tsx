@@ -21,6 +21,7 @@ export default function MemoList() {
     createMemo, togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, permanentDelete, emptyTrash,
+    moveMemoToFolder,
   } = useMemos(selectedFolderId)
 
   const [search, setSearch] = useState('')
@@ -109,6 +110,7 @@ export default function MemoList() {
     onUnlock: (id: string, locked: string, pw: string) => unlockMemo(id, locked, pw),
     onRestore: (id: string) => restoreMemo(id).catch(console.error),
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
+    onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
   }
 
   const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -278,7 +280,7 @@ export default function MemoList() {
   )
 }
 
-function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete }: {
+function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }: {
   memos: ReturnType<typeof useMemos>['memos']
   view: 'card' | 'list'
   isTrash?: boolean
@@ -289,8 +291,9 @@ function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, on
   onUnlock: (id: string, locked: string, pw: string) => Promise<void>
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
+  onMoveToFolder?: (id: string, folderId: string | null) => void
 }) {
-  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete }
+  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }
   if (view === 'card') {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
