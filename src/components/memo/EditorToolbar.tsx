@@ -307,19 +307,26 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
     }
   }
 
-  function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
     setImageUploading(true)
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = reader.result as string
-      editor.chain().focus().setImage({ src }).run()
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error('업로드 실패')
+      const { url } = await res.json()
+      editor.chain().focus().setImage({ src: url }).run()
+    } catch {
+      // 업로드 실패 시 base64 폴백
+      const reader = new FileReader()
+      reader.onload = () => { editor.chain().focus().setImage({ src: reader.result as string }).run() }
+      reader.readAsDataURL(file)
+    } finally {
       setImageUploading(false)
     }
-    reader.onerror = () => setImageUploading(false)
-    reader.readAsDataURL(file)
-    e.target.value = ''
   }
 
   return (
