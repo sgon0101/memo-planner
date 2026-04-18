@@ -15,13 +15,15 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, ArrowLeft } from 'lucide-react'
+import { History, Save, Star, ArrowLeft, PanelRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
 import CodeBlockView from './CodeBlockView'
+import MemoSidePanel from './MemoSidePanel'
 import type { Memo, MemoVersion } from '@/types'
 
 const lowlight = createLowlight(common)
@@ -98,6 +100,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [tick, setTick] = useState(0)
   const [isStarred, setIsStarred] = useState(initialIsStarred)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [showSidePanel, setShowSidePanel] = useState(false)
+  const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
 
   const hasUnsavedRef = useRef(false)
   const titleRef = useRef(initialTitle)
@@ -294,7 +298,18 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       const text = editorRef.current.getText()
       await saveRef.current(json, text, { skipNavigate: true })
     }
-    router.push('/memo')
+    const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
+    setPendingMemoId(null)
+    router.push(dest)
+  }
+
+  function handleSidePanelSelect(id: string) {
+    if (hasUnsavedRef.current) {
+      setPendingMemoId(id)
+      setShowLeaveDialog(true)
+    } else {
+      router.push(`/memo/${id}`)
+    }
   }
 
   async function handleToggleStar() {
@@ -381,15 +396,30 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               <span>저장</span>
             </button>
 
+            {/* 메모 목록 패널 토글 */}
+            <button
+              onClick={() => setShowSidePanel((v) => !v)}
+              title="메모 목록 패널"
+              className={cn(
+                'p-1.5 rounded transition-colors',
+                showSidePanel
+                  ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              )}
+            >
+              <PanelRight size={14} />
+            </button>
+
             {createdId && (
               <button
                 onClick={() => setShowHistory((v) => !v)}
                 title="버전 이력"
-                className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                className={cn(
+                  'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
                   showHistory
                     ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+                )}
               >
                 <History size={13} />
                 <span>이력</span>
@@ -436,6 +466,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         </div>
       </div>
 
+      {/* 우측 메모 목록 패널 */}
+      {showSidePanel && (
+        <MemoSidePanel
+          currentMemoId={createdId ?? memoId}
+          onSelect={handleSidePanelSelect}
+          onClose={() => setShowSidePanel(false)}
+        />
+      )}
+
       {/* 버전 이력 패널 */}
       {showHistory && createdId && (
         <VersionHistory
@@ -459,7 +498,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 저장하고 나가기
               </button>
               <button
-                onClick={() => { setShowLeaveDialog(false); router.push('/memo') }}
+                onClick={() => {
+                  const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
+                  setPendingMemoId(null)
+                  setShowLeaveDialog(false)
+                  router.push(dest)
+                }}
                 className="w-full py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               >
                 그냥 나가기
