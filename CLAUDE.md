@@ -475,6 +475,10 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-17 | 6단계 완료 | Tiptap 에디터 — MemoEditor(자동저장 1.5s debounce), EditorToolbar(전체 서식), memo/[id] 페이지, memoStore, typography 플러그인 | 100% |
 | 2026-04-17 | 7단계 완료 | 메모 CRUD — MemoList(카드/리스트뷰, 검색, 정렬), MemoCard(고정/중요/잠금/삭제), LockModal(AES-256), lib/crypto/lock.ts, useMemos 훅 | 100% |
 | 2026-04-17 | 8단계 완료 | 버전 이력 + 휴지통 — VersionHistory 패널, useVersions 훅(5분 쿨다운, 최대 20개), MemoEditor 이력 버튼, FolderPanel 휴지통, 복원/영구삭제/비우기 | 100% |
+| 2026-04-18 | 버그 수정 1 | 새 메모 저장 시 목록 미노출 — user_id 추가, handleBackToList await save, skipNavigate 옵션 | 100% |
+| 2026-04-18 | 버그 수정 2 | 플래너 플랜 저장 오류 — createPlan에 user_id 추가, 실제 에러 메시지 노출 | 100% |
+| 2026-04-18 | 기능 개선 3 | 오늘 버튼 — 뷰별 isViewingToday, 비활성(회색)/미오늘(violet) 스타일, plannerStore currentWeek 추가 | 100% |
+| 2026-04-18 | 기능 구현 4 | 주 뷰(WeekView) + 일 뷰(DayView) — 시간 그리드, 플랜 블록, 현재 시각 표시, 뷰별 헤더 네비게이션 | 100% |
 
 ---
 
