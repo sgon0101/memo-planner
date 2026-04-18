@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -15,7 +15,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -25,6 +25,7 @@ import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
 import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
+import WikiSuggest from './WikiSuggest'
 import type { Memo, MemoVersion } from '@/types'
 
 const lowlight = createLowlight(common)
@@ -88,8 +89,15 @@ function formatRelativeTime(date: Date): string {
   return `${Math.floor(diff / 86400)}일 전`
 }
 
+function extractWikiLinks(text: string): string[] {
+  const matches = [...text.matchAll(/\[\[([^\]]+)\]\]/g)]
+  return [...new Set(matches.map((m) => m[1]))]
+}
+
 export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, isNew = false }: MemoEditorProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fromGraph = searchParams.get('from') === 'graph'
   const supabase = createClient()
   const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
   const { folders } = useFolderStore()
@@ -109,6 +117,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showSidePanel, setShowSidePanel] = useState(false)
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
+  const [wikiQuery, setWikiQuery] = useState<string | null>(null)
+  const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
 
   const hasUnsavedRef = useRef(false)
   const titleRef = useRef(initialTitle)
@@ -132,10 +142,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     try {
       const id = createdIdRef.current
       if (id) {
+        const wikiLinks = extractWikiLinks(text)
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
           content_text: text,
+          wiki_links: wikiLinks,
           updated_at: new Date().toISOString(),
         }).eq('id', id)
         updateMemo(id, { title: titleRef.current, content, contentText: text })
@@ -217,6 +229,19 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       setCharCount(text.replace(/\s/g, '').length)
       setTaskStats(getTaskStats(editor.getJSON() as Record<string, unknown>))
 
+      // wiki [[ 자동완성 감지
+      const { state, view } = editor
+      const { from } = state.selection
+      const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
+      const wikiMatch = textBefore.match(/\[\[([^\]]*)$/)
+      if (wikiMatch) {
+        const coords = view.coordsAtPos(from)
+        setWikiQuery(wikiMatch[1])
+        setWikiPos({ x: coords.left, y: coords.bottom })
+      } else {
+        setWikiQuery(null)
+      }
+
       // 신규 메모: 2초 debounce로 즉시 DB 레코드 생성
       if (!createdIdRef.current) {
         if (newMemoTimerRef.current) clearTimeout(newMemoTimerRef.current)
@@ -292,6 +317,28 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     } else {
       router.push('/memo')
     }
+  }
+
+  function handleBackToGraph() {
+    const id = createdIdRef.current ?? memoId
+    router.push(id ? `/graph?highlight=${id}` : '/graph')
+  }
+
+  function handleWikiSelect(title: string) {
+    if (!editor) return
+    const { state } = editor
+    const { from } = state.selection
+    const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
+    const wikiMatch = textBefore.match(/\[\[([^\]]*)$/)
+    if (!wikiMatch) { setWikiQuery(null); return }
+    const startPos = from - (wikiMatch[0].length)
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from: startPos, to: from })
+      .insertContent(`[[${title}]]`)
+      .run()
+    setWikiQuery(null)
   }
 
   async function handleSaveAndLeave() {
@@ -370,13 +417,24 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       <div className="flex flex-col flex-1 min-w-0">
         {/* 상단 바 */}
         <div className="flex items-center justify-between px-8 py-2 border-b border-gray-100 dark:border-gray-800">
-          <button
-            onClick={handleBackToList}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1.5 rounded-lg transition-colors"
-          >
-            <ArrowLeft size={13} />
-            <span>목록</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBackToList}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1.5 rounded-lg transition-colors"
+            >
+              <ArrowLeft size={13} />
+              <span>목록</span>
+            </button>
+            {fromGraph && (
+              <button
+                onClick={handleBackToGraph}
+                className="flex items-center gap-1.5 text-xs text-violet-500 hover:text-violet-700 dark:hover:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/20 px-2 py-1.5 rounded-lg transition-colors"
+              >
+                <Network size={13} />
+                <span>그래프 뷰</span>
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {/* 저장 상태 표시 */}
             <div className="flex items-center gap-1.5 min-w-[80px] justify-end">
@@ -559,6 +617,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       )}
 
       {/* 나가기 확인 다이얼로그 */}
+      {/* 위키 자동완성 */}
+      {wikiQuery !== null && (
+        <WikiSuggest
+          query={wikiQuery}
+          position={wikiPos}
+          onSelect={handleWikiSelect}
+        />
+      )}
+
       {showLeaveDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-80">

@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   NotebookPen,
+  Network,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/uiStore'
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { href: '/home', label: '홈', icon: Home },
   { href: '/memo', label: '메모장', icon: FileText },
   { href: '/planner', label: '플래너', icon: CalendarDays },
+  { href: '/graph', label: '그래프 뷰', icon: Network },
   { href: '/insights', label: 'AI 인사이트', icon: Sparkles },
   { href: '/settings', label: '설정', icon: Settings },
 ]
