@@ -45,11 +45,15 @@ export interface Plan {
   isAllDay: boolean
   isCompleted: boolean
   repeatType: 'daily' | 'weekly' | 'monthly' | null
+  repeatEndDate: string | null       // 반복 종료일
   ddayTarget: string | null
   googleEventId: string | null
   linkedMemoIds: string[]
   createdAt: string
   updatedAt: string
+  // 클라이언트 전개 시 추가되는 가상 필드
+  isRecurringInstance?: boolean
+  originalPlanId?: string
 }
 
 export interface MemoVersion {
