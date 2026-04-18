@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Suspense } from 'react'
 
 function ConfirmInner() {
   const router = useRouter()
@@ -18,24 +17,27 @@ function ConfirmInner() {
     const code = searchParams.get('code')
 
     async function handle() {
-      // 1) code가 있으면 PKCE exchange 시도
+      // 1) code PKCE exchange
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
           router.replace('/memo')
           return
         }
+        // 실제 에러 메시지를 URL에 담아 전달
+        const msg = encodeURIComponent(error.message)
+        router.replace(`/login?error=exchange&msg=${msg}`)
+        return
       }
 
-      // 2) hash fragment 방식 (implicit flow) — Supabase가 자동 처리
-      // onAuthStateChange가 SIGNED_IN 이벤트를 발생시킬 때까지 대기
+      // 2) hash fragment 방식 — 기존 세션 확인
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         router.replace('/memo')
         return
       }
 
-      // 3) 이벤트 대기 (최대 5초)
+      // 3) onAuthStateChange 대기 (최대 5초)
       const timeout = setTimeout(() => {
         router.replace('/login?error=timeout')
       }, 5000)
