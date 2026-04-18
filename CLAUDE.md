@@ -226,6 +226,19 @@ create table retro_reports (
   report_json jsonb,
   created_at timestamptz default now()
 );
+
+-- Google Calendar 등 외부 서비스 OAuth 토큰
+create table user_integrations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  provider text not null,        -- 'google_calendar'
+  access_token text,
+  refresh_token text,
+  token_expiry timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id, provider)
+);
 ```
 
 ---
@@ -350,17 +363,17 @@ export interface PlanTemplate {
 - [x] 2. Supabase 스키마 생성 (테이블 7개 + RLS 정책 적용 완료)
 - [x] 3. 인증 (Supabase Auth)
 - [x] 4. 레이아웃 (헤더 + 사이드바)
-- [ ] 5. 메모장 — 폴더 CRUD + Color Wheel
-- [ ] 6. 메모장 — Tiptap 에디터
-- [ ] 7. 메모장 — 메모 CRUD + 잠금/중요/고정
-- [ ] 8. 메모장 — 버전 이력 + 휴지통
-- [ ] 9. 플래너 — 캘린더 UI + 범위 플랜
-- [ ] 10. 플래너 — 플랜 CRUD + 시간 + 반복
-- [ ] 11. 플래너 — Google Calendar 연동
-- [ ] 12. AI 인사이트 — Claude API + 4개 탭
-- [ ] 13. 설정 페이지
-- [ ] 14. 내보내기 / 가져오기 / 백업
-- [ ] 15. PWA + 다크모드 + 반응형
+- [x] 5. 메모장 — 폴더 CRUD + Color Wheel
+- [x] 6. 메모장 — Tiptap 에디터
+- [x] 7. 메모장 — 메모 CRUD + 잠금/중요/고정
+- [x] 8. 메모장 — 버전 이력 + 휴지통
+- [x] 9. 플래너 — 캘린더 UI + 범위 플랜
+- [x] 10. 플래너 — 플랜 CRUD + 시간 + 반복
+- [x] 11. 플래너 — Google Calendar 연동
+- [x] 12. AI 인사이트 — Claude API + 4개 탭
+- [x] 13. 설정 페이지
+- [x] 14. 내보내기 / 가져오기 / 백업
+- [x] 15. PWA + 다크모드 + 반응형
 - [ ] 16. 배포 (Vercel)
 
 ---
@@ -445,16 +458,27 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-17 | 초기 설정 | CLAUDE.md 생성, 프로젝트 구조 정의 | - |
 | 2026-04-17 | 1단계 완료 | Next.js memo-planner 프로젝트 생성, 패키지 설치 | 100% |
 | 2026-04-17 | 2단계 완료 | Supabase 프로젝트 생성, 테이블 7개 + RLS 정책 적용 | 100% |
+| 2026-04-17 | 3~8단계 완료 | Auth, 레이아웃, 메모 CRUD, 에디터, 잠금, 버전이력, 휴지통 | 100% |
+| 2026-04-17 | 9단계 완료 | 플래너 캘린더 UI (월/주/일 뷰), 범위 플랜 바, PlanPanel, PlanFormModal | 100% |
+| 2026-04-17 | 10단계 완료 | 플랜 CRUD 고도화 — 반복 설정(daily/weekly/monthly), TimePicker 컴포넌트, PlanPanel 수정 버튼, editPlan 흐름 연결 | 100% |
+| 2026-04-18 | 11단계 완료 | Google Calendar 연동 — OAuth 흐름(auth/callback/disconnect), sync API, lib/google/calendar.ts, user_integrations 테이블, CalendarView 동기화 버튼 | 100% |
+| 2026-04-18 | 12단계 완료 | AI 인사이트 — AIChat(스트리밍), GapAnalysis, BubbleChart, MindMap, RetroReport(캐시), 5탭 레이아웃, lib/ai/* 3파일, API 3개 | 100% |
+| 2026-04-18 | 13단계 완료 | 설정 페이지 — 프로필, 다크모드 토글, Google Calendar 연결/해제, 로그아웃, 계정삭제, toast 알림 | 100% |
+| 2026-04-18 | 14단계 완료 | 내보내기/가져오기/백업 — Markdown 내보내기, JSON 전체 백업, PDF 인쇄, JSON 가져오기(복원), /api/export GET/POST | 100% |
+| 2026-04-18 | 15단계 완료 | PWA + 다크모드 + 반응형 — manifest.json, SVG 아이콘, sw.js(Service Worker), ServiceWorkerRegister, PWA 메타태그, 모바일 PlanPanel 바텀시트, turbopack 설정 | 100% |
 | 2026-04-17 | 3단계 완료 | Supabase Auth 인증 — 로그인/회원가입 페이지, proxy.ts 미들웨어, auth/callback 라우트, lib/supabase client/server | 100% |
 | 2026-04-17 | 4단계 완료 | 레이아웃 — Sidebar/Header/MobileNav/DarkModeProvider/SidebarSpacer 컴포넌트, (main) 레이아웃, placeholder 페이지 4개, uiStore | 100% |
+| 2026-04-17 | 5단계 완료 | 폴더 CRUD + Color Wheel — FolderPanel, ColorWheelModal, useFolders 훅, folderStore, types/index.ts | 100% |
+| 2026-04-17 | 6단계 완료 | Tiptap 에디터 — MemoEditor(자동저장 1.5s debounce), EditorToolbar(전체 서식), memo/[id] 페이지, memoStore, typography 플러그인 | 100% |
+| 2026-04-17 | 7단계 완료 | 메모 CRUD — MemoList(카드/리스트뷰, 검색, 정렬), MemoCard(고정/중요/잠금/삭제), LockModal(AES-256), lib/crypto/lock.ts, useMemos 훅 | 100% |
+| 2026-04-17 | 8단계 완료 | 버전 이력 + 휴지통 — VersionHistory 패널, useVersions 훅(5분 쿨다운, 최대 20개), MemoEditor 이력 버튼, FolderPanel 휴지통, 복원/영구삭제/비우기 | 100% |
 
 ---
 
 ## Git 전략
 
 ### 레포지토리
-- **GitHub 주소**: https://github.com/[내 아이디]/memo-planner
-  - 처음 연결 시 위 주소를 실제 주소로 업데이트해줘
+- **GitHub 주소**: https://github.com/sgon0101/memo-planner
 - **기본 브랜치**: `main` (배포 브랜치) / `dev` (개발 브랜치)
 
 ### 브랜치 규칙

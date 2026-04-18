@@ -1,7 +1,18 @@
+import FolderPanel from '@/components/memo/FolderPanel'
+import MemoList from '@/components/memo/MemoList'
+
 export default function MemoPage() {
   return (
-    <div className="p-6">
-      <p className="text-gray-400 dark:text-gray-500 text-sm">메모장 — 준비 중</p>
+    <div className="flex h-full">
+      {/* 폴더 패널 */}
+      <aside className="w-52 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hidden sm:flex flex-col">
+        <FolderPanel />
+      </aside>
+
+      {/* 메모 목록 */}
+      <div className="flex-1 min-w-0">
+        <MemoList />
+      </div>
     </div>
   )
 }
