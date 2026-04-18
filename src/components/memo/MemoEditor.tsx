@@ -15,7 +15,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, ArrowLeft, PanelRight } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -39,6 +39,7 @@ interface MemoEditorProps {
   initialTitle: string
   initialContent: Record<string, unknown>
   initialIsStarred?: boolean
+  initialIsPinned?: boolean
   isNew?: boolean
 }
 
@@ -85,7 +86,7 @@ function formatRelativeTime(date: Date): string {
   return `${Math.floor(diff / 86400)}일 전`
 }
 
-export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, isNew = false }: MemoEditorProps) {
+export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const supabase = createClient()
   const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
@@ -99,6 +100,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [tick, setTick] = useState(0)
   const [isStarred, setIsStarred] = useState(initialIsStarred)
+  const [isPinned, setIsPinned] = useState(initialIsPinned)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showSidePanel, setShowSidePanel] = useState(false)
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
@@ -322,6 +324,16 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     }
   }
 
+  async function handleTogglePin() {
+    const newVal = !isPinned
+    setIsPinned(newVal)
+    const id = createdIdRef.current
+    if (id) {
+      await supabase.from('memos').update({ is_pinned: newVal }).eq('id', id)
+      updateMemo(id, { isPinned: newVal })
+    }
+  }
+
   function handleManualSave() {
     if (!editor) return
     const json = editor.getJSON() as Record<string, unknown>
@@ -382,6 +394,18 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               <Star
                 size={15}
                 className={isStarred ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
+              />
+            </button>
+
+            {/* 핀 버튼 */}
+            <button
+              onClick={handleTogglePin}
+              title={isPinned ? '고정 해제' : '고정'}
+              className="p-1.5 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <Pin
+                size={15}
+                className={isPinned ? 'text-violet-500 fill-violet-500' : 'text-gray-300 dark:text-gray-600'}
               />
             </button>
 

@@ -40,6 +40,7 @@ export default async function MemoEditorPage({ params }: Props) {
       initialTitle={memo.title ?? ''}
       initialContent={(memo.content as Record<string, unknown>) ?? {}}
       initialIsStarred={memo.is_starred ?? false}
+      initialIsPinned={memo.is_pinned ?? false}
     />
   )
 }
