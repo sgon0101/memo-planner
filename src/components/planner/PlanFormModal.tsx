@@ -65,8 +65,8 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
         await createPlan(data)
       }
       onSaved()
-    } catch {
-      setError('저장 중 오류가 발생했습니다.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }

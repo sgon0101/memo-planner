@@ -62,9 +62,11 @@ export function usePlanner() {
   useEffect(() => { load() }, [load])
 
   const createPlan = useCallback(async (data: Partial<Plan>) => {
+    const { data: { user } } = await supabase.auth.getUser()
     const { data: row, error } = await supabase
       .from('plans')
       .insert({
+        user_id: user?.id,
         title: data.title ?? '새 플랜',
         description: data.description ?? '',
         color: data.color ?? '#7F77DD',
