@@ -1,17 +1,19 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, ChevronRight } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, ChevronRight, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFolders } from '@/hooks/useFolders'
 import { useFolderStore } from '@/store/folderStore'
+import { useMemoStore } from '@/store/memoStore'
+import { useDragStore } from '@/store/dragStore'
+import { createClient } from '@/lib/supabase/client'
 import { TRASH_ID } from '@/hooks/useMemos'
 import ColorWheelModal from './ColorWheelModal'
 import type { Folder as FolderType } from '@/types'
 
 interface MenuState { folderId: string; x: number; y: number }
 
-// FolderItem은 FolderPanel 외부에 정의하여 리마운트 버그 방지
 interface FolderItemProps {
   folder: FolderType
   depth: number
@@ -21,6 +23,7 @@ interface FolderItemProps {
   editingId: string | null
   editValue: string
   editInputRef: React.RefObject<HTMLInputElement | null>
+  dragOverFolderId: string | null
   onSelect: (id: string) => void
   onToggleExpand: (id: string) => void
   onOpenMenu: (e: React.MouseEvent, id: string) => void
@@ -31,13 +34,14 @@ interface FolderItemProps {
 
 function FolderItem({
   folder, depth, allFolders, expanded, selectedFolderId,
-  editingId, editValue, editInputRef,
+  editingId, editValue, editInputRef, dragOverFolderId,
   onSelect, onToggleExpand, onOpenMenu,
   onEditValueChange, onCommitEdit, onCancelEdit,
 }: FolderItemProps) {
   const isSelected = selectedFolderId === folder.id
   const isExpanded = expanded.has(folder.id)
   const isEditing = editingId === folder.id
+  const isDragOver = dragOverFolderId === folder.id
   const children = allFolders
     .filter((f) => f.parentId === folder.id)
     .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -47,11 +51,14 @@ function FolderItem({
   return (
     <div>
       <div
+        data-folder-id={folder.id}
         className={cn(
           'group flex items-center gap-1.5 rounded-lg cursor-pointer select-none text-sm transition-colors py-1.5 pr-2',
-          isSelected
-            ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          isDragOver
+            ? 'ring-2 ring-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+            : isSelected
+              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => onSelect(folder.id)}
@@ -107,6 +114,7 @@ function FolderItem({
           editingId={editingId}
           editValue={editValue}
           editInputRef={editInputRef}
+          dragOverFolderId={dragOverFolderId}
           onSelect={onSelect}
           onToggleExpand={onToggleExpand}
           onOpenMenu={onOpenMenu}
@@ -122,6 +130,8 @@ function FolderItem({
 export default function FolderPanel() {
   const { folders, createFolder, renameFolder, updateColor, removeFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
+  const { updateMemo } = useMemoStore()
+  const { draggingMemoId } = useDragStore()
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
@@ -130,11 +140,49 @@ export default function FolderPanel() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
 
   const topLevel = folders
     .filter((f) => f.parentId === null)
     .sort((a, b) => a.orderIndex - b.orderIndex)
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const handleDrop = useCallback(async (memoId: string, folderId: string | null) => {
+    setDragOverFolderId(null)
+    if (!memoId) return
+    const supabase = createClient()
+
+    if (folderId === '__starred__') {
+      await supabase.from('memos').update({ is_starred: true }).eq('id', memoId)
+      updateMemo(memoId, { isStarred: true })
+      showToast('메모가 중요로 표시됐어요')
+      return
+    }
+
+    const resolvedFolderId = folderId === '__all__' ? null : folderId
+    await supabase.from('memos').update({ folder_id: resolvedFolderId }).eq('id', memoId)
+    updateMemo(memoId, { folderId: resolvedFolderId })
+    const folderName = resolvedFolderId
+      ? folders.find((f) => f.id === resolvedFolderId)?.name ?? '폴더'
+      : '전체 메모'
+    showToast(`메모가 ${folderName}으로 이동됐어요`)
+  }, [folders, updateMemo])
+
+  // 터치 드래그 커스텀 이벤트 수신
+  useEffect(() => {
+    function onTouchDrop(e: Event) {
+      const { memoId, folderId } = (e as CustomEvent<{ memoId: string; folderId: string | null }>).detail
+      void handleDrop(memoId, folderId)
+    }
+    window.addEventListener('memo-folder-drop', onTouchDrop)
+    return () => window.removeEventListener('memo-folder-drop', onTouchDrop)
+  }, [handleDrop])
 
   function openMenu(e: React.MouseEvent, folderId: string) {
     e.stopPropagation()
@@ -156,9 +204,7 @@ export default function FolderPanel() {
     setEditingId(null)
   }
 
-  function cancelEdit() {
-    setEditingId(null)
-  }
+  function cancelEdit() { setEditingId(null) }
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -183,9 +229,7 @@ export default function FolderPanel() {
       if (newFolderParentId) {
         setExpanded((prev) => new Set([...prev, newFolderParentId as string]))
       }
-    } catch (e) {
-      console.error(e)
-    }
+    } catch (e) { console.error(e) }
   }
 
   async function handleDelete(id: string) {
@@ -197,8 +241,39 @@ export default function FolderPanel() {
 
   const menuFolder = menu ? folders.find((f) => f.id === menu.folderId) : null
 
+  // 드래그 이벤트 위임 핸들러
+  function onPanelDragOver(e: React.DragEvent) {
+    if (!draggingMemoId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const folderEl = (e.target as HTMLElement).closest('[data-folder-id]') as HTMLElement | null
+    const id = folderEl?.getAttribute('data-folder-id') ?? null
+    if (id !== dragOverFolderId) setDragOverFolderId(id)
+  }
+
+  function onPanelDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const memoId = e.dataTransfer.getData('memoId')
+    if (!memoId) return
+    const folderEl = (e.target as HTMLElement).closest('[data-folder-id]') as HTMLElement | null
+    const folderId = folderEl?.getAttribute('data-folder-id') ?? null
+    if (folderId) void handleDrop(memoId, folderId)
+    else setDragOverFolderId(null)
+  }
+
+  function onPanelDragLeave(e: React.DragEvent) {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setDragOverFolderId(null)
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full"
+      onDragOver={onPanelDragOver}
+      onDrop={onPanelDrop}
+      onDragLeave={onPanelDragLeave}
+    >
       {/* 헤더 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">폴더</span>
@@ -213,17 +288,36 @@ export default function FolderPanel() {
 
       {/* 전체 메모 */}
       <div
+        data-folder-id="__all__"
         className={cn(
           'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors',
-          selectedFolderId === null
-            ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          dragOverFolderId === '__all__'
+            ? 'ring-2 ring-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+            : selectedFolderId === null
+              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
         )}
         onClick={() => selectFolder(null)}
       >
         <Folder size={15} />
         <span>전체 메모</span>
       </div>
+
+      {/* ★ 중요 드랍존 (드래그 중일 때만 표시) */}
+      {draggingMemoId && (
+        <div
+          data-folder-id="__starred__"
+          className={cn(
+            'flex items-center gap-2 px-3 py-2 text-sm cursor-default transition-colors border-b border-dashed border-amber-200 dark:border-amber-800',
+            dragOverFolderId === '__starred__'
+              ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 ring-1 ring-amber-400'
+              : 'text-amber-500 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/10'
+          )}
+        >
+          <Star size={14} className="fill-amber-400 text-amber-400 flex-shrink-0" />
+          <span>중요로 표시</span>
+        </div>
+      )}
 
       {/* 폴더 목록 */}
       <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
@@ -238,6 +332,7 @@ export default function FolderPanel() {
             editingId={editingId}
             editValue={editValue}
             editInputRef={editInputRef}
+            dragOverFolderId={dragOverFolderId}
             onSelect={handleSelect}
             onToggleExpand={toggleExpand}
             onOpenMenu={openMenu}
@@ -270,11 +365,7 @@ export default function FolderPanel() {
             </button>
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              onClick={() => {
-                setNewFolderParentId(menuFolder.id)
-                setMenu(null)
-                setShowNewFolderModal(true)
-              }}
+              onClick={() => { setNewFolderParentId(menuFolder.id); setMenu(null); setShowNewFolderModal(true) }}
             >
               <Plus size={14} /> 하위 폴더
             </button>
@@ -325,6 +416,13 @@ export default function FolderPanel() {
           }}
           onClose={() => setColorTarget(null)}
         />
+      )}
+
+      {/* 드랍 성공 토스트 */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
+          {toast}
+        </div>
       )}
     </div>
   )
