@@ -7,7 +7,7 @@ import { useUIStore } from '@/store/uiStore'
 import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
-  Download, Upload, FileText, FileJson,
+  Download, Upload, FileText, FileJson, HardDrive,
 } from 'lucide-react'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
@@ -25,12 +25,17 @@ export default function SettingsPage() {
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [storageStats, setStorageStats] = useState<{
+    fileCount: number
+    originalBytes: number
+    compressedBytes: number
+  } | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setEmail(data.user.email ?? '')
     })
-    // Google Calendar 연결 상태 확인
+    // Google Calendar 연결 상태 + 스토리지 통계
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
       const { data: row } = await supabase
@@ -40,6 +45,18 @@ export default function SettingsPage() {
         .eq('provider', 'google_calendar')
         .single()
       setCalendarConnected(!!row)
+
+      const { data: files } = await supabase
+        .from('uploaded_files')
+        .select('original_size, compressed_size')
+        .eq('user_id', data.user.id)
+      if (files) {
+        setStorageStats({
+          fileCount: files.length,
+          originalBytes: files.reduce((s, f) => s + (f.original_size ?? 0), 0),
+          compressedBytes: files.reduce((s, f) => s + (f.compressed_size ?? 0), 0),
+        })
+      }
     })
   }, [])
 
@@ -254,6 +271,40 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
+      {/* 스토리지 현황 */}
+      <Section title="스토리지 현황" icon={<HardDrive size={15} />}>
+        <div className="px-4 py-4 space-y-3">
+          {storageStats ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard label="총 업로드 파일" value={`${storageStats.fileCount}개`} />
+                <StatCard label="절약된 용량" value={
+                  storageStats.originalBytes > 0
+                    ? `${Math.round((1 - storageStats.compressedBytes / storageStats.originalBytes) * 100)}% 절감`
+                    : '—'
+                } accent />
+                <StatCard label="원본 총 용량" value={formatBytes(storageStats.originalBytes)} />
+                <StatCard label="압축 후 용량" value={formatBytes(storageStats.compressedBytes)} />
+              </div>
+              <div className="mt-2">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>{formatBytes(storageStats.compressedBytes)} 사용 중</span>
+                  <span>10GB</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-gray-100 dark:bg-gray-800">
+                  <div
+                    className="h-1.5 rounded-full bg-violet-500 transition-all"
+                    style={{ width: `${Math.min((storageStats.compressedBytes / (10 * 1024 ** 3)) * 100, 100).toFixed(2)}%` }}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 text-center py-2">업로드된 파일이 없습니다</p>
+          )}
+        </div>
+      </Section>
+
       {/* 계정 */}
       <Section title="계정" icon={<LogOut size={15} />}>
         <SettingRow label="로그아웃" description="현재 기기에서 로그아웃합니다">
@@ -304,6 +355,25 @@ function SettingRow({ label, description, children }: { label: string; descripti
       <div className="ml-4 flex-shrink-0">{children}</div>
     </div>
   )
+}
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2.5">
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className={cn('text-sm font-semibold mt-0.5', accent ? 'text-violet-600 dark:text-violet-400' : 'text-gray-800 dark:text-gray-200')}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {

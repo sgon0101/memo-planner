@@ -123,6 +123,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
   const [wikiQuery, setWikiQuery] = useState<string | null>(null)
   const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
+  const [uploadToast, setUploadToast] = useState<string | null>(null)
+  const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const hasUnsavedRef = useRef(false)
   const titleRef = useRef(initialTitle)
@@ -312,8 +314,39 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     return () => {
       if (savedDisplayTimerRef.current) clearTimeout(savedDisplayTimerRef.current)
       if (newMemoTimerRef.current) clearTimeout(newMemoTimerRef.current)
+      if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current)
     }
   }, [])
+
+  function showUploadToast(msg: string) {
+    setUploadToast(msg)
+    if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current)
+    uploadToastTimerRef.current = setTimeout(() => setUploadToast(null), 3500)
+  }
+
+  async function handleImageUpload(file: File) {
+    if (!editor) return
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error('업로드 실패')
+      const { url, savedPercent, originalSize, compressedSize } = await res.json()
+      editor.chain().focus().setImage({ src: url }).run()
+      const orig = (originalSize / 1024 / 1024).toFixed(1)
+      const comp = (compressedSize / 1024 / 1024).toFixed(1)
+      if (savedPercent > 0) {
+        showUploadToast(`이미지가 ${savedPercent}% 압축됐어요 (${orig}MB → ${comp}MB)`)
+      } else {
+        showUploadToast('이미지가 업로드됐어요')
+      }
+    } catch {
+      // 폴백: base64 삽입
+      const reader = new FileReader()
+      reader.onload = () => { editor.chain().focus().setImage({ src: reader.result as string }).run() }
+      reader.readAsDataURL(file)
+    }
+  }
 
   function handleBackToList() {
     if (hasUnsavedRef.current) {
@@ -581,7 +614,25 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         {editor && <EditorToolbar editor={editor} />}
 
         {/* 에디터 */}
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className="flex-1 overflow-y-auto"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault()
+            const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+            files.forEach(handleImageUpload)
+          }}
+          onPaste={(e) => {
+            const items = Array.from(e.clipboardData.items)
+            const imageItems = items.filter((i) => i.type.startsWith('image/'))
+            if (imageItems.length === 0) return
+            e.preventDefault()
+            imageItems.forEach((item) => {
+              const file = item.getAsFile()
+              if (file) handleImageUpload(file)
+            })
+          }}
+        >
           <EditorContent editor={editor} />
         </div>
 
@@ -625,6 +676,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       )}
 
       {/* 나가기 확인 다이얼로그 */}
+      {/* 이미지 업로드 토스트 */}
+      {uploadToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-gray-700 text-white text-xs px-4 py-2.5 rounded-xl shadow-lg">
+          {uploadToast}
+        </div>
+      )}
+
       {/* 위키 자동완성 */}
       {wikiQuery !== null && (
         <WikiSuggest
