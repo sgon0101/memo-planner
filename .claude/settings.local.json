@@ -5,7 +5,8 @@
       "Bash(npx tsc *)",
       "Bash(npm run *)",
       "Bash(node *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(git push *)"
     ]
   }
 }
