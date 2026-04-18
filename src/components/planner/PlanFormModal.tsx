@@ -22,11 +22,12 @@ const REPEAT_OPTIONS = [
 interface PlanFormModalProps {
   date: string
   plan?: Plan
+  initialStartTime?: string
   onClose: () => void
   onSaved: () => void
 }
 
-export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanFormModalProps) {
+export default function PlanFormModal({ date, plan, initialStartTime, onClose, onSaved }: PlanFormModalProps) {
   const { createPlan, editPlan } = usePlanner()
 
   const [title, setTitle]         = useState(plan?.title ?? '')
@@ -34,9 +35,9 @@ export default function PlanFormModal({ date, plan, onClose, onSaved }: PlanForm
   const [isRange, setIsRange]     = useState(!!(plan?.startDate))
   const [startDate, setStartDate] = useState(plan?.startDate ?? date)
   const [endDate, setEndDate]     = useState(plan?.endDate ?? date)
-  const [startTime, setStartTime] = useState(plan?.startTime?.slice(0, 5) ?? '')
+  const [startTime, setStartTime] = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '')
   const [endTime, setEndTime]     = useState(plan?.endTime?.slice(0, 5) ?? '')
-  const [isAllDay, setIsAllDay]   = useState(plan?.isAllDay ?? true)
+  const [isAllDay, setIsAllDay]   = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
   const [repeatType, setRepeatType] = useState<'daily' | 'weekly' | 'monthly' | null>(
     plan?.repeatType ?? null
   )

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns'
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
 import type { Plan } from '@/types'
@@ -30,12 +30,22 @@ export function toPlan(row: Record<string, unknown>): Plan {
 }
 
 export function usePlanner() {
-  const { currentMonth, setPlans, addPlan, updatePlan, deletePlan } = usePlannerStore()
+  const { currentMonth, currentWeek, selectedDate, setPlans, addPlan, updatePlan, deletePlan } = usePlannerStore()
   const supabase = createClient()
 
   const load = useCallback(async () => {
-    const calStart = format(startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
-    const calEnd = format(endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
+    // 월 뷰 범위
+    const monthStart = format(startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
+    const monthEnd = format(endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
+    // 주 뷰 범위
+    const weekStart = format(currentWeek, 'yyyy-MM-dd')
+    const weekEnd = format(addDays(currentWeek, 6), 'yyyy-MM-dd')
+    // 일 뷰 날짜
+    const dayDate = selectedDate || format(new Date(), 'yyyy-MM-dd')
+
+    // 전체 범위: 세 범위의 min/max
+    const calStart = [monthStart, weekStart, dayDate].sort()[0]
+    const calEnd = [monthEnd, weekEnd, dayDate].sort().reverse()[0]
 
     // 단일일 플랜
     const { data: single } = await supabase
@@ -57,7 +67,7 @@ export function usePlanner() {
     // 중복 제거
     const unique = all.filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
     setPlans(unique.map(toPlan))
-  }, [currentMonth])
+  }, [currentMonth, currentWeek, selectedDate])
 
   useEffect(() => { load() }, [load])
 

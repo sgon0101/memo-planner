@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
-  isSameMonth, isSameDay, addMonths, subMonths, parseISO, isSameWeek,
+  isSameMonth, addMonths, subMonths, isSameWeek, addWeeks, subWeeks, addDays, subDays, parseISO,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
@@ -14,6 +14,8 @@ import { usePlanner } from '@/hooks/usePlanner'
 import RangeBar from './RangeBar'
 import PlanPanel from './PlanPanel'
 import PlanFormModal from './PlanFormModal'
+import WeekView from './WeekView'
+import DayView from './DayView'
 import type { Plan } from '@/types'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -29,7 +31,7 @@ export default function CalendarView() {
 
   const { load } = usePlanner()
 
-  const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan }>({
+  const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string }>({
     open: false, date: '',
   })
   const [syncing, setSyncing] = useState(false)
@@ -121,16 +123,30 @@ export default function CalendarView() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              onClick={() => {
+                if (viewMode === 'month') setCurrentMonth(subMonths(currentMonth, 1))
+                else if (viewMode === 'week') setCurrentWeek(subWeeks(currentWeek, 1))
+                else selectDate(format(subDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+              }}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white w-28 text-center">
-              {format(currentMonth, 'yyyy년 M월', { locale: ko })}
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white w-40 text-center">
+              {viewMode === 'month' && format(currentMonth, 'yyyy년 M월', { locale: ko })}
+              {viewMode === 'week' && (() => {
+                const ws = currentWeek
+                const we = addDays(ws, 6)
+                return format(ws, 'M월 d일', { locale: ko }) + ' – ' + format(we, 'd일', { locale: ko })
+              })()}
+              {viewMode === 'day' && format(parseISO(selectedDate || today), 'yyyy년 M월 d일 (eee)', { locale: ko })}
             </h2>
             <button
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              onClick={() => {
+                if (viewMode === 'month') setCurrentMonth(addMonths(currentMonth, 1))
+                else if (viewMode === 'week') setCurrentWeek(addWeeks(currentWeek, 1))
+                else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+              }}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
             >
               <ChevronRight size={16} />
@@ -287,18 +303,30 @@ export default function CalendarView() {
             )
           })}
 
-          {/* 주 뷰 placeholder */}
+          {/* 주 뷰 */}
           {viewMode === 'week' && (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              주 뷰 — 준비 중
-            </div>
+            <WeekView
+              weekStart={currentWeek}
+              plans={plans}
+              today={today}
+              selectedDate={selectedDate}
+              onSelectDate={selectDate}
+              onNewPlan={(date, time) => {
+                selectDate(date)
+                setFormState({ open: true, date, initialTime: time })
+              }}
+              onEditPlan={(plan) => setFormState({ open: true, date: plan.date ?? selectedDate, plan })}
+            />
           )}
 
-          {/* 일 뷰 placeholder */}
+          {/* 일 뷰 */}
           {viewMode === 'day' && (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              일 뷰 — 준비 중
-            </div>
+            <DayView
+              date={selectedDate || today}
+              plans={plans}
+              onNewPlan={(date, time) => setFormState({ open: true, date, initialTime: time })}
+              onEditPlan={(plan) => setFormState({ open: true, date: plan.date ?? selectedDate, plan })}
+            />
           )}
         </div>
       </div>
@@ -327,6 +355,7 @@ export default function CalendarView() {
         <PlanFormModal
           date={formState.date}
           plan={formState.plan}
+          initialStartTime={formState.initialTime}
           onClose={() => setFormState({ open: false, date: '' })}
           onSaved={() => { setFormState({ open: false, date: '' }); load() }}
         />
