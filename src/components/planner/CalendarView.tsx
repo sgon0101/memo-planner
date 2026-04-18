@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
-  isSameMonth, isSameDay, addMonths, subMonths, parseISO,
+  isSameMonth, isSameDay, addMonths, subMonths, parseISO, isSameWeek,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
@@ -23,6 +23,7 @@ export default function CalendarView() {
   const {
     plans, selectedDate, selectDate,
     currentMonth, setCurrentMonth,
+    currentWeek, setCurrentWeek,
     viewMode, setViewMode,
   } = usePlannerStore()
 
@@ -54,6 +55,17 @@ export default function CalendarView() {
   }
 
   const today = format(new Date(), 'yyyy-MM-dd')
+  const isViewingToday =
+    viewMode === 'month' ? isSameMonth(currentMonth, new Date()) :
+    viewMode === 'week' ? isSameWeek(currentWeek, new Date(), { weekStartsOn: 0 }) :
+    selectedDate === today
+
+  function goToToday() {
+    const now = new Date()
+    setCurrentMonth(now)
+    setCurrentWeek(startOfWeek(now, { weekStartsOn: 0 }))
+    selectDate(today)
+  }
 
   // 달력에 표시할 날짜 배열 (6주 × 7일)
   const { weeks } = useMemo(() => {
@@ -124,8 +136,14 @@ export default function CalendarView() {
               <ChevronRight size={16} />
             </button>
             <button
-              onClick={() => { setCurrentMonth(new Date()); selectDate(today) }}
-              className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              onClick={goToToday}
+              disabled={isViewingToday}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:cursor-default',
+                isViewingToday
+                  ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
+                  : 'border-violet-500 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/30'
+              )}
             >
               오늘
             </button>
