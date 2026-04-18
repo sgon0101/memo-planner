@@ -15,13 +15,15 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save } from 'lucide-react'
+import { History, Save, Star, ArrowLeft, PanelRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
 import CodeBlockView from './CodeBlockView'
+import MemoSidePanel from './MemoSidePanel'
 import type { Memo, MemoVersion } from '@/types'
 
 const lowlight = createLowlight(common)
@@ -36,6 +38,7 @@ interface MemoEditorProps {
   memoId: string
   initialTitle: string
   initialContent: Record<string, unknown>
+  initialIsStarred?: boolean
   isNew?: boolean
 }
 
@@ -82,7 +85,7 @@ function formatRelativeTime(date: Date): string {
   return `${Math.floor(diff / 86400)}일 전`
 }
 
-export default function MemoEditor({ memoId, initialTitle, initialContent, isNew = false }: MemoEditorProps) {
+export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const supabase = createClient()
   const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
@@ -95,6 +98,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
   const [taskStats, setTaskStats] = useState({ done: 0, total: 0 })
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [tick, setTick] = useState(0)
+  const [isStarred, setIsStarred] = useState(initialIsStarred)
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [showSidePanel, setShowSidePanel] = useState(false)
+  const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
 
   const hasUnsavedRef = useRef(false)
   const titleRef = useRef(initialTitle)
@@ -272,19 +279,47 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
     }
   }, [])
 
-  async function handleBackToList() {
+  function handleBackToList() {
+    if (hasUnsavedRef.current) {
+      setShowLeaveDialog(true)
+    } else {
+      router.push('/memo')
+    }
+  }
+
+  async function handleSaveAndLeave() {
+    setShowLeaveDialog(false)
     if (newMemoTimerRef.current) {
       clearTimeout(newMemoTimerRef.current)
       newMemoTimerRef.current = null
     }
-    if (hasUnsavedRef.current && editorRef.current) {
+    if (editorRef.current) {
       const json = editorRef.current.getJSON() as Record<string, unknown>
       const text = editorRef.current.getText()
-      if (text.trim() || titleRef.current.trim() || createdIdRef.current) {
-        await saveRef.current(json, text, { skipNavigate: true })
-      }
+      await saveRef.current(json, text, { skipNavigate: true })
     }
-    router.push('/memo')
+    const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
+    setPendingMemoId(null)
+    router.push(dest)
+  }
+
+  function handleSidePanelSelect(id: string) {
+    if (hasUnsavedRef.current) {
+      setPendingMemoId(id)
+      setShowLeaveDialog(true)
+    } else {
+      router.push(`/memo/${id}`)
+    }
+  }
+
+  async function handleToggleStar() {
+    const newVal = !isStarred
+    setIsStarred(newVal)
+    const id = createdIdRef.current
+    if (id) {
+      await supabase.from('memos').update({ is_starred: newVal }).eq('id', id)
+      updateMemo(id, { isStarred: newVal })
+    }
   }
 
   function handleManualSave() {
@@ -310,9 +345,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
         <div className="flex items-center justify-between px-8 py-2 border-b border-gray-100 dark:border-gray-800">
           <button
             onClick={handleBackToList}
-            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1.5 rounded-lg transition-colors"
           >
-            ← 메모 목록
+            <ArrowLeft size={13} />
+            <span>목록</span>
           </button>
           <div className="flex items-center gap-2">
             {/* 저장 상태 표시 */}
@@ -337,6 +373,18 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
               )}
             </div>
 
+            {/* 별표 버튼 */}
+            <button
+              onClick={handleToggleStar}
+              title={isStarred ? '중요 해제' : '중요로 표시'}
+              className="p-1.5 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <Star
+                size={15}
+                className={isStarred ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
+              />
+            </button>
+
             {/* 수동 저장 버튼 */}
             <button
               onClick={handleManualSave}
@@ -348,15 +396,30 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
               <span>저장</span>
             </button>
 
+            {/* 메모 목록 패널 토글 */}
+            <button
+              onClick={() => setShowSidePanel((v) => !v)}
+              title="메모 목록 패널"
+              className={cn(
+                'p-1.5 rounded transition-colors',
+                showSidePanel
+                  ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              )}
+            >
+              <PanelRight size={14} />
+            </button>
+
             {createdId && (
               <button
                 onClick={() => setShowHistory((v) => !v)}
                 title="버전 이력"
-                className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                className={cn(
+                  'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
                   showHistory
                     ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+                )}
               >
                 <History size={13} />
                 <span>이력</span>
@@ -403,6 +466,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
         </div>
       </div>
 
+      {/* 우측 메모 목록 패널 */}
+      {showSidePanel && (
+        <MemoSidePanel
+          currentMemoId={createdId ?? memoId}
+          onSelect={handleSidePanelSelect}
+          onClose={() => setShowSidePanel(false)}
+        />
+      )}
+
       {/* 버전 이력 패널 */}
       {showHistory && createdId && (
         <VersionHistory
@@ -410,6 +482,41 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
           onRestore={handleRestore}
           onClose={() => setShowHistory(false)}
         />
+      )}
+
+      {/* 나가기 확인 다이얼로그 */}
+      {showLeaveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-80">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">저장하지 않은 내용이 있어요</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">저장하고 나가시겠어요?</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleSaveAndLeave}
+                className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                저장하고 나가기
+              </button>
+              <button
+                onClick={() => {
+                  const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
+                  setPendingMemoId(null)
+                  setShowLeaveDialog(false)
+                  router.push(dest)
+                }}
+                className="w-full py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                그냥 나가기
+              </button>
+              <button
+                onClick={() => setShowLeaveDialog(false)}
+                className="w-full py-2 text-sm text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

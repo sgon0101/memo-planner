@@ -9,6 +9,24 @@ import { cn } from '@/lib/utils'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
+function extractFirstImage(content: Record<string, unknown>): string | null {
+  function traverse(node: Record<string, unknown>): string | null {
+    if (node.type === 'image' && typeof node.attrs === 'object') {
+      const src = (node.attrs as Record<string, unknown>)?.src
+      if (typeof src === 'string' && src) return src
+    }
+    const children = node.content as Record<string, unknown>[] | undefined
+    if (children) {
+      for (const child of children) {
+        const found = traverse(child)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  return traverse(content)
+}
+
 interface MemoCardProps {
   memo: Memo
   onPin: (id: string, current: boolean) => void
@@ -85,56 +103,68 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
     )
   }
 
+  const thumbnail = !memo.isLocked ? extractFirstImage(memo.content) : null
+
   return (
     <>
       <div
-        className="group relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 cursor-pointer hover:shadow-md hover:border-violet-200 dark:hover:border-violet-800 transition-all"
+        className="group relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md hover:border-violet-200 dark:hover:border-violet-800 transition-all overflow-hidden"
         onClick={handleClick}
       >
-        {/* 고정 배지 */}
-        {memo.isPinned && (
-          <Pin size={12} className="absolute top-3 right-3 text-violet-500" />
-        )}
-
-        {/* 잠금 상태 */}
-        {memo.isLocked ? (
-          <div className="flex flex-col items-center justify-center py-4 gap-2 text-gray-400">
-            <Lock size={24} className="text-amber-400" />
-            <span className="text-xs">잠긴 메모</span>
+        {/* 이미지 썸네일 */}
+        {thumbnail && (
+          <div className="w-full aspect-video overflow-hidden bg-gray-100 dark:bg-gray-700">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={thumbnail} alt="" className="w-full h-full object-cover" />
           </div>
-        ) : (
-          <>
-            <h3 className={cn(
-              'text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5 truncate',
-              !memo.title && 'text-gray-400 dark:text-gray-500 italic font-normal'
-            )}>
-              {memo.title || '제목 없음'}
-            </h3>
-            {memo.contentText && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">
-                {memo.contentText}
-              </p>
-            )}
-          </>
         )}
 
-        {/* 하단: 날짜 + 뱃지 + 메뉴 */}
-        <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-gray-400">{timeAgo}</span>
-          <div className="flex items-center gap-1.5">
-            {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
-            <CardMenu
-              memo={memo}
-              isTrash={isTrash}
-              onPin={onPin}
-              onStar={onStar}
-              onDelete={onDelete}
-              onRestore={onRestore}
-              onPermanentDelete={onPermanentDelete}
-              onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
-              open={menuOpen}
-              setOpen={setMenuOpen}
-            />
+        <div className="p-4">
+          {/* 고정 배지 */}
+          {memo.isPinned && (
+            <Pin size={12} className="absolute top-3 right-3 text-violet-500" />
+          )}
+
+          {/* 잠금 상태 */}
+          {memo.isLocked ? (
+            <div className="flex flex-col items-center justify-center py-4 gap-2 text-gray-400">
+              <Lock size={24} className="text-amber-400" />
+              <span className="text-xs">잠긴 메모</span>
+            </div>
+          ) : (
+            <>
+              <h3 className={cn(
+                'text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5 truncate',
+                !memo.title && 'text-gray-400 dark:text-gray-500 italic font-normal'
+              )}>
+                {memo.title || '제목 없음'}
+              </h3>
+              {memo.contentText && (
+                <p className={cn('text-xs text-gray-500 dark:text-gray-400 leading-relaxed', thumbnail ? 'line-clamp-2' : 'line-clamp-3')}>
+                  {memo.contentText}
+                </p>
+              )}
+            </>
+          )}
+
+          {/* 하단: 날짜 + 뱃지 + 메뉴 */}
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-xs text-gray-400">{timeAgo}</span>
+            <div className="flex items-center gap-1.5">
+              {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
+              <CardMenu
+                memo={memo}
+                isTrash={isTrash}
+                onPin={onPin}
+                onStar={onStar}
+                onDelete={onDelete}
+                onRestore={onRestore}
+                onPermanentDelete={onPermanentDelete}
+                onLockClick={() => setLockModal(memo.isLocked ? 'unlock' : 'lock')}
+                open={menuOpen}
+                setOpen={setMenuOpen}
+              />
+            </div>
           </div>
         </div>
       </div>

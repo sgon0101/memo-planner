@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
+  Home,
   FileText,
   CalendarDays,
   Sparkles,
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/uiStore'
 
 const NAV_ITEMS = [
+  { href: '/home', label: '홈', icon: Home },
   { href: '/memo', label: '메모장', icon: FileText },
   { href: '/planner', label: '플래너', icon: CalendarDays },
   { href: '/insights', label: 'AI 인사이트', icon: Sparkles },

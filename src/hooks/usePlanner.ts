@@ -88,6 +88,7 @@ export function usePlanner() {
         is_all_day: data.isAllDay ?? true,
         repeat_type: data.repeatType ?? null,
         dday_target: data.ddayTarget ?? null,
+        linked_memo_ids: data.linkedMemoIds ?? [],
       })
       .select()
       .single()
@@ -98,7 +99,7 @@ export function usePlanner() {
   }, [])
 
   const editPlan = useCallback(async (id: string, data: Partial<Plan>) => {
-    await supabase.from('plans').update({
+    const patch: Record<string, unknown> = {
       title: data.title,
       description: data.description,
       color: data.color,
@@ -111,7 +112,9 @@ export function usePlanner() {
       is_completed: data.isCompleted,
       repeat_type: data.repeatType,
       dday_target: data.ddayTarget,
-    }).eq('id', id)
+    }
+    if (data.linkedMemoIds !== undefined) patch.linked_memo_ids = data.linkedMemoIds
+    await supabase.from('plans').update(patch).eq('id', id)
     updatePlan(id, data)
   }, [])
 
