@@ -264,6 +264,13 @@ NEXTAUTH_URL=http://localhost:3000
 
 # 암호화
 ENCRYPTION_SECRET=           # AES-256 키 (32자 이상 랜덤 문자열)
+
+# Cloudflare R2
+CLOUDFLARE_R2_ACCOUNT_ID=
+CLOUDFLARE_R2_ACCESS_KEY_ID=
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=
+CLOUDFLARE_R2_BUCKET_NAME=
+CLOUDFLARE_R2_PUBLIC_URL=
 ```
 
 ---
@@ -498,6 +505,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 3개 기능 추가 #2 | 메모 카드 드래그 앤 드랍 폴더 그룹핑 — HTML5 DnD + 터치 지원, dragStore, FolderPanel 드랍존, ★중요 드랍, 토스트 알림 | 100% |
 | 2026-04-18 | 3개 기능 추가 #3 | 타임라인 뷰 기간 필터링 — CalendarPicker(범위 하이라이트), TimelineFilter(2탭), 월별 칩, 날짜별 2단계 그룹핑 | 100% |
 | 2026-04-18 | 그래프 줌 연동 라벨 | 줌 레벨 연동 노드 라벨 페이드 인/아웃 — getLabelOpacity(lerp), drawRef 패턴, 허브 최소 0.4, 텍스트 외곽선(strokeText), 12자 truncation | 100% |
+| 2026-04-19 | R2 이미지 압축 | Cloudflare R2 연동 + 이미지 자동 압축 — aws-sdk/sharp, WebP(85%)/1920px, /api/upload, 드래그앤드랍/붙여넣기, 압축률 토스트, 설정 스토리지 현황, 마이그레이션 스크립트 | 100% |
 
 ---
 
@@ -506,6 +514,24 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 ```sql
 -- wiki_links 컬럼 추가 (그래프 뷰 필요)
 ALTER TABLE memos ADD COLUMN IF NOT EXISTS wiki_links text[] DEFAULT '{}';
+
+-- 업로드 파일 관리 테이블 (R2 연동)
+CREATE TABLE IF NOT EXISTS uploaded_files (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users NOT NULL,
+  memo_id uuid REFERENCES memos(id) ON DELETE SET NULL,
+  r2_key text NOT NULL,
+  public_url text NOT NULL,
+  file_name text NOT NULL,
+  mime_type text NOT NULL,
+  original_size integer NOT NULL,
+  compressed_size integer NOT NULL,
+  saved_percent integer NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE uploaded_files ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "files: 본인만 접근" ON uploaded_files FOR ALL USING (auth.uid() = user_id);
+CREATE INDEX idx_uploaded_files_user ON uploaded_files(user_id);
 ```
 
 ---
