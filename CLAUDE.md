@@ -494,6 +494,9 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-18 | 11개 기능 2차 #7 | 폴더 정보 표시 + 폴더 이동 — 카드 하단 폴더명/색상, 에디터 폴더 선택 드롭다운, 카드 메뉴 폴더 이동 | 100% |
 | 2026-04-18 | 11개 기능 2차 #10 | 플랜 상세 패널 — PlanDetailPanel 슬라이드 오버레이, 날짜/시간/설명/연결메모/반복 표시, 수정/삭제 버튼 | 100% |
 | 2026-04-18 | 그래프 뷰 완성 | GraphView D3 Canvas + 슬리핑 시뮬, GraphSettings/Tooltip, useGraphData, /api/graph/analyze, /graph 라우팅, Sidebar/MobileNav 메뉴, from=graph 버튼, [[ 위키 자동완성, wiki_links 저장 | 100% |
+| 2026-04-18 | 3개 기능 추가 #1 | 메모 사이드 패널 기본값 열림 — localStorage 저장/복원, 기본값 true | 100% |
+| 2026-04-18 | 3개 기능 추가 #2 | 메모 카드 드래그 앤 드랍 폴더 그룹핑 — HTML5 DnD + 터치 지원, dragStore, FolderPanel 드랍존, ★중요 드랍, 토스트 알림 | 100% |
+| 2026-04-18 | 3개 기능 추가 #3 | 타임라인 뷰 기간 필터링 — CalendarPicker(범위 하이라이트), TimelineFilter(2탭), 월별 칩, 날짜별 2단계 그룹핑 | 100% |
 
 ---
 
