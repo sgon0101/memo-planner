@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
-  isSameMonth, addMonths, subMonths, isSameWeek, addWeeks, subWeeks, addDays, subDays, parseISO,
+  isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
@@ -57,10 +57,7 @@ export default function CalendarView() {
   }
 
   const today = format(new Date(), 'yyyy-MM-dd')
-  const isViewingToday =
-    viewMode === 'month' ? isSameMonth(currentMonth, new Date()) :
-    viewMode === 'week' ? isSameWeek(currentWeek, new Date(), { weekStartsOn: 0 }) :
-    selectedDate === today
+  const isViewingToday = selectedDate === today
 
   function goToToday() {
     const now = new Date()
