@@ -56,11 +56,11 @@ function ToolBtn({
       disabled={disabled}
       title={title}
       className={cn(
-        'flex items-center justify-center w-7 h-7 rounded text-sm transition-colors',
+        'flex items-center justify-center w-8 h-8 rounded-lg text-sm transition-colors duration-150 cursor-pointer',
         active
           ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
-        disabled && 'opacity-30 cursor-not-allowed'
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200',
+        disabled && 'opacity-30 cursor-not-allowed',
       )}
     >
       {children}

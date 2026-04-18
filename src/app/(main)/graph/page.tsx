@@ -1,4 +1,5 @@
-import { Suspense } from 'react'
+'use client'
+
 import dynamic from 'next/dynamic'
 import { GraphSkeleton } from '@/components/ui/Skeleton'
 
@@ -10,9 +11,7 @@ const GraphView = dynamic(() => import('@/components/graph/GraphView'), {
 export default function GraphPage() {
   return (
     <div className="h-full">
-      <Suspense fallback={<GraphSkeleton />}>
-        <GraphView />
-      </Suspense>
+      <GraphView />
     </div>
   )
 }
