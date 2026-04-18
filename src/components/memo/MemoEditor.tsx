@@ -85,7 +85,7 @@ function formatRelativeTime(date: Date): string {
 export default function MemoEditor({ memoId, initialTitle, initialContent, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const supabase = createClient()
-  const { setCurrentMemo, updateMemo } = useMemoStore()
+  const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
 
   const [title, setTitle] = useState(initialTitle)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -103,6 +103,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
   createdIdRef.current = createdId
   const lastVersionSavedAtRef = useRef<number>(0)
   const savedDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const newMemoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { saveVersion } = useVersions(createdId)
   const saveVersionRef = useRef(saveVersion)
@@ -137,6 +138,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
         createdIdRef.current = newMemo.id
         setCreatedId(newMemo.id)
         setCurrentMemo(newMemo)
+        addMemo(newMemo)
         router.replace(`/memo/${newMemo.id}`)
       }
 
@@ -150,7 +152,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
       console.error('저장 실패:', e)
       setSaveStatus('unsaved')
     }
-  }, [supabase, updateMemo, setCurrentMemo, router])
+  }, [supabase, updateMemo, setCurrentMemo, addMemo, router])
 
   const saveRef = useRef(save)
   saveRef.current = save
@@ -188,6 +190,17 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
       const text = editor.getText()
       setCharCount(text.replace(/\s/g, '').length)
       setTaskStats(getTaskStats(editor.getJSON() as Record<string, unknown>))
+
+      // 신규 메모: 2초 debounce로 즉시 DB 레코드 생성
+      if (!createdIdRef.current) {
+        if (newMemoTimerRef.current) clearTimeout(newMemoTimerRef.current)
+        newMemoTimerRef.current = setTimeout(() => {
+          if (!editorRef.current || createdIdRef.current) return
+          const json = editorRef.current.getJSON() as Record<string, unknown>
+          const t = editorRef.current.getText()
+          saveRef.current(json, t)
+        }, 2000)
+      }
     },
     onCreate({ editor }) {
       const text = editor.getText()
@@ -243,6 +256,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, isNew
   useEffect(() => {
     return () => {
       if (savedDisplayTimerRef.current) clearTimeout(savedDisplayTimerRef.current)
+      if (newMemoTimerRef.current) clearTimeout(newMemoTimerRef.current)
     }
   }, [])
 
