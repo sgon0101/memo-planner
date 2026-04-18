@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { format, addDays, isSameDay } from 'date-fns'
-import { ko } from 'date-fns/locale'
+import { format, addDays } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
 

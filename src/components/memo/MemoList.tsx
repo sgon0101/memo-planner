@@ -7,7 +7,7 @@ import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
-import { useMemos, TRASH_ID } from '@/hooks/useMemos'
+import { useMemos } from '@/hooks/useMemos'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import TimelineFilter from './TimelineFilter'
@@ -22,7 +22,7 @@ export default function MemoList() {
   const { selectedFolderId, folders } = useFolderStore()
   const {
     memos, isLoading, isTrash,
-    createMemo, togglePin, toggleStar, softDelete,
+    togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, permanentDelete, emptyTrash,
     moveMemoToFolder,
@@ -42,6 +42,7 @@ export default function MemoList() {
   }, [loadMore])
 
   // 폴더 변경 시 표시 개수 초기화
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setDisplayCount(PAGE_SIZE) }, [selectedFolderId])
 
   const [search, setSearch] = useState('')

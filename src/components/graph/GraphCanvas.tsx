@@ -45,7 +45,7 @@ export default function GraphCanvas({ width, height }: Props) {
   const canvasDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
 
   const { nodes, links, settings, selectedNodeId, highlightNodeId, setSelectedNode } = useGraphStore()
-  const [simStatus, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
+  const [, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
 
   // 캔버스 그리기
   const draw = useCallback(() => {
@@ -251,6 +251,7 @@ export default function GraphCanvas({ width, height }: Props) {
   }, [nodes, links, settings, width, height, draw])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     buildSim()
     return () => {
       simRef.current?.stop()

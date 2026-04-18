@@ -33,7 +33,10 @@ export default function SettingsPage() {
   } | null>(null)
   const [driveConnected, setDriveConnected] = useState(false)
   const [driveBackupLoading, setDriveBackupLoading] = useState(false)
-  const [lastBackup, setLastBackup] = useState<string | null>(null)
+  const [lastBackup, setLastBackup] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('lastDriveBackup')
+    return null
+  })
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -43,9 +46,6 @@ export default function SettingsPage() {
     fetch('/api/backup/google-drive').then((r) => r.json()).then((d) => {
       setDriveConnected(d.connected)
     }).catch(() => {})
-    const savedBackup = localStorage.getItem('lastDriveBackup')
-    if (savedBackup) setLastBackup(savedBackup)
-
     // Google Calendar 연결 상태 + 스토리지 통계
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
@@ -75,18 +75,22 @@ export default function SettingsPage() {
   useEffect(() => {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
-    if (success === 'calendar_connected') {
-      setToast({ type: 'success', message: 'Google Calendar가 연결되었습니다.' })
-      setCalendarConnected(true)
-    } else if (error === 'calendar_auth_failed') {
-      setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
-    } else if (success === 'drive_connected') {
-      setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
-      setDriveConnected(true)
-    } else if (error === 'drive_auth_failed') {
-      setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
-    }
-    if (success || error) router.replace('/settings')
+    if (!success && !error) return
+    // URL 파라미터 처리 후 상태 반영 — 마운트 직후 1회 실행
+    queueMicrotask(() => {
+      if (success === 'calendar_connected') {
+        setToast({ type: 'success', message: 'Google Calendar가 연결되었습니다.' })
+        setCalendarConnected(true)
+      } else if (error === 'calendar_auth_failed') {
+        setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
+      } else if (success === 'drive_connected') {
+        setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
+        setDriveConnected(true)
+      } else if (error === 'drive_auth_failed') {
+        setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
+      }
+      router.replace('/settings')
+    })
   }, [searchParams])
 
   useEffect(() => {

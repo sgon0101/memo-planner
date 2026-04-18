@@ -14,11 +14,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings': '설정',
 }
 
-interface HeaderProps {
-  userEmail: string
-}
-
-export default function Header({ userEmail: _userEmail }: HeaderProps) {
+export default function Header() {
   const pathname = usePathname()
   const router = useRouter()
   const { darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useUIStore()

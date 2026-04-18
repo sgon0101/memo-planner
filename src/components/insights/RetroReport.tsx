@@ -100,7 +100,7 @@ export default function RetroReport() {
 
           {/* 헤드라인 */}
           <div className="p-4 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20 rounded-xl">
-            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">"{report.headline}"</p>
+            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">&quot;{report.headline}&quot;</p>
           </div>
 
           {/* 성취 */}

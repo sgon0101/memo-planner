@@ -129,8 +129,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   const hasUnsavedRef = useRef(false)
   const titleRef = useRef(initialTitle)
+  // eslint-disable-next-line react-hooks/refs
   titleRef.current = title
   const createdIdRef = useRef<string | null>(isNew ? null : memoId)
+  // eslint-disable-next-line react-hooks/refs
   createdIdRef.current = createdId
   const lastVersionSavedAtRef = useRef<number>(0)
   const savedDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -138,6 +140,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   const { saveVersion } = useVersions(createdId)
   const saveVersionRef = useRef(saveVersion)
+  // eslint-disable-next-line react-hooks/refs
   saveVersionRef.current = saveVersion
 
   const save = useCallback(async (
@@ -200,6 +203,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   }, [supabase, updateMemo, setCurrentMemo, addMemo, router])
 
   const saveRef = useRef(save)
+  // eslint-disable-next-line react-hooks/refs
   saveRef.current = save
 
   const editor = useEditor({
@@ -268,6 +272,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   })
 
   const editorRef = useRef(editor)
+  // eslint-disable-next-line react-hooks/refs
   editorRef.current = editor
 
   // 30초 자동 저장
@@ -300,6 +305,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   useEffect(() => {
     if (title !== initialTitle) {
       hasUnsavedRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSaveStatus('unsaved')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

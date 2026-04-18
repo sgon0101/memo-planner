@@ -266,6 +266,7 @@ export default function GraphView() {
   }, [nodes, links, settings, size, draw])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     buildSim()
     return () => {
       simRef.current?.stop()

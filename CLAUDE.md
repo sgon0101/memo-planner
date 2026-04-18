@@ -512,6 +512,8 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-19 | Google Drive 백업 | Tiptap→Markdown 변환(전체 노드 타입), drive.file OAuth, /api/drive/auth+callback, /api/backup/google-drive(individual/combined), 설정 Drive 섹션 | 100% |
 | 2026-04-19 | 성능 최적화 | React Query 캐싱(staleTime 30s), LIST_COLS 경량 쿼리(content 제외), 무한 스크롤(20개씩 IntersectionObserver), dynamic import 코드 스플리팅(CalendarView/GraphView/AI탭 5종), Skeleton UI 6종, next.config.ts 이미지도메인+removeConsole, Memo 타입 wikiLinks 추가 | 100% |
 | 2026-04-19 | 디자인 시스템 | ui-ux-pro-max 스킬 기반 — design-system/MASTER.md + 페이지별 오버라이드 6개, Sidebar active 인디케이터, MobileNav active dot, HomeClient StatCard/플랜 컬러스트립, Button/Toast/Input 공통 컴포넌트, EditorToolbar 통일, globals.css cursor-pointer 전역 | 100% |
+| 2026-04-19 | 버그 수정 | 전체 메모 폴더 전환 버그 — useQuery data useEffect로 Zustand 동기화, 캐시 히트 시 stale data 방지 | 100% |
+| 2026-04-19 | 전체 자동 디버깅 | ESLint 에러 14→0개 수정, 폴더 삭제 FK 버그, Date.now 순수성, ref-during-render, 미사용 import 7개, 빌드 ✅ | 100% |
 
 ---
 

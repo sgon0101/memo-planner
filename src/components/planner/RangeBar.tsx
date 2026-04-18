@@ -11,8 +11,6 @@ interface RangeBarProps {
 
 export default function RangeBar({ plan, startCol, endCol, slot, onClick }: RangeBarProps) {
   const span = endCol - startCol + 1
-  const isStart = plan.startDate ? true : false
-
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onClick?.() }}

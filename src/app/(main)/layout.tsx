@@ -23,7 +23,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <SidebarSpacer />
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <Header userEmail={userEmail} />
+          <Header />
           <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
             {children}
           </main>
