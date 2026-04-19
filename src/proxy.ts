@@ -1,15 +1,24 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const SKIP_PATHS = [
+  '/manifest.json',
+  '/robots.txt',
+  '/sitemap.xml',
+  '/favicon.ico',
+  '/icons/',
+  '/images/',
+  '/api/drive',
+  '/api/calendar',
+  '/api/cron',
+  '/auth',
+  '/_next',
+]
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (
-    pathname.startsWith('/api/drive') ||
-    pathname.startsWith('/api/calendar') ||
-    pathname.startsWith('/api/cron') ||
-    pathname.startsWith('/auth')
-  ) {
+  if (SKIP_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()
   }
 
@@ -51,6 +60,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/drive|api/calendar|api/cron|auth).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|icons|images|robots.txt|sitemap.xml|api/drive|api/calendar|api/cron|auth).*)',
   ],
 }
