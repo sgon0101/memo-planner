@@ -39,8 +39,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [isRange, setIsRange]         = useState(!!(plan?.startDate))
   const [startDate, setStartDate]     = useState(plan?.startDate ?? date)
   const [endDate, setEndDate]         = useState(plan?.endDate ?? date)
-  const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '')
-  const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? '')
+  const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '09:00')
+  const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? '10:00')
   const [isAllDay, setIsAllDay]       = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
   const [repeatType, setRepeatType]   = useState<'daily' | 'weekly' | 'monthly' | null>(plan?.repeatType ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
@@ -88,9 +88,28 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     )
   }
 
+  function calcDuration(s: string, e: string): string {
+    const [sh, sm] = s.split(':').map(Number)
+    const [eh, em] = e.split(':').map(Number)
+    const diff = (eh * 60 + em) - (sh * 60 + sm)
+    if (diff <= 0) return ''
+    const h = Math.floor(diff / 60), m = diff % 60
+    if (m === 0) return `${h}시간`
+    if (h === 0) return `${m}분`
+    return `${h}시간 ${m}분`
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) { setError('제목을 입력하세요.'); return }
+    if (!isAllDay) {
+      const [sh, sm] = startTime.split(':').map(Number)
+      const [eh, em] = endTime.split(':').map(Number)
+      if (eh * 60 + em <= sh * 60 + sm) {
+        setError('종료 시간은 시작 시간보다 늦어야 해요.')
+        return
+      }
+    }
     setLoading(true)
     try {
       const data: Partial<Plan> = {
@@ -204,10 +223,27 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               <input type="checkbox" checked={isRange} onChange={(e) => setIsRange(e.target.checked)} className="accent-violet-600" />
               범위 플랜
             </label>
-            <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
-              <input type="checkbox" checked={isAllDay} onChange={(e) => setIsAllDay(e.target.checked)} className="accent-violet-600" />
+            {/* 종일 토글 */}
+            <button
+              type="button"
+              onClick={() => setIsAllDay((v) => !v)}
+              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+            >
+              <span
+                className={cn(
+                  'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
+                  isAllDay ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute h-3 w-3 rounded-full bg-white shadow transition-transform',
+                    isAllDay ? 'translate-x-3.5' : 'translate-x-0.5'
+                  )}
+                />
+              </span>
               종일
-            </label>
+            </button>
           </div>
 
           {/* 날짜 */}
@@ -234,9 +270,14 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
 
           {/* 시간 */}
           {!isAllDay && (
-            <div className="grid grid-cols-2 gap-2">
-              <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
-              <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} />
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
+                <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} />
+              </div>
+              {calcDuration(startTime, endTime) && (
+                <p className="text-xs text-violet-500">소요 시간: {calcDuration(startTime, endTime)}</p>
+              )}
             </div>
           )}
 

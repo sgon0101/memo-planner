@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
@@ -29,6 +29,7 @@ export default function CalendarView() {
     currentWeek, setCurrentWeek,
     viewMode, setViewMode,
     recurringCompletions,
+    setExpandedPlans,
   } = usePlannerStore()
 
   const { load } = usePlanner()
@@ -46,6 +47,9 @@ export default function CalendarView() {
 
     return expandRecurringPlans(plans, viewStart, viewEnd, recurringCompletions)
   }, [plans, recurringCompletions, currentMonth, currentWeek, selectedDate])
+
+  // store 동기화 — PlanPanel이 store에서 expandedPlans를 읽으므로 항상 최신값 유지
+  useEffect(() => { setExpandedPlans(expandedPlans) }, [expandedPlans])
 
   const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string }>({
     open: false, date: '',
