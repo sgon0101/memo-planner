@@ -3,8 +3,55 @@ import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilename } from '@/lib/export/toMarkdown'
 
-// 미설정 시 My Drive 루트에 업로드
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_BACKUP_FOLDER_ID || undefined
+
+// Tiptap JSON에서 이미지 URL 추출
+function extractImageUrls(content: Record<string, unknown>): string[] {
+  const urls: string[] = []
+  function traverse(node: Record<string, unknown>) {
+    if (node.type === 'image' && typeof node.attrs === 'object') {
+      const src = (node.attrs as Record<string, unknown>)?.src
+      if (typeof src === 'string' && src) urls.push(src)
+    }
+    const children = node.content as Record<string, unknown>[] | undefined
+    if (children) children.forEach(traverse)
+  }
+  traverse(content)
+  return urls
+}
+
+function getImageFileName(url: string, dateStr: string): string {
+  const parts = url.split('/')
+  const original = parts[parts.length - 1].split('?')[0]
+  return `${dateStr}_${original}`
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function uploadImageToDrive(drive: any, imageUrl: string, fileName: string, imagesFolderId: string): Promise<void> {
+  try {
+    const res = await fetch(imageUrl)
+    if (!res.ok) return
+    const buffer = await res.arrayBuffer()
+    const { Readable } = await import('stream')
+    const stream = Readable.from(Buffer.from(buffer))
+    const mimeType = res.headers.get('content-type') || 'image/webp'
+
+    // 중복 방지
+    const existing = await drive.files.list({
+      q: `name='${fileName}' and '${imagesFolderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+    })
+    if (existing.data.files?.length > 0) return
+
+    await drive.files.create({
+      requestBody: { name: fileName, parents: [imagesFolderId], mimeType },
+      media: { mimeType, body: stream },
+    })
+  } catch (err) {
+    console.error(`[backup] 이미지 업로드 실패: ${fileName}`, err)
+    // 이미지 실패해도 전체 백업 계속 진행
+  }
+}
 
 // POST /api/backup/google-drive
 // body: { mode: 'individual' | 'combined' }
@@ -14,7 +61,6 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
 
-    // Drive 연결 확인
     const { data: integration } = await supabase
       .from('user_integrations')
       .select('access_token, refresh_token')
@@ -27,14 +73,9 @@ export async function POST(req: NextRequest) {
     }
 
     let body: { mode?: string } = {}
-    try {
-      body = await req.json()
-    } catch {
-      // body 없으면 기본값 사용
-    }
+    try { body = await req.json() } catch { /* body 없으면 기본값 */ }
     const mode = body.mode === 'combined' ? 'combined' : 'individual'
 
-    // 메모 + 폴더 조회
     const [{ data: memos }, { data: folders }] = await Promise.all([
       supabase
         .from('memos')
@@ -46,7 +87,7 @@ export async function POST(req: NextRequest) {
     ])
 
     if (!memos?.length) {
-      return NextResponse.json({ message: '백업할 메모가 없습니다.', count: 0 })
+      return NextResponse.json({ message: '백업할 메모가 없습니다.', count: 0, imageCount: 0 })
     }
 
     const folderMap = new Map((folders ?? []).map((f) => [f.id, f.name as string]))
@@ -81,11 +122,12 @@ export async function POST(req: NextRequest) {
       const content = lines.join('\n')
       const fileName = `${backupFolderName}_전체백업.md`
       await uploadDriveFile(drive, fileName, content, ROOT_FOLDER_ID)
-      return NextResponse.json({ message: '단일 파일 백업 완료', count: memos.length, fileName })
+      return NextResponse.json({ message: '단일 파일 백업 완료', count: memos.length, imageCount: 0, fileName })
     }
 
-    // 개별 파일 백업: 폴더 구조 유지
+    // 개별 파일 백업: 폴더 구조 + images/ 폴더
     const rootId = await createDriveFolder(drive, backupFolderName, ROOT_FOLDER_ID)
+    const imagesFolderId = await createDriveFolder(drive, 'images', rootId)
 
     const groupMap = new Map<string | null, typeof memos>()
     for (const memo of memos) {
@@ -95,6 +137,7 @@ export async function POST(req: NextRequest) {
     }
 
     let uploadedCount = 0
+    let imageCount = 0
 
     for (const [folderId, group] of groupMap.entries()) {
       let parentId = rootId
@@ -120,12 +163,21 @@ export async function POST(req: NextRequest) {
         const fileName = safeFilename(memo.title, memo.created_at)
         await uploadDriveFile(drive, fileName, md, parentId)
         uploadedCount++
+
+        // 이미지 업로드
+        const imageUrls = extractImageUrls((memo.content as Record<string, unknown>) ?? {})
+        for (const url of imageUrls) {
+          const imgFileName = getImageFileName(url, dateStr)
+          await uploadImageToDrive(drive, url, imgFileName, imagesFolderId)
+          imageCount++
+        }
       }
     }
 
     return NextResponse.json({
       message: '개별 파일 백업 완료',
       count: uploadedCount,
+      imageCount,
       folderName: backupFolderName,
     })
 
