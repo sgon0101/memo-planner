@@ -1,22 +1,15 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// 인증 검사 없이 완전히 통과시킬 경로
-const BYPASS_PATHS = [
-  '/api/drive/auth',
-  '/api/drive/callback',
-  '/api/calendar/auth',
-  '/api/calendar/callback',
-  '/api/cron',
-  '/auth/callback',
-  '/auth/confirm',
-]
-
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // BYPASS_PATHS — 함수 최상단에서 즉시 통과
-  if (BYPASS_PATHS.some((p) => pathname.startsWith(p))) {
+  if (
+    pathname.startsWith('/api/drive') ||
+    pathname.startsWith('/api/calendar') ||
+    pathname.startsWith('/api/cron') ||
+    pathname.startsWith('/auth')
+  ) {
     return NextResponse.next()
   }
 
@@ -56,9 +49,8 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse
 }
 
-// matcher에서 /api/ 전체 제외 — 이중 안전망
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/|auth/callback|auth/confirm|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/drive|api/calendar|api/cron|auth).*)',
   ],
 }
