@@ -10,6 +10,7 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import Highlight from '@tiptap/extension-highlight'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
+import { ResizableImageView } from './ResizableImageView'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -26,6 +27,7 @@ import VersionHistory from './VersionHistory'
 import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
 import WikiSuggest from './WikiSuggest'
+import TagSuggest from './TagSuggest'
 import type { Memo, MemoVersion } from '@/types'
 
 const lowlight = createLowlight(common)
@@ -124,10 +126,14 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [pendingMemoId, setPendingMemoId] = useState<string | null>(null)
   const [wikiQuery, setWikiQuery] = useState<string | null>(null)
   const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
+  const [tagQuery, setTagQuery] = useState<string | null>(null)
+  const [tagPos, setTagPos] = useState({ x: 0, y: 0 })
   const [uploadToast, setUploadToast] = useState<string | null>(null)
   const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const hasUnsavedRef = useRef(false)
+  const folderIdRef = useRef<string | null>(initialFolderId ?? null)
+  folderIdRef.current = folderId
   const titleRef = useRef(initialTitle)
   // eslint-disable-next-line react-hooks/refs
   titleRef.current = title
@@ -176,6 +182,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             title: titleRef.current,
             content,
             content_text: text,
+            folder_id: folderIdRef.current,
           })
           .select()
           .single()
@@ -214,7 +221,21 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       Color,
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
-      Image,
+      Image.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            width: {
+              default: null,
+              renderHTML: (attrs) => (attrs.width ? { width: attrs.width } : {}),
+              parseHTML: (el) => el.getAttribute('width'),
+            },
+          }
+        },
+        addNodeView() {
+          return ReactNodeViewRenderer(ResizableImageView)
+        },
+      }),
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -240,17 +261,25 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       setCharCount(text.replace(/\s/g, '').length)
       setTaskStats(getTaskStats(editor.getJSON() as Record<string, unknown>))
 
-      // wiki [[ 자동완성 감지
+      // 자동완성 감지 ([[위키]] / #태그)
       const { state, view } = editor
       const { from } = state.selection
       const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
       const wikiMatch = textBefore.match(/\[\[([^\]]*)$/)
+      const tagMatch = !wikiMatch && textBefore.match(/#(\w*)$/)
       if (wikiMatch) {
         const coords = view.coordsAtPos(from)
         setWikiQuery(wikiMatch[1])
         setWikiPos({ x: coords.left, y: coords.bottom })
+        setTagQuery(null)
+      } else if (tagMatch) {
+        const coords = view.coordsAtPos(from)
+        setTagQuery(tagMatch[1])
+        setTagPos({ x: coords.left, y: coords.bottom })
+        setWikiQuery(null)
       } else {
         setWikiQuery(null)
+        setTagQuery(null)
       }
 
       // 신규 메모: 2초 debounce로 즉시 DB 레코드 생성
@@ -366,6 +395,23 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   function handleBackToGraph() {
     const id = createdIdRef.current ?? memoId
     router.push(id ? `/graph?highlight=${id}` : '/graph')
+  }
+
+  function handleTagSelect(tag: string) {
+    if (!editor) return
+    const { state } = editor
+    const { from } = state.selection
+    const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
+    const tagMatch = textBefore.match(/#(\w*)$/)
+    if (!tagMatch) { setTagQuery(null); return }
+    const startPos = from - tagMatch[0].length
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from: startPos, to: from })
+      .insertContent(`#${tag}`)
+      .run()
+    setTagQuery(null)
   }
 
   function handleWikiSelect(title: string) {
@@ -696,6 +742,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           query={wikiQuery}
           position={wikiPos}
           onSelect={handleWikiSelect}
+        />
+      )}
+
+      {/* 태그 자동완성 */}
+      {tagQuery !== null && (
+        <TagSuggest
+          query={tagQuery}
+          position={tagPos}
+          onSelect={handleTagSelect}
         />
       )}
 

@@ -190,7 +190,7 @@ export default function MemoList() {
           </button>
         ) : (
           <button
-            onClick={() => router.push('/memo/new')}
+            onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
           >
             <Plus size={13} /> 새 메모
@@ -298,7 +298,7 @@ export default function MemoList() {
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
             <p className="text-sm">{isTrash ? '휴지통이 비어 있습니다' : '메모가 없습니다'}</p>
             {!isTrash && (
-              <button onClick={() => router.push('/memo/new')} className="text-xs text-violet-500 hover:text-violet-700 underline">
+              <button onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')} className="text-xs text-violet-500 hover:text-violet-700 underline">
                 첫 메모 만들기
               </button>
             )}
