@@ -5,10 +5,12 @@ import MemoEditor from '@/components/memo/MemoEditor'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ folder?: string }>
 }
 
-export default async function MemoEditorPage({ params }: Props) {
+export default async function MemoEditorPage({ params, searchParams }: Props) {
   const { id } = await params
+  const { folder } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -21,6 +23,7 @@ export default async function MemoEditorPage({ params }: Props) {
           memoId="new"
           initialTitle=""
           initialContent={{}}
+          initialFolderId={folder ?? null}
           isNew
         />
       </Suspense>

@@ -3,7 +3,8 @@
 import { useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
-import type { Memo } from '@/types'
+import { useFolderStore } from '@/store/folderStore'
+import type { Memo, Folder } from '@/types'
 
 function toMemoNode(m: Memo & { created_at?: string }, linkCount: number): GraphNode {
   return {
@@ -17,13 +18,34 @@ function toMemoNode(m: Memo & { created_at?: string }, linkCount: number): Graph
   }
 }
 
+function toFolder(row: Record<string, unknown>): Folder {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    name: row.name as string,
+    colorH: (row.color_h as number) ?? 260,
+    colorS: (row.color_s as number) ?? 60,
+    colorL: (row.color_l as number) ?? 80,
+    parentId: (row.parent_id as string) ?? null,
+    orderIndex: (row.order_index as number) ?? 0,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  }
+}
+
 export function useGraphData() {
   const { settings, setNodes, setLinks } = useGraphStore()
+  const { setFolders } = useFolderStore()
   const supabase = createClient()
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
+    // 폴더 목록 로드 (GraphSettings 드롭다운용)
+    supabase.from('folders').select('*').eq('user_id', user.id).order('order_index').then(({ data }) => {
+      if (data) setFolders(data.map(toFolder))
+    })
 
     let query = supabase
       .from('memos')
