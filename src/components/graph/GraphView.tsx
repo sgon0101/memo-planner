@@ -3,7 +3,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import * as d3 from 'd3'
-import { Search, Settings, RefreshCw, Network } from 'lucide-react'
+import { Search, Settings, RefreshCw, Network, X } from 'lucide-react'
+import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useGraphData } from '@/hooks/useGraphData'
@@ -68,6 +69,10 @@ export default function GraphView() {
   const [showSettings, setShowSettings] = useState(true)
   const [search, setSearch] = useState('')
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; type: 'memo' | 'wiki' | 'tag'; linkCount: number } | null>(null)
+  const [selectedTagPanel, setSelectedTagPanel] = useState<{
+    tag: string
+    memos: Array<{ id: string; label: string; createdAt?: string }>
+  } | null>(null)
 
   // 캔버스 크기 추적
   useEffect(() => {
@@ -100,6 +105,21 @@ export default function GraphView() {
     const base = settings.nodeSize
     const lw = settings.linkWidth
 
+    // 태그 필터 하이라이트 집합
+    let tagMatchIds: Set<string> | null = null
+    if (settings.tagFilter.trim()) {
+      const q = settings.tagFilter.replace(/^#/, '').toLowerCase().trim()
+      tagMatchIds = new Set<string>()
+      for (const l of simLinks) {
+        const src = l.source as GraphNode
+        const tgt = l.target as GraphNode
+        if (tgt.type === 'tag' && tgt.label.replace(/^#/, '').toLowerCase().includes(q)) {
+          tagMatchIds.add(src.id)
+          tagMatchIds.add(tgt.id)
+        }
+      }
+    }
+
     // 선택 연결 집합
     const connectedSet = new Set<string>()
     if (selectedNodeId) {
@@ -118,7 +138,8 @@ export default function GraphView() {
       if (src.x == null || tgt.x == null) continue
       const sid = src.id, tid = tgt.id
       const hi = selectedNodeId && (sid === selectedNodeId || tid === selectedNodeId || connectedSet.has(sid) || connectedSet.has(tid))
-      const op = selectedNodeId ? (hi ? 0.9 : 0.06) : 0.5
+      const tagLinkDim = tagMatchIds !== null && !(tagMatchIds.has(sid) && tagMatchIds.has(tid))
+      const op = tagLinkDim ? 0.03 : selectedNodeId ? (hi ? 0.9 : 0.06) : 0.5
       ctx.lineWidth = lw
 
       if (l.type === 'wiki') {
@@ -156,7 +177,8 @@ export default function GraphView() {
       if (n.x == null) continue
       const r = nodeRadius(n, base)
       const isSelected = n.id === selectedNodeId
-      const opac = selectedNodeId ? (isSelected || connectedSet.has(n.id) ? 1 : 0.18) : 1
+      const tagNodeDim = tagMatchIds !== null && !tagMatchIds.has(n.id)
+      const opac = tagNodeDim ? 0.1 : selectedNodeId ? (isSelected || connectedSet.has(n.id) ? 1 : 0.18) : 1
       ctx.globalAlpha = opac
 
       ctx.beginPath(); ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2)
@@ -390,10 +412,23 @@ export default function GraphView() {
       if (n) {
         setSelectedNode(n.id === selectedNodeId ? null : n.id)
         if (n.type === 'memo') {
+          setSelectedTagPanel(null)
           router.push(`/memo/${n.id}?from=graph`)
+        } else if (n.type === 'tag') {
+          const tagNodeId = n.id
+          const sNodes = simRef.current?.nodes() ?? []
+          const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
+          const tagMemos = sNodes.filter((node) =>
+            node.type === 'memo' &&
+            sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
+          )
+          setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
+        } else {
+          setSelectedTagPanel(null)
         }
       } else {
         setSelectedNode(null)
+        setSelectedTagPanel(null)
       }
     }
 
@@ -471,6 +506,42 @@ export default function GraphView() {
 
       {/* 메인 영역 */}
       <div className="flex flex-1 min-h-0">
+        {/* 태그 패널 */}
+        {selectedTagPanel && (
+          <div className="w-64 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden animate-slide-in-left">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+              <div className="min-w-0">
+                <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 truncate block">#{selectedTagPanel.tag}</span>
+                <span className="text-xs text-gray-400">{selectedTagPanel.memos.length}개의 메모</span>
+              </div>
+              <button
+                onClick={() => setSelectedTagPanel(null)}
+                className="ml-2 flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-1">
+              {selectedTagPanel.memos.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">메모가 없습니다</p>
+              ) : (
+                selectedTagPanel.memos.map((memo) => (
+                  <button
+                    key={memo.id}
+                    onClick={() => router.push(`/memo/${memo.id}?from=graph`)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-b border-gray-50 dark:border-gray-800/50 last:border-0"
+                  >
+                    <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{memo.label}</p>
+                    {memo.createdAt && (
+                      <p className="text-xs text-gray-400 mt-0.5">{format(new Date(memo.createdAt), 'yyyy.MM.dd')}</p>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 캔버스 */}
         <div ref={containerRef} className="flex-1 relative overflow-hidden">
           <canvas

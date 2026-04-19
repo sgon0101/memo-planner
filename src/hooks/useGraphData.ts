@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import type { Memo } from '@/types'
 
-function toMemoNode(m: Memo, linkCount: number): GraphNode {
+function toMemoNode(m: Memo & { created_at?: string }, linkCount: number): GraphNode {
   return {
     id: m.id,
     type: 'memo',
@@ -13,6 +13,7 @@ function toMemoNode(m: Memo, linkCount: number): GraphNode {
     linkCount,
     isStarred: m.isStarred,
     folderId: m.folderId,
+    createdAt: m.createdAt ?? (m as unknown as Record<string, string>).created_at,
   }
 }
 
@@ -26,7 +27,7 @@ export function useGraphData() {
 
     let query = supabase
       .from('memos')
-      .select('id, title, content_text, tags, wiki_links, is_starred, is_pinned, folder_id')
+      .select('id, title, content_text, tags, wiki_links, is_starred, is_pinned, folder_id, created_at')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
 
@@ -37,18 +38,13 @@ export function useGraphData() {
     const { data: memos } = await query
     if (!memos) return
 
-    // 태그 필터
-    const filteredMemos = settings.tagFilter.trim()
-      ? memos.filter((m) => (m.tags ?? []).some((t: string) => t.includes(settings.tagFilter.trim())))
-      : memos
-
     const nodes: GraphNode[] = []
     const links: GraphLink[] = []
     const wikiMap = new Map<string, string>() // keyword → nodeId
     const tagMap = new Map<string, string>()   // tag → nodeId
 
     // 1단계: 위키/태그 허브 노드 수집
-    for (const m of filteredMemos) {
+    for (const m of memos) {
       if (settings.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
           if (!wikiMap.has(kw)) {
@@ -69,7 +65,7 @@ export function useGraphData() {
 
     // 2단계: 링크 생성 (위키 + 태그)
     const memoLinkCounts = new Map<string, number>()
-    for (const m of filteredMemos) {
+    for (const m of memos) {
       let count = 0
       if (settings.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
@@ -97,8 +93,8 @@ export function useGraphData() {
         const { links: simLinks } = await res.json()
         for (const sl of simLinks) {
           if (
-            filteredMemos.some((m) => m.id === sl.source) &&
-            filteredMemos.some((m) => m.id === sl.target)
+            memos.some((m) => m.id === sl.source) &&
+            memos.some((m) => m.id === sl.target)
           ) {
             links.push({ source: sl.source, target: sl.target, type: 'similarity' })
             memoLinkCounts.set(sl.source, (memoLinkCounts.get(sl.source) ?? 0) + 1)
@@ -109,7 +105,7 @@ export function useGraphData() {
     } catch { /* 분석 실패 시 무시 */ }
 
     // 4단계: 메모 노드 생성 (고립 필터)
-    for (const m of filteredMemos) {
+    for (const m of memos) {
       const lc = memoLinkCounts.get(m.id) ?? 0
       if (!settings.showIsolated && lc === 0) continue
       nodes.push(toMemoNode(m as unknown as Memo & { wiki_links: string[] }, lc))
@@ -119,7 +115,7 @@ export function useGraphData() {
     if (settings.showWiki) {
       for (const [kw, nid] of wikiMap) {
         const lc = links.filter((l) => l.target === nid).length
-        nodes.push({ id: nid, type: 'wiki', label: `[[${kw}]]`, linkCount: lc })
+        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: lc })
       }
     }
     if (settings.showTag) {
@@ -145,7 +141,7 @@ export function useGraphData() {
       setNodes(nodes)
       setLinks(links)
     }
-  }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.folderFilter, settings.tagFilter])
+  }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.folderFilter])
 
   useEffect(() => { load() }, [load])
 

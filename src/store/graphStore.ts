@@ -14,6 +14,7 @@ export interface GraphNode {
   // memo fields
   isStarred?: boolean
   folderId?: string | null
+  createdAt?: string
   // computed
   linkCount: number
 }
