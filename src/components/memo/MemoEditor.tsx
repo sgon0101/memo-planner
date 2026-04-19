@@ -377,8 +377,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       if (!res.ok) throw new Error('업로드 실패')
       const { url, savedPercent, originalSize, compressedSize } = await res.json()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      editor.chain().focus().setImage({ src: url, width: '50%' } as any).run()
+      editor.chain().focus().insertContent({ type: 'image', attrs: { src: url, width: '50%' } }).run()
       const orig = (originalSize / 1024 / 1024).toFixed(1)
       const comp = (compressedSize / 1024 / 1024).toFixed(1)
       if (savedPercent > 0) {
@@ -389,8 +388,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     } catch {
       // 폴백: base64 삽입
       const reader = new FileReader()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      reader.onload = () => { editor.chain().focus().setImage({ src: reader.result as string, width: '50%' } as any).run() }
+      reader.onload = () => { editor.chain().focus().insertContent({ type: 'image', attrs: { src: reader.result as string, width: '50%' } }).run() }
       reader.readAsDataURL(file)
     }
   }
