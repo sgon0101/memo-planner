@@ -11,6 +11,11 @@ import { useGraphData } from '@/hooks/useGraphData'
 import GraphSettings from './GraphSettings'
 import GraphTooltip from './GraphTooltip'
 
+// 슬라이더 1~10 → D3 force 파라미터 변환
+const toStrength = (v: number) => v * 0.1          // 0.1 – 1.0
+const toCharge   = (v: number) => -(v * 30)        // -30 – -300
+const toDistance = (v: number) => v * 20           // 20 – 200 px
+
 // 노드 색상 계산
 function nodeColor(n: GraphNode): string {
   if (n.type === 'wiki') return '#1D9E75'
@@ -23,14 +28,15 @@ function nodeColor(n: GraphNode): string {
   return '#534AB7'
 }
 
-function nodeRadius(n: GraphNode, base: number): number {
+function nodeRadius(n: GraphNode, nodeSize: number): number {
+  const base = 3 + nodeSize * 1.5  // 1-10 → 4.5-18px
   if (n.type === 'wiki' || n.type === 'tag') {
     return base * 0.7 + Math.min(n.linkCount, 10) * 0.8
   }
   const c = n.linkCount
-  if (c === 0)  return base * 0.6
-  if (c <= 2) return base * 0.85
-  if (c <= 4) return base * 1.0
+  if (c === 0) return base * 0.6
+  if (c <= 2)  return base * 0.85
+  if (c <= 4)  return base * 1.0
   return base * 1.4
 }
 
@@ -64,6 +70,8 @@ export default function GraphView() {
 
   const { nodes, links, settings, selectedNodeId, setSelectedNode, setHighlightNode } = useGraphStore()
   const { reload } = useGraphData()
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings  // 항상 최신값 유지
 
   const [simStatus, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
   const [showSettings, setShowSettings] = useState(true)
@@ -103,7 +111,7 @@ export default function GraphView() {
     const simNodes = simRef.current?.nodes() ?? []
     const simLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
     const base = settings.nodeSize
-    const lw = settings.linkWidth
+    const lw = settings.linkWidth * 0.5  // 1-10 → 0.5-5px
 
     // 태그 필터 하이라이트 집합
     let tagMatchIds: Set<string> | null = null
@@ -261,13 +269,15 @@ export default function GraphView() {
   const buildSim = useCallback(() => {
     simRef.current?.stop()
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    const s = settingsRef.current  // 스냅샷 — settings를 dep에 추가하지 않기 위함
 
     const sim = d3.forceSimulation<GraphNode, GraphLink>(nodes)
       .force('link', d3.forceLink<GraphNode, GraphLink>(links).id((n) => n.id)
-        .distance(settings.linkDistance).strength(settings.tension / 10))
-      .force('charge', d3.forceManyBody<GraphNode>().strength(-(settings.repulsion * 80)))
+        .distance(toDistance(s.linkDistance))
+        .strength(toStrength(s.tension)))
+      .force('charge', d3.forceManyBody<GraphNode>().strength(toCharge(s.repulsion)))
       .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(0.05))
-      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settings.nodeSize) + 5))
+      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, s.nodeSize) + 5))
       .alphaDecay(0.04)
       .velocityDecay(0.55)
       .alphaMin(0.001)
@@ -275,7 +285,7 @@ export default function GraphView() {
     simRef.current = sim
 
     const tick = () => {
-      draw()
+      drawRef.current()  // drawRef로 stale closure 방지 (draw를 dep에서 제외)
       if (sim.alpha() > sim.alphaMin()) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
@@ -285,7 +295,8 @@ export default function GraphView() {
     }
     sim.on('tick', () => { if (!rafRef.current) rafRef.current = requestAnimationFrame(tick) })
     setSimStatus('active')
-  }, [nodes, links, settings, size, draw])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, links, size])  // settings/draw 제외 — force 업데이트는 별도 effect에서 처리
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -297,9 +308,21 @@ export default function GraphView() {
     }
   }, [buildSim])
 
-  // 설정 변경 wake
-  useEffect(() => { wake(0.25) }, [settings.nodeSize])
-  useEffect(() => { wake(0.5) }, [settings.tension, settings.repulsion, settings.linkDistance])
+  // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
+  useEffect(() => {
+    const sim = simRef.current
+    if (!sim) return
+    ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
+      ?.strength(toStrength(settings.tension))
+      .distance(toDistance(settings.linkDistance))
+    ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
+      ?.strength(toCharge(settings.repulsion))
+    ;(sim.force('collision') as d3.ForceCollide<GraphNode>)
+      ?.radius((n) => nodeRadius(n, settings.nodeSize) + 5)
+    wake(0.4)
+  }, [settings.tension, settings.repulsion, settings.linkDistance, settings.nodeSize, wake])
+
+  // 시각 전용 변경 → 재그리기만
   useEffect(() => { draw() }, [settings.linkWidth, settings.labelMinLinks, draw])
 
   // highlight

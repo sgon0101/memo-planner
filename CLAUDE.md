@@ -520,6 +520,8 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-19 | 버그 수정 | Google Drive 백업 "Unexpected end of JSON" — route.ts 전체 try-catch, ROOT_FOLDER_ID 옵셔널, drive.ts parentId 타입 수정, 프론트 response.text() 우선 파싱 | 100% |
 | 2026-04-19 | 기능 추가 | Drive 이미지 백업 + 메모 카드 썸네일 노출 — extractImageUrls/uploadImageToDrive, images/ 폴더 자동 생성, LIST_COLS에 content 추가, MemoCard onError 처리 | 100% |
 | 2026-04-19 | 전체 자동 디버깅 | ESLint 에러 14→0개 수정, 폴더 삭제 FK 버그, Date.now 순수성, ref-during-render, 미사용 import 7개, 빌드 ✅ | 100% |
+| 2026-04-19 | 그래프 태그/위키 개선 | 태그허브 클릭 좌측 패널(슬라이드인, 메모목록+날짜), 태그필터 하이라이트(dim), [[]] 위키노드명 제거, GraphSettings ✕ 버튼 | 100% |
+| 2026-04-19 | 그래프 물리 시뮬 수정 | buildSim dep 분리(nodes/links/size만), force in-place 업데이트, toStrength/toCharge/toDistance 변환함수, 옵시디언 기본값, 슬라이더 1~10 통일, 방향 힌트 레이블 | 100% |
 
 ---
 
