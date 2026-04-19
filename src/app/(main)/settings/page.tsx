@@ -39,6 +39,46 @@ export default function SettingsPage() {
     if (typeof window !== 'undefined') return localStorage.getItem('lastDriveBackup')
     return null
   })
+  const [autoBackup, setAutoBackup] = useState(false)
+  const [backupPeriod, setBackupPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
+  const [nextBackupAt, setNextBackupAt] = useState<string | null>(null)
+  const [autoBackupLoading, setAutoBackupLoading] = useState(false)
+
+  async function fetchBackupSettings() {
+    try {
+      const res = await fetch('/api/backup/settings')
+      if (!res.ok) return
+      const data = await res.json()
+      setAutoBackup(data.autoBackup ?? false)
+      setBackupPeriod(data.period ?? 'weekly')
+      setNextBackupAt(data.nextBackupAt ?? null)
+      if (data.lastBackupAt) {
+        const str = new Date(data.lastBackupAt).toLocaleString('ko-KR')
+        setLastBackup(str)
+        localStorage.setItem('lastDriveBackup', str)
+      }
+    } catch { /* 미연결 시 무시 */ }
+  }
+
+  async function saveAutoBackupSettings(enabled: boolean, period: 'daily' | 'weekly' | 'monthly') {
+    setAutoBackupLoading(true)
+    try {
+      const res = await fetch('/api/backup/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoBackup: enabled, period }),
+      })
+      const data = await res.json()
+      setAutoBackup(data.autoBackup)
+      setBackupPeriod(data.period)
+      setNextBackupAt(data.nextBackupAt ?? null)
+      setToast({ type: 'success', message: '자동 백업 설정이 저장되었습니다.' })
+    } catch {
+      setToast({ type: 'error', message: '설정 저장에 실패했습니다.' })
+    } finally {
+      setAutoBackupLoading(false)
+    }
+  }
 
   // 연결 상태를 user_integrations에서 직접 조회 (access_token 유무로 판단)
   async function fetchIntegrationStatus() {
@@ -63,6 +103,7 @@ export default function SettingsPage() {
       if (data.user) setEmail(data.user.email ?? '')
     })
     fetchIntegrationStatus()
+    fetchBackupSettings()
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
       const { data: files } = await supabase
@@ -96,6 +137,7 @@ export default function SettingsPage() {
         setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
       }
       fetchIntegrationStatus()
+      fetchBackupSettings()
       router.replace('/settings')
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -418,6 +460,42 @@ export default function SettingsPage() {
                 단일 파일
               </button>
             </SettingRow>
+            <SettingRow
+              label="자동 백업"
+              description="설정한 주기마다 Drive에 자동으로 백업합니다"
+            >
+              <Toggle
+                enabled={autoBackup}
+                onChange={() => saveAutoBackupSettings(!autoBackup, backupPeriod)}
+              />
+            </SettingRow>
+            {autoBackup && (
+              <div className="px-4 py-3 bg-white dark:bg-gray-900 space-y-3">
+                <p className="text-xs font-medium text-gray-600 dark:text-gray-400">백업 주기</p>
+                <div className="flex gap-2">
+                  {(['daily', 'weekly', 'monthly'] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => saveAutoBackupSettings(true, p)}
+                      disabled={autoBackupLoading}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50',
+                        backupPeriod === p
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      )}
+                    >
+                      {p === 'daily' ? '매일' : p === 'weekly' ? '매주' : '매월'}
+                    </button>
+                  ))}
+                </div>
+                {nextBackupAt && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    다음 백업: {new Date(nextBackupAt).toLocaleString('ko-KR')}
+                  </p>
+                )}
+              </div>
+            )}
             {lastBackup && (
               <div className="px-4 py-2.5 text-xs text-gray-400 dark:text-gray-500">
                 마지막 백업: {lastBackup}

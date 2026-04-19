@@ -20,10 +20,17 @@ function extractImageUrls(content: Record<string, unknown>): string[] {
   return urls
 }
 
-function getImageFileName(url: string, dateStr: string): string {
+function getImageFileName(url: string, memoTitle: string): string {
   const parts = url.split('/')
   const original = parts[parts.length - 1].split('?')[0]
-  return `${dateStr}_${original}`
+  const ext = original.includes('.') ? original.split('.').pop() : 'webp'
+  const uuid8 = original.replace(/\.[^.]+$/, '').slice(0, 8)
+  const safeTitle = memoTitle
+    .replace(/[<>:"/\\|?*\[\]]/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 30)
+    .replace(/_+$/, '') || 'memo'
+  return `${safeTitle}_${uuid8}.${ext}`
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,7 +174,7 @@ export async function POST(req: NextRequest) {
         // 이미지 업로드
         const imageUrls = extractImageUrls((memo.content as Record<string, unknown>) ?? {})
         for (const url of imageUrls) {
-          const imgFileName = getImageFileName(url, dateStr)
+          const imgFileName = getImageFileName(url, memo.title || '메모')
           await uploadImageToDrive(drive, url, imgFileName, imagesFolderId)
           imageCount++
         }

@@ -517,6 +517,8 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-19 | 수동 처리 #2 | 휴지통 자동 삭제 — /api/cron/cleanup-trash(CRON_SECRET 인증), vercel.json 매일 자정 Cron, MemoCard 남은 일수 배지(7일 이하 빨강/초과 노랑) | 100% |
 | 2026-04-19 | 버그 수정 | 설정 페이지 연결 상태 버그 — user_integrations 직접 조회(access_token 검증), Drive/Calendar 3상태 UI, 이메일 표시, Drive 해제 버튼, 콜백 ?connected= 파라미터 통일, searchParams 변경 시 재조회 | 100% |
 | 2026-04-19 | 버그 수정 | OAuth 콜백 307 리다이렉트 버그 — proxy.ts(Next.js 16 미들웨어)에서 /api/drive, /api/calendar, /api/cron 인증 제외 + 콜백에서 서비스 롤 클라이언트로 교체(RLS 우회) | 100% |
+| 2026-04-19 | 버그 수정 | Google Drive 백업 "Unexpected end of JSON" — route.ts 전체 try-catch, ROOT_FOLDER_ID 옵셔널, drive.ts parentId 타입 수정, 프론트 response.text() 우선 파싱 | 100% |
+| 2026-04-19 | 기능 추가 | Drive 이미지 백업 + 메모 카드 썸네일 노출 — extractImageUrls/uploadImageToDrive, images/ 폴더 자동 생성, LIST_COLS에 content 추가, MemoCard onError 처리 | 100% |
 | 2026-04-19 | 전체 자동 디버깅 | ESLint 에러 14→0개 수정, 폴더 삭제 FK 버그, Date.now 순수성, ref-during-render, 미사용 import 7개, 빌드 ✅ | 100% |
 
 ---
