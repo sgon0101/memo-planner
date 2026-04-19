@@ -24,6 +24,7 @@ interface FolderItemProps {
   editValue: string
   editInputRef: React.RefObject<HTMLInputElement | null>
   dragOverFolderId: string | null
+  memoCountMap: Map<string, number>
   onSelect: (id: string) => void
   onToggleExpand: (id: string) => void
   onOpenMenu: (e: React.MouseEvent, id: string) => void
@@ -35,9 +36,10 @@ interface FolderItemProps {
 function FolderItem({
   folder, depth, allFolders, expanded, selectedFolderId,
   editingId, editValue, editInputRef, dragOverFolderId,
-  onSelect, onToggleExpand, onOpenMenu,
+  memoCountMap, onSelect, onToggleExpand, onOpenMenu,
   onEditValueChange, onCommitEdit, onCancelEdit,
 }: FolderItemProps) {
+  const memoCount = memoCountMap.get(folder.id) ?? 0
   const isSelected = selectedFolderId === folder.id
   const isExpanded = expanded.has(folder.id)
   const isEditing = editingId === folder.id
@@ -94,12 +96,19 @@ function FolderItem({
         )}
 
         {!isEditing && (
-          <button
-            className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-opacity"
-            onClick={(e) => onOpenMenu(e, folder.id)}
-          >
-            <MoreHorizontal size={14} />
-          </button>
+          <>
+            {memoCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 flex-shrink-0 group-hover:opacity-0 transition-opacity">
+                {memoCount}
+              </span>
+            )}
+            <button
+              className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-opacity"
+              onClick={(e) => onOpenMenu(e, folder.id)}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          </>
         )}
       </div>
 
@@ -115,6 +124,7 @@ function FolderItem({
           editValue={editValue}
           editInputRef={editInputRef}
           dragOverFolderId={dragOverFolderId}
+          memoCountMap={memoCountMap}
           onSelect={onSelect}
           onToggleExpand={onToggleExpand}
           onOpenMenu={onOpenMenu}
@@ -130,8 +140,15 @@ function FolderItem({
 export default function FolderPanel() {
   const { folders, createFolder, renameFolder, updateColor, removeFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
-  const { updateMemo } = useMemoStore()
+  const { memos, updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
+
+  const activeMemos = memos.filter((m) => !m.isDeleted)
+  const totalCount = activeMemos.length
+  const memoCountMap = activeMemos.reduce<Map<string, number>>((acc, m) => {
+    if (m.folderId) acc.set(m.folderId, (acc.get(m.folderId) ?? 0) + 1)
+    return acc
+  }, new Map())
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
@@ -300,7 +317,12 @@ export default function FolderPanel() {
         onClick={() => selectFolder(null)}
       >
         <Folder size={15} />
-        <span>전체 메모</span>
+        <span className="flex-1">전체 메모</span>
+        {totalCount > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 ml-auto">
+            {totalCount}
+          </span>
+        )}
       </div>
 
       {/* ★ 중요 드랍존 (드래그 중일 때만 표시) */}
@@ -333,6 +355,7 @@ export default function FolderPanel() {
             editValue={editValue}
             editInputRef={editInputRef}
             dragOverFolderId={dragOverFolderId}
+            memoCountMap={memoCountMap}
             onSelect={handleSelect}
             onToggleExpand={toggleExpand}
             onOpenMenu={openMenu}
