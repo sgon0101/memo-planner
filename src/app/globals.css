@@ -377,3 +377,11 @@ aside {
   opacity: 1;
   transition: transform 200ms ease-out, opacity 200ms ease-out;
 }
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+.animate-slide-in-left {
+  animation: slideInLeft 0.2s ease forwards;
+}

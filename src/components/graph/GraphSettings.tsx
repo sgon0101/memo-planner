@@ -1,5 +1,6 @@
 'use client'
 
+import { X } from 'lucide-react'
 import { useGraphStore } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
 
@@ -84,14 +85,24 @@ export default function GraphSettings({ onReset }: Props) {
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">태그</label>
-            <input
-              type="text"
-              value={settings.tagFilter}
-              onChange={(e) => setSettings({ tagFilter: e.target.value })}
-              placeholder="#태그 입력"
-              className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
-            />
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">태그 강조</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={settings.tagFilter}
+                onChange={(e) => setSettings({ tagFilter: e.target.value })}
+                placeholder="태그 입력 (# 없이)"
+                className="w-full px-2 py-1.5 pr-6 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
+              />
+              {settings.tagFilter && (
+                <button
+                  onClick={() => setSettings({ tagFilter: '' })}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
