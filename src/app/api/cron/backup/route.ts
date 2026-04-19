@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
-import { buildMemoMarkdown, safeFilename } from '@/lib/export/toMarkdown'
+import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_BACKUP_FOLDER_ID || undefined
 
@@ -91,6 +91,7 @@ export async function GET(req: Request) {
           const folderName = folderMap.get(folderId) ?? '알 수 없는 폴더'
           parentId = await createDriveFolder(drive, folderName, rootId)
         }
+        const existingNames = new Set<string>()
         for (const memo of group) {
           const md = buildMemoMarkdown(
             {
@@ -105,7 +106,7 @@ export async function GET(req: Request) {
             },
             (memo.content as Record<string, unknown>) ?? {}
           )
-          const fileName = safeFilename(memo.title, memo.created_at)
+          const fileName = safeFilenameUnique(memo.title, existingNames)
           await uploadDriveFile(drive, fileName, md, parentId)
         }
       }
