@@ -97,6 +97,11 @@ function extractWikiLinks(text: string): string[] {
   return [...new Set(matches.map((m) => m[1]))]
 }
 
+function extractTags(text: string): string[] {
+  const matches = [...text.matchAll(/#([\w가-힣]+)/g)]
+  return [...new Set(matches.map((m) => m[1]))]
+}
+
 export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -159,11 +164,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       const id = createdIdRef.current
       if (id) {
         const wikiLinks = extractWikiLinks(text)
+        const tags = extractTags(text)
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
           content_text: text,
           wiki_links: wikiLinks,
+          tags,
           updated_at: new Date().toISOString(),
         }).eq('id', id)
         updateMemo(id, { title: titleRef.current, content, contentText: text })
@@ -182,6 +189,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             title: titleRef.current,
             content,
             content_text: text,
+            tags: extractTags(text),
+            wiki_links: extractWikiLinks(text),
             folder_id: folderIdRef.current,
           })
           .select()
@@ -266,7 +275,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       const { from } = state.selection
       const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
       const wikiMatch = textBefore.match(/\[\[([^\]]*)$/)
-      const tagMatch = !wikiMatch && textBefore.match(/#(\w*)$/)
+      const tagMatch = !wikiMatch && textBefore.match(/#([\w가-힣]*)$/)
       if (wikiMatch) {
         const coords = view.coordsAtPos(from)
         setWikiQuery(wikiMatch[1])
@@ -402,7 +411,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     const { state } = editor
     const { from } = state.selection
     const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
-    const tagMatch = textBefore.match(/#(\w*)$/)
+    const tagMatch = textBefore.match(/#([\w가-힣]*)$/)
     if (!tagMatch) { setTagQuery(null); return }
     const startPos = from - tagMatch[0].length
     editor
@@ -742,6 +751,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           query={wikiQuery}
           position={wikiPos}
           onSelect={handleWikiSelect}
+          onClose={() => setWikiQuery(null)}
         />
       )}
 
@@ -751,6 +761,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           query={tagQuery}
           position={tagPos}
           onSelect={handleTagSelect}
+          onClose={() => setTagQuery(null)}
         />
       )}
 
