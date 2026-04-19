@@ -27,13 +27,13 @@ export async function getDriveClient(accessToken: string, refreshToken: string) 
 export async function createDriveFolder(
   drive: ReturnType<typeof google.drive>,
   name: string,
-  parentId: string
+  parentId?: string
 ): Promise<string> {
   const res = await drive.files.create({
     requestBody: {
       name,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [parentId],
+      ...(parentId ? { parents: [parentId] } : {}),
     },
     fields: 'id',
   })
@@ -44,13 +44,13 @@ export async function uploadDriveFile(
   drive: ReturnType<typeof google.drive>,
   name: string,
   content: string,
-  parentId: string
+  parentId?: string
 ): Promise<string> {
   const { Readable } = await import('stream')
   const res = await drive.files.create({
     requestBody: {
       name,
-      parents: [parentId],
+      ...(parentId ? { parents: [parentId] } : {}),
     },
     media: {
       mimeType: 'text/markdown',

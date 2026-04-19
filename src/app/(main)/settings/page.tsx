@@ -152,8 +152,17 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? '백업 실패')
+      // 빈 응답 대응: text로 먼저 읽은 뒤 JSON 파싱
+      const text = await res.text()
+      if (!text) throw new Error('서버에서 빈 응답이 왔습니다.')
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(text)
+      } catch {
+        console.error('[backup] 응답 파싱 실패, 원본:', text)
+        throw new Error('응답 형식이 올바르지 않습니다.')
+      }
+      if (!res.ok) throw new Error((data.error as string) ?? '백업 실패')
       const now = new Date().toLocaleString('ko-KR')
       setLastBackup(now)
       localStorage.setItem('lastDriveBackup', now)
