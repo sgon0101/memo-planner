@@ -230,7 +230,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
         {thumbnail && (
           <div className="w-full aspect-video overflow-hidden bg-gray-100 dark:bg-gray-700">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={thumbnail} alt="" className="w-full h-full object-cover" />
+            <img
+              src={thumbnail}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }}
+            />
           </div>
         )}
 

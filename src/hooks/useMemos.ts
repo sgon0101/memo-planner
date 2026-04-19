@@ -9,9 +9,9 @@ import type { Memo } from '@/types'
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 
-// content, locked_content 제외 — 목록 페이로드 경량화
+// locked_content 제외 (암호화 내용 불필요) — content는 썸네일 추출을 위해 포함
 const LIST_COLS =
-  'id, user_id, title, content_text, folder_id, is_pinned, is_starred, is_locked, is_deleted, deleted_at, tags, wiki_links, linked_plan_ids, created_at, updated_at'
+  'id, user_id, title, content, content_text, folder_id, is_pinned, is_starred, is_locked, is_deleted, deleted_at, tags, wiki_links, linked_plan_ids, created_at, updated_at'
 
 export function toMemo(row: Record<string, unknown>): Memo {
   return {

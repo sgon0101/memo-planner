@@ -166,7 +166,8 @@ export default function SettingsPage() {
       const now = new Date().toLocaleString('ko-KR')
       setLastBackup(now)
       localStorage.setItem('lastDriveBackup', now)
-      setToast({ type: 'success', message: `${data.message} (메모 ${data.count}개)` })
+      const imgMsg = data.imageCount ? `, 이미지 ${data.imageCount}개` : ''
+      setToast({ type: 'success', message: `${data.message} (메모 ${data.count}개${imgMsg})` })
     } catch (err) {
       setToast({ type: 'error', message: err instanceof Error ? err.message : '백업 중 오류가 발생했습니다.' })
     } finally {
