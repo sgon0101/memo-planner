@@ -2,6 +2,18 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // OAuth 콜백·API·Cron 경로는 인증 검사 없이 통과
+  if (
+    pathname.startsWith('/api/drive') ||
+    pathname.startsWith('/api/calendar') ||
+    pathname.startsWith('/api/cron') ||
+    pathname.startsWith('/auth')
+  ) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -23,16 +35,11 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
+  const { data: { user } } = await supabase.auth.getUser()
 
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
-  const isCallbackRoute = pathname.startsWith('/auth')
 
-  if (!user && !isAuthRoute && !isCallbackRoute) {
+  if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -48,5 +55,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|api/drive|api/calendar|api/cron|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
