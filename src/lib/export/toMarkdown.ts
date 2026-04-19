@@ -191,11 +191,27 @@ export function buildMemoMarkdown(meta: MemoMeta, content: Record<string, unknow
   return lines.join('\n')
 }
 
-export function safeFilename(title: string, date: string): string {
-  const prefix = date.slice(0, 10)
+export function safeFilename(title: string, _date?: string): string {
   const safe = (title || '제목없음')
-    .replace(/[/\\:*?"<>|]/g, '_')
+    .replace(/[<>:"/\\|?*\[\]\n\r]/g, '')
     .replace(/\s+/g, '_')
-    .slice(0, 50)
-  return `${prefix}_${safe}.md`
+    .trim()
+    .slice(0, 50) || 'untitled'
+  return `${safe}.md`
+}
+
+export function safeFilenameUnique(title: string, existingNames: Set<string>): string {
+  const safe = (title || '제목없음')
+    .replace(/[<>:"/\\|?*\[\]\n\r]/g, '')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 50) || 'untitled'
+  let fileName = `${safe}.md`
+  let counter = 1
+  while (existingNames.has(fileName)) {
+    fileName = `${safe}_${counter}.md`
+    counter++
+  }
+  existingNames.add(fileName)
+  return fileName
 }
