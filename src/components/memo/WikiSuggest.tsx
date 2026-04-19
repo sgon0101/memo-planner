@@ -15,10 +15,9 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const q = query.toLowerCase()
-  const filtered = memos
-    .filter((m) => !m.isDeleted && m.title && m.title.toLowerCase().includes(q))
-    .slice(0, 8)
-  const showNew = !!query && !filtered.some((m) => m.title === query)
+  const allWikiLinks = [...new Set(memos.flatMap((m) => m.wikiLinks ?? []))].sort()
+  const filtered = allWikiLinks.filter((kw) => kw.toLowerCase().includes(q)).slice(0, 8)
+  const showNew = !!query && !filtered.includes(query)
   const totalItems = filtered.length + (showNew ? 1 : 0)
 
   useEffect(() => { setSelectedIndex(0) }, [query])
@@ -34,7 +33,7 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
       } else if (e.key === 'Enter') {
         e.preventDefault()
         if (selectedIndex < filtered.length) {
-          onSelect(filtered[selectedIndex].title)
+          onSelect(filtered[selectedIndex])
         } else if (showNew) {
           onSelect(query)
         }
@@ -54,17 +53,19 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
       className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 w-64 max-h-56 overflow-y-auto"
       style={{ left: position.x, top: position.y + 20 }}
     >
-      {filtered.map((m, i) => (
+      {filtered.map((kw, i) => (
         <button
-          key={m.id}
-          onMouseDown={(e) => { e.preventDefault(); onSelect(m.title) }}
+          key={kw}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(kw) }}
           className={`w-full text-left px-3 py-1.5 text-sm truncate transition-colors ${
             i === selectedIndex
-              ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-violet-950/20'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
           }`}
         >
-          {m.title}
+          <span className="text-emerald-500 font-medium">[[</span>
+          {kw}
+          <span className="text-emerald-500 font-medium">]]</span>
         </button>
       ))}
       {showNew && (
@@ -72,8 +73,8 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
           onMouseDown={(e) => { e.preventDefault(); onSelect(query) }}
           className={`w-full text-left px-3 py-1.5 text-sm transition-colors border-t border-gray-100 dark:border-gray-700 ${
             selectedIndex === filtered.length
-              ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
-              : 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+              : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
           }`}
         >
           + 새 위키 <span className="font-medium">[[{query}]]</span> 만들기
