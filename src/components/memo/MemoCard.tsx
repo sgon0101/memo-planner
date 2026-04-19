@@ -11,6 +11,17 @@ import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
+function extractTagsFromText(text: string): string[] {
+  if (!text) return []
+  const matches = text.match(/#[\w가-힣]+/g) ?? []
+  return [...new Set(matches.map((t) => t.slice(1)))]
+}
+
+function getMemeTags(memo: Memo): string[] {
+  if (memo.tags && memo.tags.length > 0) return memo.tags
+  return extractTagsFromText(memo.contentText ?? '')
+}
+
 function extractFirstImage(content: Record<string, unknown>): string | null {
   function traverse(node: Record<string, unknown>): string | null {
     if (node.type === 'image' && typeof node.attrs === 'object') {
@@ -121,6 +132,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   }
 
   const currentFolder = memo.folderId ? folders.find((f) => f.id === memo.folderId) : null
+  const memeTags = getMemeTags(memo)
 
   const timeAgo = formatDistanceToNow(new Date(memo.updatedAt), { addSuffix: true, locale: ko })
 
@@ -167,15 +179,15 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 {currentFolder.name}
               </span>
             )}
-            {!memo.isLocked && memo.tags && memo.tags.length > 0 && (
+            {!memo.isLocked && memeTags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
-                {memo.tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 dark:bg-gray-700/60 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
-                    {tag}
+                {memeTags.slice(0, 4).map((tag) => (
+                  <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/20 text-violet-500 dark:text-violet-400 border border-violet-200/50 dark:border-violet-700/40">
+                    #{tag}
                   </span>
                 ))}
-                {memo.tags.length > 3 && (
-                  <span className="text-[10px] text-gray-400">+{memo.tags.length - 3}</span>
+                {memeTags.length > 4 && (
+                  <span className="text-[10px] text-violet-400 opacity-70">+{memeTags.length - 4}</span>
                 )}
               </div>
             )}
@@ -251,7 +263,8 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           </div>
         )}
 
-        <div className="p-4">
+        {/* 카드 본문 */}
+        <div className="p-4 pb-3">
           {/* 고정 배지 */}
           {memo.isPinned && (
             <Pin size={12} className="absolute top-3 right-3 text-violet-500" />
@@ -278,32 +291,19 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               )}
             </>
           )}
+        </div>
 
-          {/* 폴더 표시 */}
-          {currentFolder && (
-            <div className="mt-2 flex items-center gap-1" style={{ color: `hsl(${currentFolder.colorH},${currentFolder.colorS}%,${currentFolder.colorL - 15}%)` }}>
-              <Folder size={10} />
-              <span className="text-xs truncate">{currentFolder.name}</span>
-            </div>
-          )}
-
-          {/* 태그 칩 */}
-          {!memo.isLocked && memo.tags && memo.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {memo.tags.slice(0, 3).map((tag) => (
-                <span key={tag} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/60 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
-                  {tag}
-                </span>
-              ))}
-              {memo.tags.length > 3 && (
-                <span className="text-[11px] text-gray-400">+{memo.tags.length - 3}</span>
+        {/* 카드 하단 고정 영역 */}
+        <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700/60 pt-2.5 mt-auto">
+          {/* 폴더 + 날짜 + 뱃지 + 메뉴 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {currentFolder && (
+                <div className="flex items-center gap-0.5 min-w-0" style={{ color: `hsl(${currentFolder.colorH},${currentFolder.colorS}%,${currentFolder.colorL - 15}%)` }}>
+                  <Folder size={10} className="flex-shrink-0" />
+                  <span className="text-xs truncate max-w-[80px]">{currentFolder.name}</span>
+                </div>
               )}
-            </div>
-          )}
-
-          {/* 하단: 날짜 + 뱃지 + 메뉴 */}
-          <div className="flex items-center justify-between mt-3">
-            <div className="flex items-center gap-1.5">
               <span className="text-xs text-gray-400">{timeAgo}</span>
               {trashDaysLeft !== null && (
                 <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', trashDaysLeft <= 7 ? 'bg-red-100 dark:bg-red-950/30 text-red-500' : 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600')}>
@@ -311,7 +311,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               {memo.isStarred && <Star size={12} className="text-amber-400 fill-amber-400" />}
               <CardMenu
                 memo={memo}
@@ -328,6 +328,20 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               />
             </div>
           </div>
+
+          {/* 태그 칩 고정 영역 */}
+          {!memo.isLocked && memeTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {memeTags.slice(0, 4).map((tag) => (
+                <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/20 text-violet-500 dark:text-violet-400 border border-violet-200/50 dark:border-violet-700/40 whitespace-nowrap">
+                  #{tag}
+                </span>
+              ))}
+              {memeTags.length > 4 && (
+                <span className="text-[10px] text-violet-400 opacity-70">+{memeTags.length - 4}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
