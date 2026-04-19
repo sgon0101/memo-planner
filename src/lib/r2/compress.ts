@@ -19,8 +19,8 @@ export async function compressImage(buffer: Buffer, mimeType: string): Promise<C
   }
 
   const compressed = await sharp(buffer)
-    .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 85 })
+    .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 82, effort: 2 })
     .toBuffer()
 
   return {
