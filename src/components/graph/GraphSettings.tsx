@@ -45,10 +45,9 @@ export default function GraphSettings({ onReset }: Props) {
         </div>
         <div className="space-y-3">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">물리 시뮬레이션</p>
-          <Slider label="장력 (높을수록 가까워짐)" min={1} max={10} value={settings.tension} onChange={(v) => setSettings({ tension: v })} />
+          <Slider label="중심 장력 (높을수록 중앙 모임)" min={1} max={10} value={settings.centerTension} onChange={(v) => setSettings({ centerTension: v })} />
           <Slider label="반발력 (높을수록 멀어짐)" min={1} max={10} value={settings.repulsion} onChange={(v) => setSettings({ repulsion: v })} />
           <Slider label="링크 거리 (높을수록 멀어짐)" min={1} max={10} value={settings.linkDistance} onChange={(v) => setSettings({ linkDistance: v })} />
-          <Slider label="라벨 최소 링크 수" min={0} max={10} value={settings.labelMinLinks} onChange={(v) => setSettings({ labelMinLinks: v })} />
         </div>
 
         {/* 노출 토글 */}

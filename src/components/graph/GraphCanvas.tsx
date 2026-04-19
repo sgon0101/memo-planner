@@ -189,7 +189,7 @@ export default function GraphCanvas({ width, height }: Props) {
       }
 
       // 라벨
-      if (k >= 0.8 && n.linkCount >= settings.labelMinLinks) {
+      if (k >= 0.8) {
         ctx.globalAlpha = nodeOpacity
         ctx.fillStyle = '#374151'
         ctx.font = `${Math.max(10, 10 + (k - 1) * 2)}px sans-serif`
@@ -220,7 +220,7 @@ export default function GraphCanvas({ width, height }: Props) {
       .force('link', d3.forceLink<GraphNode, GraphLink>(links)
         .id((n) => n.id)
         .distance(settings.linkDistance)
-        .strength(settings.tension / 10)
+        .strength(0.3)
       )
       .force('charge', d3.forceManyBody().strength(-(settings.repulsion * 80)))
       .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
@@ -284,9 +284,8 @@ export default function GraphCanvas({ width, height }: Props) {
   }, [highlightNodeId])
 
   // 설정 변경 시 wake
-  useEffect(() => { wake(0.25) }, [settings.nodeSize])
-  useEffect(() => { wake(0.5) }, [settings.tension, settings.repulsion, settings.linkDistance])
-  useEffect(() => { draw() }, [settings.linkWidth, settings.labelMinLinks, draw])
+  useEffect(() => { draw() }, [settings.nodeSize, settings.linkWidth, draw])
+  useEffect(() => { wake(0.5) }, [settings.centerTension, settings.repulsion, settings.linkDistance])
 
   // 마우스 이벤트 헬퍼
   function getNodeAt(mx: number, my: number): GraphNode | null {

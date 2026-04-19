@@ -26,12 +26,11 @@ export interface GraphLink {
 }
 
 export interface GraphSettings {
-  nodeSize: number       // 1–10
-  linkWidth: number      // 1–10
-  tension: number        // 1–10 → linkStrength = v*0.1
-  repulsion: number      // 1–10 → charge = -(v*30)
-  linkDistance: number   // 1–10 → distance = v*20px
-  labelMinLinks: number
+  nodeSize: number          // 1–10 (시각 전용)
+  linkWidth: number         // 1–10
+  centerTension: number     // 1–10 → forceCenter strength = v*0.01
+  repulsion: number         // 1–10 → charge = -(v*30)
+  linkDistance: number      // 1–10 → distance = v*20px
   showIsolated: boolean
   showWiki: boolean
   showTag: boolean
@@ -55,10 +54,9 @@ interface GraphStore {
 const DEFAULT_SETTINGS: GraphSettings = {
   nodeSize: 4,
   linkWidth: 2,
-  tension: 3,
+  centerTension: 3,
   repulsion: 4,
   linkDistance: 5,
-  labelMinLinks: 0,
   showIsolated: true,
   showWiki: true,
   showTag: true,

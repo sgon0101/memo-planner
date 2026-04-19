@@ -12,9 +12,9 @@ import GraphSettings from './GraphSettings'
 import GraphTooltip from './GraphTooltip'
 
 // 슬라이더 1~10 → D3 force 파라미터 변환
-const toStrength = (v: number) => v * 0.1          // 0.1 – 1.0
-const toCharge   = (v: number) => -(v * 30)        // -30 – -300
-const toDistance = (v: number) => v * 20           // 20 – 200 px
+const toCharge         = (v: number) => -(v * 30)   // -30 – -300
+const toDistance       = (v: number) => v * 20       // 20 – 200 px
+const toCenterStrength = (v: number) => v * 0.01     // 0.01 – 0.1
 
 // 노드 색상 계산
 function nodeColor(n: GraphNode): string {
@@ -209,9 +209,7 @@ export default function GraphView() {
         const isHub = n.type === 'wiki' || n.type === 'tag'
         const hubOp = Math.max(0.4, baseOp)
         const labelOp = (isHub ? hubOp : baseOp) * opac
-        const showLabel = isHub
-          ? labelOp > 0.01
-          : labelOp > 0.01 && n.linkCount >= settings.labelMinLinks
+        const showLabel = labelOp > 0.01
 
         if (showLabel) {
           ctx.globalAlpha = labelOp
@@ -274,10 +272,10 @@ export default function GraphView() {
     const sim = d3.forceSimulation<GraphNode, GraphLink>(nodes)
       .force('link', d3.forceLink<GraphNode, GraphLink>(links).id((n) => n.id)
         .distance(toDistance(s.linkDistance))
-        .strength(toStrength(s.tension)))
+        .strength(0.3))
       .force('charge', d3.forceManyBody<GraphNode>().strength(toCharge(s.repulsion)))
-      .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(0.05))
-      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, s.nodeSize) + 5))
+      .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(toCenterStrength(s.centerTension)))
+      .force('collision', d3.forceCollide<GraphNode>(20))
       .alphaDecay(0.04)
       .velocityDecay(0.55)
       .alphaMin(0.001)
@@ -313,17 +311,16 @@ export default function GraphView() {
     const sim = simRef.current
     if (!sim) return
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
-      ?.strength(toStrength(settings.tension))
-      .distance(toDistance(settings.linkDistance))
+      ?.distance(toDistance(settings.linkDistance))
     ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
       ?.strength(toCharge(settings.repulsion))
-    ;(sim.force('collision') as d3.ForceCollide<GraphNode>)
-      ?.radius((n) => nodeRadius(n, settings.nodeSize) + 5)
+    ;(sim.force('center') as d3.ForceCenter<GraphNode>)
+      ?.strength(toCenterStrength(settings.centerTension))
     wake(0.4)
-  }, [settings.tension, settings.repulsion, settings.linkDistance, settings.nodeSize, wake])
+  }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake])
 
   // 시각 전용 변경 → 재그리기만
-  useEffect(() => { draw() }, [settings.linkWidth, settings.labelMinLinks, draw])
+  useEffect(() => { draw() }, [settings.nodeSize, settings.linkWidth, draw])
 
   // highlight
   useEffect(() => {
