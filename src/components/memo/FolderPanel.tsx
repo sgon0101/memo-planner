@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, ChevronRight, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFolders } from '@/hooks/useFolders'
@@ -140,15 +141,31 @@ function FolderItem({
 export default function FolderPanel() {
   const { folders, createFolder, renameFolder, updateColor, removeFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
-  const { memos, updateMemo } = useMemoStore()
+  const { updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
 
-  const activeMemos = memos.filter((m) => !m.isDeleted)
-  const totalCount = activeMemos.length
-  const memoCountMap = activeMemos.reduce<Map<string, number>>((acc, m) => {
-    if (m.folderId) acc.set(m.folderId, (acc.get(m.folderId) ?? 0) + 1)
+  // 폴더 선택과 무관하게 항상 전체 메모 개수를 집계하는 경량 쿼리
+  const { data: allFolderIds } = useQuery({
+    queryKey: ['memo-folder-counts'],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('memos')
+        .select('folder_id')
+        .eq('is_deleted', false)
+      return data ?? []
+    },
+    staleTime: 15_000,
+  })
+
+  const totalCount = allFolderIds?.length ?? 0
+  const memoCountMap = (allFolderIds ?? []).reduce<Map<string, number>>((acc, row) => {
+    const fid = (row as { folder_id: string | null }).folder_id
+    if (fid) acc.set(fid, (acc.get(fid) ?? 0) + 1)
     return acc
   }, new Map())
+
+  const queryClient = useQueryClient()
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
@@ -189,7 +206,8 @@ export default function FolderPanel() {
       ? folders.find((f) => f.id === resolvedFolderId)?.name ?? '폴더'
       : '전체 메모'
     showToast(`메모가 ${folderName}으로 이동됐어요`)
-  }, [folders, updateMemo])
+    void queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+  }, [folders, updateMemo, queryClient])
 
   // 터치 드래그 커스텀 이벤트 수신
   useEffect(() => {
