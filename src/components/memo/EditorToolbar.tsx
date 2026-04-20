@@ -318,11 +318,11 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       if (!res.ok) throw new Error('업로드 실패')
       const { url } = await res.json()
-      editor.chain().focus().setImage({ src: url }).run()
+      editor.chain().focus().insertContent({ type: 'image', attrs: { src: url, width: '50%' } }).run()
     } catch {
       // 업로드 실패 시 base64 폴백
       const reader = new FileReader()
-      reader.onload = () => { editor.chain().focus().setImage({ src: reader.result as string }).run() }
+      reader.onload = () => { editor.chain().focus().insertContent({ type: 'image', attrs: { src: reader.result as string, width: '50%' } }).run() }
       reader.readAsDataURL(file)
     } finally {
       setImageUploading(false)
