@@ -530,6 +530,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-24 | 태그 필터 드롭다운 | 필터바 태그 칩 → TagDropdown 통합(검색, ✓ 선택, ✕ 해제, Esc·외부클릭 닫힘, 다크모드 대응) | 100% |
 | 2026-04-24 | 버그 수정 | 태그 드롭다운 overflow clip — TagDropdown을 overflow-x-auto 영역 밖으로 분리(CSS spec: overflow-x:auto → 양 축 clipping context 생성으로 absolute 패널 잘림) | 100% |
 | 2026-04-24 | AI 2트랙 구현 | Track1 대화 히스토리(chat_rooms/chat_messages, 자동 요약) + Track2 user_profile(분석/편집/제안카드/이력) + AIChatLayout + UserProfile 탭 + 5개 API 신규 | 100% |
+| 2026-04-24 | 버그 수정 | 폴더 삭제 시 메모 소프트 삭제(휴지통 이동) + 삭제 전 메모 수 경고 모달 + 메인 필터바 날짜 탭 제거(타임라인 뷰 전용) | 100% |
 
 ---
 
