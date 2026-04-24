@@ -64,8 +64,13 @@ export function useFolders() {
   }, [])
 
   const removeFolder = useCallback(async (id: string) => {
-    // FK 제약 방지: 폴더 내 메모를 먼저 전체 메모(null)로 이동
-    await supabase.from('memos').update({ folder_id: null }).eq('folder_id', id)
+    const { data: { user } } = await supabase.auth.getUser()
+    // 폴더 내 메모 소프트 삭제 (휴지통으로 이동)
+    await supabase
+      .from('memos')
+      .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder_id: null })
+      .eq('folder_id', id)
+      .eq('user_id', user?.id)
     const { error } = await supabase.from('folders').delete().eq('id', id)
     if (error) throw error
     deleteFolder(id)
