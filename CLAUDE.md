@@ -529,6 +529,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-19 | 메모장+그래프 다기능 | 메모카드 태그칩(카드·리스트뷰), ResizableImageView(드래그·프리셋), TagSuggest(# 자동완성), 폴더 진입 시 신규 메모 폴더 자동지정, useGraphData folderStore 동기화(폴더필터) | 100% |
 | 2026-04-24 | 태그 필터 드롭다운 | 필터바 태그 칩 → TagDropdown 통합(검색, ✓ 선택, ✕ 해제, Esc·외부클릭 닫힘, 다크모드 대응) | 100% |
 | 2026-04-24 | 버그 수정 | 태그 드롭다운 overflow clip — TagDropdown을 overflow-x-auto 영역 밖으로 분리(CSS spec: overflow-x:auto → 양 축 clipping context 생성으로 absolute 패널 잘림) | 100% |
+| 2026-04-24 | AI 2트랙 구현 | Track1 대화 히스토리(chat_rooms/chat_messages, 자동 요약) + Track2 user_profile(분석/편집/제안카드/이력) + AIChatLayout + UserProfile 탭 + 5개 API 신규 | 100% |
 
 ---
 
@@ -555,6 +556,10 @@ CREATE TABLE IF NOT EXISTS uploaded_files (
 ALTER TABLE uploaded_files ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "files: 본인만 접근" ON uploaded_files FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX idx_uploaded_files_user ON uploaded_files(user_id);
+
+-- AI 2트랙 (supabase/chat_rooms_profile.sql 전체 실행)
+-- chat_rooms, chat_messages, user_profiles, profile_history 테이블
+-- 파일 위치: supabase/chat_rooms_profile.sql
 ```
 
 ---

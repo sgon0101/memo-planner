@@ -72,3 +72,54 @@ ${planTitles.slice(0, 15).map((t) => `- ${t}`).join('\n')}
 
 사용자의 메모와 플랜 데이터를 바탕으로 개인화된 조언과 인사이트를 제공하세요. 데이터에 기반한 구체적인 제안을 해주세요.`
 }
+
+type Profile = {
+  interests?: string[]
+  personality?: string[]
+  recurring_themes?: string[]
+  values?: string[]
+  behavior_patterns?: string[]
+  goals?: string[]
+  recent_changes?: string[]
+  raw_notes?: string
+} | null
+
+type MemoRow = { title: string; content_text: string | null; tags: string[] | null; folders: { name: string } | { name: string }[] | null }
+
+export function profileChatSystemPrompt(
+  profile: Profile,
+  recentMemos: MemoRow[],
+  conversationSummary: string | null,
+) {
+  const profileSection = profile
+    ? `## 사용자 프로필
+관심사: ${(profile.interests ?? []).join(', ') || '미설정'}
+성향: ${(profile.personality ?? []).join(', ') || '미설정'}
+반복 주제/고민: ${(profile.recurring_themes ?? []).join(', ') || '미설정'}
+가치관: ${(profile.values ?? []).join(', ') || '미설정'}
+행동 패턴: ${(profile.behavior_patterns ?? []).join(', ') || '미설정'}
+목표: ${(profile.goals ?? []).join(', ') || '미설정'}
+최근 변화: ${(profile.recent_changes ?? []).join(', ') || '미설정'}${profile.raw_notes ? `\n메모: ${profile.raw_notes}` : ''}`
+    : ''
+
+  const summarySection = conversationSummary
+    ? `## 이전 대화 요약\n${conversationSummary}`
+    : ''
+
+  const memoSection = recentMemos.length > 0
+    ? `## 최근 메모 (최신 ${recentMemos.length}개)\n${recentMemos.map((m) => {
+        const folderObj = Array.isArray(m.folders) ? m.folders[0] : m.folders
+        const folder = (folderObj as { name: string } | null)?.name ?? '미분류'
+        const tags = (m.tags as string[] | null)?.join(', ') ?? ''
+        return `- [${folder}] ${m.title}${tags ? ` #${tags}` : ''}`
+      }).join('\n')}`
+    : ''
+
+  return [
+    '당신은 사용자의 개인 AI 어시스턴트입니다. 메모, 플랜, 대화 기록을 기반으로 깊이 있는 인사이트를 제공합니다. 항상 한국어로 답변하세요.',
+    profileSection,
+    summarySection,
+    memoSection,
+    '## 답변 원칙\n- 사용자의 실제 데이터를 구체적으로 언급하세요\n- 일반적인 조언보다 사용자 맞춤 인사이트를 제공하세요\n- 패턴과 변화를 발견하면 적극적으로 공유하세요\n- 따뜻하고 솔직하게 대화하세요',
+  ].filter(Boolean).join('\n\n')
+}
