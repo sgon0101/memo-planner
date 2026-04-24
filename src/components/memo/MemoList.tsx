@@ -229,7 +229,7 @@ export default function MemoList() {
         </div>
       </div>
 
-      {/* 정렬 필터 + 태그 칩 */}
+      {/* 정렬 필터 + 태그 드롭다운 */}
       {!isTrash && (
         <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-x-auto scrollbar-none">
           {SORT_OPTIONS.map((opt) => (
@@ -246,20 +246,11 @@ export default function MemoList() {
               {opt.label}
             </button>
           ))}
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-              className={cn(
-                'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
-                activeTag === tag
-                  ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
-              )}
-            >
-              #{tag}
-            </button>
-          ))}
+          <TagDropdown
+            allTags={allTags}
+            selectedTag={activeTag}
+            onSelect={setActiveTag}
+          />
           {allMonths.length > 1 && allMonths.map((month) => (
             <button
               key={month}
@@ -351,6 +342,123 @@ export default function MemoList() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function TagDropdown({
+  allTags,
+  selectedTag,
+  onSelect,
+}: {
+  allTags: string[]
+  selectedTag: string | null
+  onSelect: (tag: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filtered = useMemo(
+    () => allTags.filter((t) => t.toLowerCase().includes(search.toLowerCase())),
+    [allTags, search]
+  )
+
+  function handleSelect(tag: string | null) {
+    onSelect(tag)
+    setOpen(false)
+    setSearch('')
+  }
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          selectedTag
+            ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400'
+            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+        )}
+      >
+        <span>#</span>
+        <span>{selectedTag ? selectedTag.replace(/^#/, '') : '태그'}</span>
+        {selectedTag ? (
+          <span
+            role="button"
+            aria-label="태그 필터 해제"
+            onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
+            className="ml-0.5 font-bold leading-none hover:opacity-70"
+          >
+            ✕
+          </span>
+        ) : (
+          <span className="text-[10px] leading-none">▾</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] max-h-80 overflow-hidden flex flex-col">
+          {/* 검색창 */}
+          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setSearch('') } }}
+              placeholder="태그 검색..."
+              className="w-full text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400"
+            />
+          </div>
+
+          {/* 태그 목록 */}
+          <div className="overflow-y-auto">
+            <div
+              onClick={() => handleSelect(null)}
+              className={cn(
+                'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                !selectedTag
+                  ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+              )}
+            >
+              {!selectedTag && <span>✓</span>}
+              <span>전체</span>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="px-3.5 py-3 text-xs text-gray-400 text-center">태그가 없어요</div>
+            ) : (
+              filtered.map((tag) => (
+                <div
+                  key={tag}
+                  onClick={() => handleSelect(tag)}
+                  className={cn(
+                    'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                    selectedTag === tag
+                      ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  )}
+                >
+                  {selectedTag === tag && <span>✓</span>}
+                  <span>{tag}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
