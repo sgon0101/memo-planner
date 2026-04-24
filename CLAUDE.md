@@ -528,6 +528,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-19 | 미들웨어 정적파일 차단 수정 | proxy.ts matcher + SKIP_PATHS에 manifest.json/icons/images/robots.txt/sitemap.xml 추가 → PWA 307 리다이렉트 해결 | 100% |
 | 2026-04-19 | 메모장+그래프 다기능 | 메모카드 태그칩(카드·리스트뷰), ResizableImageView(드래그·프리셋), TagSuggest(# 자동완성), 폴더 진입 시 신규 메모 폴더 자동지정, useGraphData folderStore 동기화(폴더필터) | 100% |
 | 2026-04-24 | 태그 필터 드롭다운 | 필터바 태그 칩 → TagDropdown 통합(검색, ✓ 선택, ✕ 해제, Esc·외부클릭 닫힘, 다크모드 대응) | 100% |
+| 2026-04-24 | 버그 수정 | 태그 드롭다운 overflow clip — TagDropdown을 overflow-x-auto 영역 밖으로 분리(CSS spec: overflow-x:auto → 양 축 clipping context 생성으로 absolute 패널 잘림) | 100% |
 
 ---
 
