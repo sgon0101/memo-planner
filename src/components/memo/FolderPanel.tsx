@@ -269,7 +269,17 @@ export default function FolderPanel() {
 
   async function handleDelete(id: string) {
     setMenu(null)
-    if (!confirm('폴더를 삭제하면 안의 메모는 미분류로 이동됩니다. 삭제할까요?')) return
+    const supabase = createClient()
+    const { count } = await supabase
+      .from('memos')
+      .select('id', { count: 'exact' })
+      .eq('folder_id', id)
+      .eq('is_deleted', false)
+    const folderName = folders.find((f) => f.id === id)?.name ?? '폴더'
+    const msg = count && count > 0
+      ? `"${folderName}" 폴더를 삭제하면\n안에 있는 메모 ${count}개도 휴지통으로 이동해요.\n\n계속하시겠어요?`
+      : `"${folderName}" 폴더를 삭제할까요?`
+    if (!confirm(msg)) return
     await removeFolder(id).catch(console.error)
     if (selectedFolderId === id) selectFolder(null)
   }
