@@ -2,20 +2,22 @@
 
 import { useState, Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { MessageCircle, TrendingUp, PieChart, BookOpen } from 'lucide-react'
+import { MessageCircle, TrendingUp, PieChart, BookOpen, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { InsightsSkeleton } from '@/components/ui/Skeleton'
 
-const AIChat      = dynamic(() => import('@/components/insights/AIChat'),      { loading: () => <InsightsSkeleton />, ssr: false })
-const GapAnalysis = dynamic(() => import('@/components/insights/GapAnalysis'), { loading: () => <InsightsSkeleton />, ssr: false })
-const BubbleChart = dynamic(() => import('@/components/insights/BubbleChart'), { loading: () => <InsightsSkeleton />, ssr: false })
-const RetroReport = dynamic(() => import('@/components/insights/RetroReport'), { loading: () => <InsightsSkeleton />, ssr: false })
+const AIChatLayout = dynamic(() => import('@/components/insights/AIChatLayout'), { loading: () => <InsightsSkeleton />, ssr: false })
+const GapAnalysis  = dynamic(() => import('@/components/insights/GapAnalysis'),  { loading: () => <InsightsSkeleton />, ssr: false })
+const BubbleChart  = dynamic(() => import('@/components/insights/BubbleChart'),  { loading: () => <InsightsSkeleton />, ssr: false })
+const RetroReport  = dynamic(() => import('@/components/insights/RetroReport'),  { loading: () => <InsightsSkeleton />, ssr: false })
+const UserProfile  = dynamic(() => import('@/components/insights/UserProfile'),  { loading: () => <InsightsSkeleton />, ssr: false })
 
 const TABS = [
-  { id: 'chat',   label: 'AI 대화',     icon: MessageCircle },
-  { id: 'gap',    label: '갭 분석',     icon: TrendingUp },
-  { id: 'bubble', label: '관심사 분석', icon: PieChart },
-  { id: 'retro',  label: '회고 리포트', icon: BookOpen },
+  { id: 'chat',    label: 'AI 대화',     icon: MessageCircle },
+  { id: 'profile', label: '나의 프로필', icon: UserCircle },
+  { id: 'gap',     label: '갭 분석',     icon: TrendingUp },
+  { id: 'bubble',  label: '관심사 분석', icon: PieChart },
+  { id: 'retro',   label: '회고 리포트', icon: BookOpen },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -47,12 +49,13 @@ export default function InsightsPage() {
       </div>
 
       {/* 탭 콘텐츠 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={cn('flex-1 overflow-hidden', tab !== 'chat' && 'overflow-y-auto')}>
         <Suspense fallback={<InsightsSkeleton />}>
-          {tab === 'chat'   && <AIChat />}
-          {tab === 'gap'    && <GapAnalysis />}
-          {tab === 'bubble' && <BubbleChart />}
-          {tab === 'retro'  && <RetroReport />}
+          {tab === 'chat'    && <AIChatLayout />}
+          {tab === 'profile' && <UserProfile />}
+          {tab === 'gap'     && <GapAnalysis />}
+          {tab === 'bubble'  && <BubbleChart />}
+          {tab === 'retro'   && <RetroReport />}
         </Suspense>
       </div>
     </div>
