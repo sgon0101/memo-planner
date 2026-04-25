@@ -168,6 +168,22 @@ aside {
   color: #F1F5F9;
 }
 
+/* 다크모드에서 인라인 color 스타일이 적용된 텍스트가 어두운 배경에 묻히지 않도록
+   어두운 계열 색상(흑/회)을 밝은 색으로 자동 전환 */
+.dark .tiptap [style*="color: rgb(0, 0, 0)"],
+.dark .tiptap [style*="color: rgb(15, 15, 15)"],
+.dark .tiptap [style*="color: rgb(30, 30, 30)"],
+.dark .tiptap [style*="color: rgb(31, 41, 55)"],
+.dark .tiptap [style*="color: #000"],
+.dark .tiptap [style*="color: #000000"],
+.dark .tiptap [style*="color: #111"],
+.dark .tiptap [style*="color: #111111"],
+.dark .tiptap [style*="color: #1e293b"],
+.dark .tiptap [style*="color: #1E293B"],
+.dark .tiptap [style*="color: black"] {
+  color: #F1F5F9 !important;
+}
+
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
