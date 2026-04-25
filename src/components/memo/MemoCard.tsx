@@ -380,14 +380,20 @@ function CardMenu({
   setOpen: (v: boolean) => void
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
-  const [openUpward, setOpenUpward] = useState(true)
+  const [menuCoords, setMenuCoords] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
 
   function handleToggle(e: React.MouseEvent) {
     e.stopPropagation()
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
-      // 버튼 위쪽 여백이 200px 미만이면 아래로 열기
-      setOpenUpward(rect.top > 200)
+      const MENU_H = 220 // 메뉴 예상 높이(px)
+      const right  = window.innerWidth - rect.right + 2
+      // 위쪽 공간이 부족하면 버튼 아래로 열기, 아니면 버튼 위로 열기
+      if (rect.top < MENU_H) {
+        setMenuCoords({ top: rect.bottom + 2, right })
+      } else {
+        setMenuCoords({ bottom: window.innerHeight - rect.top + 2, right })
+      }
     }
     setOpen(!open)
   }
@@ -401,10 +407,14 @@ function CardMenu({
       >
         <MoreVertical size={13} />
       </button>
-      {open && (
+      {open && menuCoords && (
         <>
           <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
-          <div className={`absolute right-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-40 ${openUpward ? 'bottom-6' : 'top-6'}`}>
+          {/* fixed 포지셔닝 — overflow:hidden 컨테이너에 잘리지 않음 */}
+          <div
+            className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-40"
+            style={menuCoords}
+          >
             {isTrash ? (
               <>
                 <MenuItem
