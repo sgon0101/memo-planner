@@ -29,17 +29,19 @@ export default function MemoList() {
   } = useMemos(selectedFolderId)
 
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
-  const sentinelRef = useRef<HTMLDivElement>(null)
-
-  const loadMore = useCallback(() => setDisplayCount((n) => n + PAGE_SIZE), [])
-
-  useEffect(() => {
-    const el = sentinelRef.current
+  // 콜백 ref: sentinel이 DOM에 나타나는 순간 observer를 연결, 사라지면 해제
+  // useEffect 방식은 마운트 시 1회만 실행되어 데이터 로딩 후 sentinel이 생겨도 감지 불가
+  const obsRef = useRef<IntersectionObserver | null>(null)
+  const sentinelRef = useCallback((el: HTMLDivElement | null) => {
+    obsRef.current?.disconnect()
+    obsRef.current = null
     if (!el) return
-    const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) loadMore() }, { threshold: 0.1 })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [loadMore])
+    obsRef.current = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setDisplayCount((n) => n + PAGE_SIZE) },
+      { threshold: 0.1 }
+    )
+    obsRef.current.observe(el)
+  }, []) // setDisplayCount는 React 보장 stable → deps 불필요
 
   // 폴더 변경 시 표시 개수 초기화
   // eslint-disable-next-line react-hooks/set-state-in-effect
