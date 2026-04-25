@@ -379,18 +379,32 @@ function CardMenu({
   open: boolean
   setOpen: (v: boolean) => void
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [openUpward, setOpenUpward] = useState(true)
+
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      // 버튼 위쪽 여백이 200px 미만이면 아래로 열기
+      setOpenUpward(rect.top > 200)
+    }
+    setOpen(!open)
+  }
+
   return (
     <div className="relative">
       <button
+        ref={btnRef}
         className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-opacity"
-        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        onClick={handleToggle}
       >
         <MoreVertical size={13} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
-          <div className="absolute right-0 bottom-6 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-40">
+          <div className={`absolute right-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-40 ${openUpward ? 'bottom-6' : 'top-6'}`}>
             {isTrash ? (
               <>
                 <MenuItem
