@@ -15,6 +15,8 @@ import type { Folder as FolderType } from '@/types'
 
 interface MenuState { folderId: string; x: number; y: number }
 
+type DropTarget = { id: string; position: 'before' | 'after' } | null
+
 interface FolderItemProps {
   folder: FolderType
   depth: number
@@ -26,19 +28,27 @@ interface FolderItemProps {
   editInputRef: React.RefObject<HTMLInputElement | null>
   dragOverFolderId: string | null
   memoCountMap: Map<string, number>
+  draggingFolderId: string | null
+  folderDropTarget: DropTarget
   onSelect: (id: string) => void
   onToggleExpand: (id: string) => void
   onOpenMenu: (e: React.MouseEvent, id: string) => void
   onEditValueChange: (value: string) => void
   onCommitEdit: (id: string) => void
   onCancelEdit: () => void
+  onFolderDragStart: (id: string) => void
+  onFolderDragEnd: () => void
+  onFolderDragOver: (id: string, position: 'before' | 'after') => void
+  onFolderDrop: (dragId: string, targetId: string, position: 'before' | 'after') => void
 }
 
 function FolderItem({
   folder, depth, allFolders, expanded, selectedFolderId,
   editingId, editValue, editInputRef, dragOverFolderId,
-  memoCountMap, onSelect, onToggleExpand, onOpenMenu,
+  memoCountMap, draggingFolderId, folderDropTarget,
+  onSelect, onToggleExpand, onOpenMenu,
   onEditValueChange, onCommitEdit, onCancelEdit,
+  onFolderDragStart, onFolderDragEnd, onFolderDragOver, onFolderDrop,
 }: FolderItemProps) {
   const memoCount = memoCountMap.get(folder.id) ?? 0
   const isSelected = selectedFolderId === folder.id
@@ -51,12 +61,47 @@ function FolderItem({
   const hasChildren = children.length > 0
   const folderColor = `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)`
 
+  const isBeingDragged = draggingFolderId === folder.id
+  const showBefore = folderDropTarget?.id === folder.id && folderDropTarget.position === 'before'
+  const showAfter  = folderDropTarget?.id === folder.id && folderDropTarget.position === 'after'
+
   return (
-    <div>
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation()
+        e.dataTransfer.setData('folderId', folder.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onFolderDragStart(folder.id)
+      }}
+      onDragEnd={() => onFolderDragEnd()}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('folderid')) return
+        e.preventDefault()
+        e.stopPropagation()
+        const rect = e.currentTarget.getBoundingClientRect()
+        const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+        onFolderDragOver(folder.id, position)
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes('folderid')) return
+        e.preventDefault()
+        e.stopPropagation()
+        const dragId = e.dataTransfer.getData('folderId')
+        if (dragId && dragId !== folder.id && folderDropTarget) {
+          onFolderDrop(dragId, folder.id, folderDropTarget.position)
+        }
+        onFolderDragEnd()
+      }}
+    >
+      {/* 앞 인디케이터 */}
+      {showBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
+
       <div
         data-folder-id={folder.id}
         className={cn(
           'group flex items-center gap-1.5 rounded-lg cursor-pointer select-none text-sm transition-colors py-1.5 pr-2',
+          isBeingDragged && 'opacity-40',
           isDragOver
             ? 'ring-2 ring-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
             : isSelected
@@ -113,6 +158,9 @@ function FolderItem({
         )}
       </div>
 
+      {/* 뒤 인디케이터 */}
+      {showAfter && <div className="h-0.5 bg-violet-500 rounded mx-2 mt-0.5" />}
+
       {isExpanded && children.map((child) => (
         <FolderItem
           key={child.id}
@@ -126,12 +174,18 @@ function FolderItem({
           editInputRef={editInputRef}
           dragOverFolderId={dragOverFolderId}
           memoCountMap={memoCountMap}
+          draggingFolderId={draggingFolderId}
+          folderDropTarget={folderDropTarget}
           onSelect={onSelect}
           onToggleExpand={onToggleExpand}
           onOpenMenu={onOpenMenu}
           onEditValueChange={onEditValueChange}
           onCommitEdit={onCommitEdit}
           onCancelEdit={onCancelEdit}
+          onFolderDragStart={onFolderDragStart}
+          onFolderDragEnd={onFolderDragEnd}
+          onFolderDragOver={onFolderDragOver}
+          onFolderDrop={onFolderDrop}
         />
       ))}
     </div>
@@ -139,7 +193,7 @@ function FolderItem({
 }
 
 export default function FolderPanel() {
-  const { folders, createFolder, renameFolder, updateColor, removeFolder } = useFolders()
+  const { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
   const { updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
@@ -176,6 +230,8 @@ export default function FolderPanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null)
+  const [folderDropTarget, setFolderDropTarget] = useState<DropTarget>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
 
   const topLevel = folders
@@ -286,6 +342,24 @@ export default function FolderPanel() {
 
   const menuFolder = menu ? folders.find((f) => f.id === menu.folderId) : null
 
+  // 폴더 순서 변경 핸들러
+  function handleFolderDragStart(id: string) {
+    setDraggingFolderId(id)
+    setFolderDropTarget(null)
+  }
+  function handleFolderDragEnd() {
+    setDraggingFolderId(null)
+    setFolderDropTarget(null)
+  }
+  function handleFolderDragOver(id: string, position: 'before' | 'after') {
+    setFolderDropTarget({ id, position })
+  }
+  async function handleFolderDrop(dragId: string, targetId: string, position: 'before' | 'after') {
+    setDraggingFolderId(null)
+    setFolderDropTarget(null)
+    await reorderFolder(dragId, targetId, position).catch(console.error)
+  }
+
   // 드래그 이벤트 위임 핸들러
   function onPanelDragOver(e: React.DragEvent) {
     if (!draggingMemoId) return
@@ -384,12 +458,18 @@ export default function FolderPanel() {
             editInputRef={editInputRef}
             dragOverFolderId={dragOverFolderId}
             memoCountMap={memoCountMap}
+            draggingFolderId={draggingFolderId}
+            folderDropTarget={folderDropTarget}
             onSelect={handleSelect}
             onToggleExpand={toggleExpand}
             onOpenMenu={openMenu}
             onEditValueChange={setEditValue}
             onCommitEdit={commitEdit}
             onCancelEdit={cancelEdit}
+            onFolderDragStart={handleFolderDragStart}
+            onFolderDragEnd={handleFolderDragEnd}
+            onFolderDragOver={handleFolderDragOver}
+            onFolderDrop={handleFolderDrop}
           />
         ))}
       </div>
