@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useMemoStore } from '@/store/memoStore'
+import { useAllMemosMeta } from '@/hooks/useAllMemosMeta'
 
 interface Props {
   query: string
@@ -11,11 +11,10 @@ interface Props {
 }
 
 export default function WikiSuggest({ query, position, onSelect, onClose }: Props) {
-  const { memos } = useMemoStore()
+  const { allWikiLinks } = useAllMemosMeta()
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const q = query.toLowerCase()
-  const allWikiLinks = [...new Set(memos.flatMap((m) => m.wikiLinks ?? []))].sort()
   const filtered = allWikiLinks.filter((kw) => kw.toLowerCase().includes(q)).slice(0, 8)
   const showNew = !!query && !filtered.includes(query)
   const totalItems = filtered.length + (showNew ? 1 : 0)

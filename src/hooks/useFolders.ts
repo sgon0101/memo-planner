@@ -63,6 +63,41 @@ export function useFolders() {
     updateFolder(id, { colorH, colorS, colorL })
   }, [])
 
+  const reorderFolder = useCallback(async (
+    dragId: string,
+    targetId: string,
+    position: 'before' | 'after',
+  ) => {
+    const dragFolder = folders.find((f) => f.id === dragId)
+    if (!dragFolder) return
+
+    // 같은 부모의 형제 폴더만 대상
+    const siblings = folders
+      .filter((f) => f.parentId === dragFolder.parentId)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+
+    const withoutDrag = siblings.filter((f) => f.id !== dragId)
+    const targetIdx   = withoutDrag.findIndex((f) => f.id === targetId)
+    if (targetIdx === -1) return
+
+    const insertIdx = position === 'before' ? targetIdx : targetIdx + 1
+    const reordered = [
+      ...withoutDrag.slice(0, insertIdx),
+      dragFolder,
+      ...withoutDrag.slice(insertIdx),
+    ]
+
+    // 낙관적 업데이트
+    reordered.forEach((f, i) => updateFolder(f.id, { orderIndex: i }))
+
+    // Supabase 저장
+    await Promise.all(
+      reordered.map((f, i) =>
+        supabase.from('folders').update({ order_index: i }).eq('id', f.id)
+      )
+    )
+  }, [folders, updateFolder])
+
   const removeFolder = useCallback(async (id: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     // 폴더 내 메모 소프트 삭제 (휴지통으로 이동)
@@ -76,5 +111,5 @@ export function useFolders() {
     deleteFolder(id)
   }, [])
 
-  return { folders, createFolder, renameFolder, updateColor, removeFolder }
+  return { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder }
 }
