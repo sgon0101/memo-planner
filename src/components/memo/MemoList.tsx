@@ -51,6 +51,17 @@ export default function MemoList() {
   const [sort, setSort] = useState<SortKey>('updated')
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
+
+  // 카드 컬럼 수 (4~6), localStorage에 저장
+  const [cols, setCols] = useState<4 | 5 | 6>(() => {
+    if (typeof window === 'undefined') return 4
+    const saved = localStorage.getItem('memo-card-cols')
+    return (saved === '5' ? 5 : saved === '6' ? 6 : 4) as 4 | 5 | 6
+  })
+  function updateCols(n: 4 | 5 | 6) {
+    setCols(n)
+    localStorage.setItem('memo-card-cols', String(n))
+  }
   // 타임라인 전용 필터
   const [tlStartDate, setTlStartDate] = useState<string | null>(null)
   const [tlEndDate, setTlEndDate] = useState<string | null>(null)
@@ -201,21 +212,43 @@ export default function MemoList() {
           />
         </div>
         {/* 뷰 전환 버튼 */}
-        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          {([
-            { mode: 'card', icon: <LayoutGrid size={13} />, title: '카드' },
-            { mode: 'list', icon: <List size={13} />, title: '목록' },
-            { mode: 'timeline', icon: <AlignLeft size={13} />, title: '타임라인' },
-          ] as const).map(({ mode, icon, title }) => (
-            <button
-              key={mode}
-              onClick={() => setView(mode)}
-              title={title}
-              className={cn('p-1.5 transition-colors', view === mode ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800')}
-            >
-              {icon}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5">
+          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {([
+              { mode: 'card', icon: <LayoutGrid size={13} />, title: '카드' },
+              { mode: 'list', icon: <List size={13} />, title: '목록' },
+              { mode: 'timeline', icon: <AlignLeft size={13} />, title: '타임라인' },
+            ] as const).map(({ mode, icon, title }) => (
+              <button
+                key={mode}
+                onClick={() => setView(mode)}
+                title={title}
+                className={cn('p-1.5 transition-colors', view === mode ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800')}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+          {/* 카드 뷰 컬럼 수 선택 (4~6) */}
+          {view === 'card' && !isTrash && (
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {([4, 5, 6] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => updateCols(n)}
+                  title={`한 줄에 ${n}개`}
+                  className={cn(
+                    'px-2 py-1 text-[11px] font-medium transition-colors',
+                    cols === n
+                      ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
+                      : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -309,13 +342,13 @@ export default function MemoList() {
             {filtered.pinned.length > 0 && (
               <>
                 {view === 'card' && <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">고정됨</p>}
-                <MemoSection memos={filtered.pinned.slice(0, displayCount)} view={view} {...cardActions} />
+                <MemoSection memos={filtered.pinned.slice(0, displayCount)} view={view} cols={cols} {...cardActions} />
                 {filtered.rest.length > 0 && view === 'card' && (
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mt-4 mb-2">메모</p>
                 )}
               </>
             )}
-            <MemoSection memos={filtered.rest.slice(0, Math.max(0, displayCount - filtered.pinned.length))} view={view} {...cardActions} />
+            <MemoSection memos={filtered.rest.slice(0, Math.max(0, displayCount - filtered.pinned.length))} view={view} cols={cols} {...cardActions} />
             {(filtered.pinned.length + filtered.rest.length) > displayCount && (
               <div ref={sentinelRef} className="h-8" />
             )}
@@ -443,9 +476,10 @@ function TagDropdown({
   )
 }
 
-function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }: {
+function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }: {
   memos: ReturnType<typeof useMemos>['memos']
   view: 'card' | 'list'
+  cols?: 4 | 5 | 6
   isTrash?: boolean
   onPin: (id: string, cur: boolean) => void
   onStar: (id: string, cur: boolean) => void
@@ -458,8 +492,14 @@ function MemoSection({ memos, view, isTrash = false, onPin, onStar, onDelete, on
 }) {
   const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }
   if (view === 'card') {
+    // Tailwind는 동적 클래스를 인식하지 못하므로 완전한 클래스명을 나열
+    const colClass = cols === 6
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6'
+      : cols === 5
+        ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'
+        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className={cn('grid gap-3', colClass)}>
         {memos.map((m) => <MemoCard key={m.id} memo={m} {...props} />)}
       </div>
     )
