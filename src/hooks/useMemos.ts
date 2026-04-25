@@ -143,6 +143,8 @@ export function useMemos(folderId: string | null | undefined) {
       .eq('id', id)
     deleteMemo(id)
     queryClient.invalidateQueries({ queryKey: memoKeys.list(folderId, isTrash) })
+    // 폴더 카운트 뱃지 즉시 갱신
+    queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
   }, [folderId, isTrash])
 
   const lockMemo = useCallback(async (
