@@ -113,6 +113,13 @@ function blockNode(node: TNode, depth = 0): string {
         .join('\n')
     }
 
+    case 'image': {
+      const src = (node.attrs?.src as string) ?? ''
+      const alt = (node.attrs?.alt as string) ?? ''
+      if (!src) return ''
+      return `![${alt}](${src})`
+    }
+
     case 'horizontalRule':
       return '---'
 
