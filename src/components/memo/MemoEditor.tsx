@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+import { memoKeys } from '@/hooks/useMemos'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -107,6 +109,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const searchParams = useSearchParams()
   const fromGraph = searchParams.get('from') === 'graph'
   const supabase = createClient()
+  const queryClient = useQueryClient()
   const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
   const { folders } = useFolderStore()
 
@@ -165,15 +168,25 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       if (id) {
         const wikiLinks = extractWikiLinks(text)
         const tags = extractTags(text)
+        const updatedAt = new Date().toISOString()
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
           content_text: text,
           wiki_links: wikiLinks,
           tags,
-          updated_at: new Date().toISOString(),
+          updated_at: updatedAt,
         }).eq('id', id)
-        updateMemo(id, { title: titleRef.current, content, contentText: text })
+
+        const patch = { title: titleRef.current, content, contentText: text, updatedAt }
+        updateMemo(id, patch)
+        // 현재 폴더 + 전체 목록 캐시 즉시 반영
+        ;[folderIdRef.current, null].forEach((fid) => {
+          queryClient.setQueryData<Memo[]>(
+            memoKeys.list(fid, false),
+            (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
+          )
+        })
 
         const now = Date.now()
         if (now - lastVersionSavedAtRef.current > VERSION_COOLDOWN_MS) {
@@ -201,6 +214,26 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         setCreatedId(newMemo.id)
         setCurrentMemo(newMemo)
         addMemo(newMemo)
+
+        // 신규 메모를 RQ 캐시에 즉시 추가 → 목록 복귀 시 바로 표시
+        const targetFolderId = folderIdRef.current
+        queryClient.setQueryData<Memo[]>(
+          memoKeys.list(targetFolderId, false),
+          (old) => [newMemo, ...(old ?? [])]
+        )
+        if (targetFolderId !== null) {
+          queryClient.setQueryData<Memo[]>(
+            memoKeys.list(null, false),
+            (old) => old ? [newMemo, ...old] : [newMemo]
+          )
+        }
+        // 폴더 카운트 즉시 반영
+        queryClient.setQueryData<Array<{ folder_id: string | null }>>(
+          ['memo-folder-counts'],
+          (old) => old ? [...old, { folder_id: targetFolderId }] : [{ folder_id: targetFolderId }]
+        )
+        queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+
         if (!skipNavigate) {
           router.replace(`/memo/${newMemo.id}`)
         }
@@ -216,7 +249,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       console.error('저장 실패:', e)
       setSaveStatus('unsaved')
     }
-  }, [supabase, updateMemo, setCurrentMemo, addMemo, router])
+  }, [supabase, queryClient, updateMemo, setCurrentMemo, addMemo, router])
 
   const saveRef = useRef(save)
   // eslint-disable-next-line react-hooks/refs
