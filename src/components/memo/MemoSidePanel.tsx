@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useLayoutEffect } from 'react'
 import { Search, X, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemoStore } from '@/store/memoStore'
+
+const SCROLL_KEY = 'memo-side-panel-scroll'
 
 interface MemoSidePanelProps {
   currentMemoId: string
@@ -16,6 +18,15 @@ interface MemoSidePanelProps {
 export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: MemoSidePanelProps) {
   const { memos } = useMemoStore()
   const [search, setSearch] = useState('')
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // 마운트 시 저장된 스크롤 위치 복원 (paint 전 실행 → 깜빡임 없음)
+  useLayoutEffect(() => {
+    const saved = sessionStorage.getItem(SCROLL_KEY)
+    if (saved && scrollRef.current) {
+      scrollRef.current.scrollTop = parseInt(saved, 10)
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     const active = memos.filter((m) => !m.isDeleted)
@@ -25,6 +36,13 @@ export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: Memo
       m.title.toLowerCase().includes(q) || m.contentText.toLowerCase().includes(q)
     )
   }, [memos, search])
+
+  function handleSelect(id: string) {
+    if (scrollRef.current) {
+      sessionStorage.setItem(SCROLL_KEY, String(scrollRef.current.scrollTop))
+    }
+    onSelect(id)
+  }
 
   return (
     <div className="flex flex-col w-56 flex-shrink-0 border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
@@ -54,7 +72,7 @@ export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: Memo
       </div>
 
       {/* 목록 */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-xs text-gray-400">결과 없음</div>
         ) : (
@@ -63,7 +81,7 @@ export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: Memo
             return (
               <button
                 key={memo.id}
-                onClick={() => !isCurrent && onSelect(memo.id)}
+                onClick={() => !isCurrent && handleSelect(memo.id)}
                 className={cn(
                   'w-full text-left px-3 py-2.5 border-b border-gray-50 dark:border-gray-800/50 transition-colors',
                   isCurrent
