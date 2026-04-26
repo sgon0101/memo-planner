@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+// Vercel 최대 실행 시간 (Pro: 60s, Hobby: 10s)
+export const maxDuration = 60
 import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
@@ -58,6 +61,22 @@ async function uploadImageToDrive(drive: any, imageUrl: string, fileName: string
     console.error(`[backup] 이미지 업로드 실패: ${fileName}`, err)
     // 이미지 실패해도 전체 백업 계속 진행
   }
+}
+
+// 동시성 제한 병렬 실행 헬퍼
+async function runConcurrent<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number
+): Promise<void> {
+  const queue = [...items]
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift()!
+      await fn(item).catch(console.error)
+    }
+  })
+  await Promise.all(workers)
 }
 
 // 1000개 초과 시도 모두 가져오는 페이지네이션 헬퍼
@@ -182,10 +201,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: '단일 파일 백업 완료', count: memos.length, imageCount: 0, fileName })
     }
 
-    // 개별 파일 백업: 폴더 구조 + images/ 폴더
+    // 개별 파일 백업: 폴더 구조
     const rootId = await createDriveFolder(drive, backupFolderName, ROOT_FOLDER_ID)
-    const imagesFolderId = await createDriveFolder(drive, 'images', rootId)
 
+    // 폴더별 그룹핑
     const groupMap = new Map<string | null, typeof memos>()
     for (const memo of memos) {
       const key = memo.folder_id ?? null
@@ -193,16 +212,24 @@ export async function POST(req: NextRequest) {
       groupMap.get(key)!.push(memo)
     }
 
-    let uploadedCount = 0
-    let imageCount = 0
+    // 폴더 생성 (순차 — 각 parentId가 필요하므로)
+    const folderIdMap = new Map<string | null, string>() // folderId → drive parentId
+    folderIdMap.set(null, rootId) // 폴더 없는 메모 → 루트
 
-    for (const [folderId, group] of groupMap.entries()) {
-      let parentId = rootId
+    for (const [folderId] of groupMap.entries()) {
       if (folderId !== null) {
         const folderName = folderMap.get(folderId) ?? '알 수 없는 폴더'
-        parentId = await createDriveFolder(drive, folderName, rootId)
+        const driveParentId = await createDriveFolder(drive, folderName, rootId)
+        folderIdMap.set(folderId, driveParentId)
       }
+    }
 
+    // 업로드 태스크 구성 (이름 중복 방지는 폴더별로)
+    interface UploadTask { md: string; fileName: string; parentId: string }
+    const uploadTasks: UploadTask[] = []
+
+    for (const [folderId, group] of groupMap.entries()) {
+      const parentId = folderIdMap.get(folderId) ?? rootId
       const existingNames = new Set<string>()
       for (const memo of group) {
         const md = buildMemoMarkdown(
@@ -218,24 +245,21 @@ export async function POST(req: NextRequest) {
           },
           resolveContent(memo.content, memo.content_text)
         )
-        const fileName = safeFilenameUnique(memo.title ?? '', existingNames)
-        await uploadDriveFile(drive, fileName, md, parentId)
-        uploadedCount++
-
-        // 이미지 업로드
-        const imageUrls = extractImageUrls(resolveContent(memo.content, memo.content_text))
-        for (const url of imageUrls) {
-          const imgFileName = getImageFileName(url, memo.title || '메모')
-          await uploadImageToDrive(drive, url, imgFileName, imagesFolderId)
-          imageCount++
-        }
+        uploadTasks.push({ md, fileName: safeFilenameUnique(memo.title ?? '', existingNames), parentId })
       }
     }
 
+    // 메모 파일 병렬 업로드 (10개씩 동시)
+    await runConcurrent(
+      uploadTasks,
+      async ({ md, fileName, parentId }) => { await uploadDriveFile(drive, fileName, md, parentId) },
+      10
+    )
+
     return NextResponse.json({
       message: '개별 파일 백업 완료',
-      count: uploadedCount,
-      imageCount,
+      count: uploadTasks.length,
+      imageCount: 0,
       folderName: backupFolderName,
     })
 
