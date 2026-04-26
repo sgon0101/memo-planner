@@ -98,6 +98,29 @@ export function useFolders() {
     )
   }, [folders, updateFolder])
 
+  const nestFolder = useCallback(async (dragId: string, targetId: string) => {
+    if (dragId === targetId) return
+
+    const dragFolder = folders.find((f) => f.id === dragId)
+    if (!dragFolder) return
+    if (dragFolder.parentId === targetId) return  // 이미 자식
+
+    // 순환 참조 방지: targetId가 dragId의 자손이면 중단
+    const getDescendantIds = (id: string): string[] => {
+      const children = folders.filter((f) => f.parentId === id)
+      return [...children.map((c) => c.id), ...children.flatMap((c) => getDescendantIds(c.id))]
+    }
+    if (getDescendantIds(dragId).includes(targetId)) return
+
+    const childCount = folders.filter((f) => f.parentId === targetId).length
+    updateFolder(dragId, { parentId: targetId, orderIndex: childCount })
+
+    await supabase
+      .from('folders')
+      .update({ parent_id: targetId, order_index: childCount })
+      .eq('id', dragId)
+  }, [folders, updateFolder])
+
   const removeFolder = useCallback(async (id: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     // 폴더 내 메모 소프트 삭제 (휴지통으로 이동)
@@ -111,5 +134,5 @@ export function useFolders() {
     deleteFolder(id)
   }, [])
 
-  return { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder }
+  return { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder }
 }
