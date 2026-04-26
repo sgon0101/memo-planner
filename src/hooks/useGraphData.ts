@@ -58,7 +58,7 @@ export function useGraphData() {
       query = query.eq('folder_id', settings.folderFilter)
     }
 
-    const { data: memos } = await query
+    const { data: memos } = await query.limit(5000)
     if (!memos) return
 
     const nodes: GraphNode[] = []
@@ -148,22 +148,36 @@ export function useGraphData() {
       }
     }
 
-    // 성능 최적화: 300개 초과 시 상위 150개
-    if (nodes.length > 300) {
-      const sorted = [...nodes].sort((a, b) => b.linkCount - a.linkCount)
-      const top = new Set(sorted.slice(0, 150).map((n) => n.id))
-      const filtered = nodes.filter((n) => top.has(n.id))
-      const filteredLinks = links.filter((l) => {
+    // 메모 노드는 항상 전부 표시
+    // 허브(위키/태그) 노드가 500개 초과 시 linkCount 상위 500개로 제한
+    const HUB_LIMIT = 500
+    const hubNodes  = nodes.filter((n) => n.type !== 'memo')
+    const memoNodes = nodes.filter((n) => n.type === 'memo')
+
+    let finalNodes: GraphNode[]
+    let finalLinks = links
+
+    if (hubNodes.length > HUB_LIMIT) {
+      const topHubs = new Set(
+        [...hubNodes].sort((a, b) => b.linkCount - a.linkCount)
+          .slice(0, HUB_LIMIT).map((n) => n.id)
+      )
+      finalNodes = [
+        ...memoNodes,
+        ...hubNodes.filter((n) => topHubs.has(n.id)),
+      ]
+      const allowedIds = new Set(finalNodes.map((n) => n.id))
+      finalLinks = links.filter((l) => {
         const s = typeof l.source === 'string' ? l.source : l.source.id
         const t = typeof l.target === 'string' ? l.target : l.target.id
-        return top.has(s) && top.has(t)
+        return allowedIds.has(s) && allowedIds.has(t)
       })
-      setNodes(filtered)
-      setLinks(filteredLinks)
     } else {
-      setNodes(nodes)
-      setLinks(links)
+      finalNodes = nodes
     }
+
+    setNodes(finalNodes)
+    setLinks(finalLinks)
   }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.folderFilter])
 
   useEffect(() => { load() }, [load])
