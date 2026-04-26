@@ -15,7 +15,7 @@ import type { Folder as FolderType } from '@/types'
 
 interface MenuState { folderId: string; x: number; y: number }
 
-type DropTarget = { id: string; position: 'before' | 'after' } | null
+type DropTarget = { id: string; position: 'before' | 'after' | 'inside' } | null
 
 interface FolderItemProps {
   folder: FolderType
@@ -38,8 +38,8 @@ interface FolderItemProps {
   onCancelEdit: () => void
   onFolderDragStart: (id: string) => void
   onFolderDragEnd: () => void
-  onFolderDragOver: (id: string, position: 'before' | 'after') => void
-  onFolderDrop: (dragId: string, targetId: string, position: 'before' | 'after') => void
+  onFolderDragOver: (id: string, position: 'before' | 'after' | 'inside') => void
+  onFolderDrop: (dragId: string, targetId: string, position: 'before' | 'after' | 'inside') => void
 }
 
 function FolderItem({
@@ -50,6 +50,7 @@ function FolderItem({
   onEditValueChange, onCommitEdit, onCancelEdit,
   onFolderDragStart, onFolderDragEnd, onFolderDragOver, onFolderDrop,
 }: FolderItemProps) {
+  const rowRef = useRef<HTMLDivElement>(null)
   const memoCount = memoCountMap.get(folder.id) ?? 0
   const isSelected = selectedFolderId === folder.id
   const isExpanded = expanded.has(folder.id)
@@ -62,8 +63,9 @@ function FolderItem({
   const folderColor = `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)`
 
   const isBeingDragged = draggingFolderId === folder.id
-  const showBefore = folderDropTarget?.id === folder.id && folderDropTarget.position === 'before'
-  const showAfter  = folderDropTarget?.id === folder.id && folderDropTarget.position === 'after'
+  const showBefore  = folderDropTarget?.id === folder.id && folderDropTarget.position === 'before'
+  const showAfter   = folderDropTarget?.id === folder.id && folderDropTarget.position === 'after'
+  const showInside  = folderDropTarget?.id === folder.id && folderDropTarget.position === 'inside'
 
   return (
     <div
@@ -79,8 +81,14 @@ function FolderItem({
         if (!e.dataTransfer.types.includes('folderid')) return
         e.preventDefault()
         e.stopPropagation()
-        const rect = e.currentTarget.getBoundingClientRect()
-        const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+        // 폴더 행(rowRef) 기준으로 위치 판단 — 상 30% before / 중 40% inside / 하 30% after
+        const rect = rowRef.current?.getBoundingClientRect() ?? e.currentTarget.getBoundingClientRect()
+        const relY = e.clientY - rect.top
+        const h    = rect.height || 1
+        let position: 'before' | 'after' | 'inside'
+        if (relY < h * 0.30)       position = 'before'
+        else if (relY > h * 0.70)  position = 'after'
+        else                       position = 'inside'
         onFolderDragOver(folder.id, position)
       }}
       onDrop={(e) => {
@@ -98,15 +106,18 @@ function FolderItem({
       {showBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
 
       <div
+        ref={rowRef}
         data-folder-id={folder.id}
         className={cn(
           'group flex items-center gap-1.5 rounded-lg cursor-pointer select-none text-sm transition-colors py-1.5 pr-2',
           isBeingDragged && 'opacity-40',
-          isDragOver
-            ? 'ring-2 ring-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
-            : isSelected
-              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          showInside
+            ? 'ring-2 ring-violet-500 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300'
+            : isDragOver
+              ? 'ring-2 ring-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+              : isSelected
+                ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => onSelect(folder.id)}
@@ -193,7 +204,7 @@ function FolderItem({
 }
 
 export default function FolderPanel() {
-  const { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder } = useFolders()
+  const { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
   const { updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
@@ -351,13 +362,19 @@ export default function FolderPanel() {
     setDraggingFolderId(null)
     setFolderDropTarget(null)
   }
-  function handleFolderDragOver(id: string, position: 'before' | 'after') {
+  function handleFolderDragOver(id: string, position: 'before' | 'after' | 'inside') {
     setFolderDropTarget({ id, position })
   }
-  async function handleFolderDrop(dragId: string, targetId: string, position: 'before' | 'after') {
+  async function handleFolderDrop(dragId: string, targetId: string, position: 'before' | 'after' | 'inside') {
     setDraggingFolderId(null)
     setFolderDropTarget(null)
-    await reorderFolder(dragId, targetId, position).catch(console.error)
+    if (position === 'inside') {
+      await nestFolder(dragId, targetId).catch(console.error)
+      // 드롭 대상 폴더 자동 펼치기
+      setExpanded((prev) => new Set([...prev, targetId]))
+    } else {
+      await reorderFolder(dragId, targetId, position).catch(console.error)
+    }
   }
 
   // 드래그 이벤트 위임 핸들러
