@@ -18,7 +18,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, Network } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, Network, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -110,7 +110,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const fromGraph = searchParams.get('from') === 'graph'
   const supabase = createClient()
   const queryClient = useQueryClient()
-  const { setCurrentMemo, updateMemo, addMemo } = useMemoStore()
+  const { setCurrentMemo, updateMemo, addMemo, deleteMemo } = useMemoStore()
   const { folders } = useFolderStore()
 
   const [title, setTitle] = useState(initialTitle)
@@ -535,6 +535,38 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     save(json, text)
   }
 
+  async function handleDelete() {
+    const id = createdIdRef.current
+    if (!id) return
+    if (!confirm('이 메모를 휴지통으로 이동할까요?')) return
+
+    await supabase
+      .from('memos')
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+      .eq('id', id)
+
+    // RQ 캐시에서 즉시 제거
+    ;[folderIdRef.current, null].forEach((fid) => {
+      queryClient.setQueryData<import('@/types').Memo[]>(
+        memoKeys.list(fid, false),
+        (old) => old?.filter((m) => m.id !== id) ?? []
+      )
+    })
+    // 폴더 카운트 감소
+    queryClient.setQueryData<Array<{ folder_id: string | null }>>(
+      ['memo-folder-counts'],
+      (old) => {
+        if (!old) return old
+        const idx = old.findIndex((r) => r.folder_id === folderIdRef.current)
+        if (idx === -1) return old
+        return [...old.slice(0, idx), ...old.slice(idx + 1)]
+      }
+    )
+    queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+    deleteMemo(id)
+    router.push('/memo')
+  }
+
   function handleRestore(version: MemoVersion) {
     if (!editor) return
     editor.commands.setContent(version.content)
@@ -613,6 +645,18 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 className={isPinned ? 'text-violet-500 fill-violet-500' : 'text-gray-300 dark:text-gray-600'}
               />
             </button>
+
+            {/* 휴지통 버튼 */}
+            {createdId && (
+              <button
+                onClick={handleDelete}
+                title="휴지통으로 이동"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+              >
+                <Trash2 size={12} />
+                <span>삭제</span>
+              </button>
+            )}
 
             {/* 수동 저장 버튼 */}
             <button
