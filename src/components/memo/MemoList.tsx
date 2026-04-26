@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2 } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -24,11 +24,13 @@ export default function MemoList() {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
-    restoreMemo, permanentDelete, emptyTrash,
+    restoreMemo, bulkRestore, permanentDelete, emptyTrash,
     moveMemoToFolder,
   } = useMemos(selectedFolderId)
 
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
+  const [selectedTrashIds, setSelectedTrashIds] = useState<Set<string>>(new Set())
+  const selectAllRef = useRef<HTMLInputElement>(null)
   // 콜백 ref: sentinel이 DOM에 나타나는 순간 observer를 연결, 사라지면 해제
   // useEffect 방식은 마운트 시 1회만 실행되어 데이터 로딩 후 sentinel이 생겨도 감지 불가
   const obsRef = useRef<IntersectionObserver | null>(null)
@@ -43,9 +45,16 @@ export default function MemoList() {
     obsRef.current.observe(el)
   }, []) // setDisplayCount는 React 보장 stable → deps 불필요
 
-  // 폴더 변경 시 표시 개수 초기화
+  // 폴더 변경 시 표시 개수 + 선택 초기화
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [selectedFolderId])
+  useEffect(() => { setDisplayCount(PAGE_SIZE); setSelectedTrashIds(new Set()) }, [selectedFolderId])
+
+  // 전체 선택 체크박스 indeterminate 상태
+  useEffect(() => {
+    if (!selectAllRef.current) return
+    const total = memos.length
+    selectAllRef.current.indeterminate = selectedTrashIds.size > 0 && selectedTrashIds.size < total
+  }, [selectedTrashIds.size, memos.length])
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('updated')
@@ -151,6 +160,37 @@ export default function MemoList() {
     return [...set].sort().reverse()
   }, [filtered.all])
 
+  function toggleTrashSelect(id: string) {
+    setSelectedTrashIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllTrash() {
+    setSelectedTrashIds(new Set(memos.map((m) => m.id)))
+  }
+
+  function deselectAllTrash() {
+    setSelectedTrashIds(new Set())
+  }
+
+  async function handleBulkRestore() {
+    const ids = [...selectedTrashIds]
+    if (ids.length === 0) return
+    await bulkRestore(ids).catch(console.error)
+    setSelectedTrashIds(new Set())
+  }
+
+  async function handleRestoreAll() {
+    if (memos.length === 0) return
+    if (!confirm(`휴지통의 메모 ${memos.length}개를 모두 복원할까요?`)) return
+    await bulkRestore(memos.map((m) => m.id)).catch(console.error)
+    setSelectedTrashIds(new Set())
+  }
+
   const cardActions = {
     onPin: (id: string, cur: boolean) => togglePin(id, cur).catch(console.error),
     onStar: (id: string, cur: boolean) => toggleStar(id, cur).catch(console.error),
@@ -178,17 +218,26 @@ export default function MemoList() {
           {folderName}
         </h2>
         {isTrash ? (
-          <button
-            onClick={() => {
-              if (memos.length === 0) return
-              if (confirm(`휴지통을 비울까요? ${memos.length}개의 메모가 영구 삭제됩니다.`))
-                emptyTrash().catch(console.error)
-            }}
-            disabled={memos.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors disabled:opacity-40"
-          >
-            <Trash2 size={12} /> 휴지통 비우기
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRestoreAll}
+              disabled={memos.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 rounded-lg transition-colors disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> 전체 복원
+            </button>
+            <button
+              onClick={() => {
+                if (memos.length === 0) return
+                if (confirm(`휴지통을 비울까요? ${memos.length}개의 메모가 영구 삭제됩니다.`))
+                  emptyTrash().catch(console.error)
+              }}
+              disabled={memos.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors disabled:opacity-40"
+            >
+              <Trash2 size={12} /> 휴지통 비우기
+            </button>
+          </div>
         ) : (
           <button
             onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')}
@@ -252,6 +301,35 @@ export default function MemoList() {
         </div>
       </div>
 
+      {/* 휴지통 선택 바 */}
+      {isTrash && memos.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={selectedTrashIds.size > 0 && selectedTrashIds.size === memos.length}
+              onChange={() => {
+                if (selectedTrashIds.size === memos.length) deselectAllTrash()
+                else selectAllTrash()
+              }}
+              className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
+            />
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {selectedTrashIds.size > 0 ? `${selectedTrashIds.size}개 선택됨` : '전체 선택'}
+            </span>
+          </label>
+          {selectedTrashIds.size > 0 && (
+            <button
+              onClick={handleBulkRestore}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 rounded-lg transition-colors"
+            >
+              <RotateCcw size={12} /> 선택 복원
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 정렬 필터 + 태그 드롭다운 */}
       {!isTrash && (
         <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
@@ -309,7 +387,14 @@ export default function MemoList() {
           </div>
         ) : isTrash ? (
           <div className={view === 'card' ? 'p-4' : ''}>
-            <MemoSection memos={filtered.all.slice(0, displayCount)} view={view === 'timeline' ? 'list' : view} isTrash {...cardActions} />
+            <MemoSection
+              memos={filtered.all.slice(0, displayCount)}
+              view={view === 'timeline' ? 'list' : view}
+              isTrash
+              selectedTrashIds={selectedTrashIds}
+              onToggleSelect={toggleTrashSelect}
+              {...cardActions}
+            />
             {filtered.all.length > displayCount && <div ref={sentinelRef} className="h-8" />}
           </div>
         ) : view === 'timeline' ? (
@@ -476,7 +561,7 @@ function TagDropdown({
   )
 }
 
-function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }: {
+function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, selectedTrashIds, onToggleSelect }: {
   memos: ReturnType<typeof useMemos>['memos']
   view: 'card' | 'list'
   cols?: 4 | 5 | 6
@@ -489,8 +574,10 @@ function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, on
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
   onMoveToFolder?: (id: string, folderId: string | null) => void
+  selectedTrashIds?: Set<string>
+  onToggleSelect?: (id: string) => void
 }) {
-  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder }
+  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, onToggleSelect }
   if (view === 'card') {
     // Tailwind는 동적 클래스를 인식하지 못하므로 완전한 클래스명을 나열
     const colClass = cols === 6
@@ -500,11 +587,17 @@ function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, on
         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
     return (
       <div className={cn('grid gap-3', colClass)}>
-        {memos.map((m) => <MemoCard key={m.id} memo={m} {...props} />)}
+        {memos.map((m) => (
+          <MemoCard key={m.id} memo={m} isSelected={selectedTrashIds?.has(m.id) ?? false} {...props} />
+        ))}
       </div>
     )
   }
   return (
-    <div>{memos.map((m) => <MemoCard key={m.id} memo={m} {...props} />)}</div>
+    <div>
+      {memos.map((m) => (
+        <MemoCard key={m.id} memo={m} isSelected={selectedTrashIds?.has(m.id) ?? false} {...props} />
+      ))}
+    </div>
   )
 }
