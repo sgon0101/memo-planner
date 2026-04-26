@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-// Vercel 최대 실행 시간 (Pro: 60s, Hobby: 10s)
-export const maxDuration = 60
 import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
+
+// Next.js route segment config — import 뒤에 위치해야 인식됨
+export const maxDuration = 300  // Pro: 최대 300s, Hobby: 10s로 자동 cap
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_BACKUP_FOLDER_ID || undefined
 
@@ -103,7 +103,6 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
       .select('id, title, content, content_text, folder_id, tags, wiki_links, is_starred, is_pinned, created_at, updated_at')
       .eq('user_id', userId)
       .eq('is_deleted', false)
-      .eq('is_locked', false)
       .order('created_at', { ascending: true })
       .range(from, from + BATCH - 1)
 
@@ -180,20 +179,25 @@ export async function POST(req: NextRequest) {
         '---',
       ]
       for (const memo of memos) {
-        const md = buildMemoMarkdown(
-          {
-            title: memo.title ?? '',
-            createdAt: memo.created_at,
-            updatedAt: memo.updated_at,
-            folderName: memo.folder_id ? (folderMap.get(memo.folder_id) ?? null) : null,
-            tags: memo.tags ?? [],
-            wikiLinks: memo.wiki_links ?? [],
-            isStarred: memo.is_starred,
-            isPinned: memo.is_pinned,
-          },
-          resolveContent(memo.content, memo.content_text)
-        )
-        lines.push(md, '\n\n---\n')
+        try {
+          const md = buildMemoMarkdown(
+            {
+              title: memo.title ?? '',
+              createdAt: memo.created_at,
+              updatedAt: memo.updated_at,
+              folderName: memo.folder_id ? (folderMap.get(memo.folder_id) ?? null) : null,
+              tags: memo.tags ?? [],
+              wikiLinks: memo.wiki_links ?? [],
+              isStarred: memo.is_starred,
+              isPinned: memo.is_pinned,
+            },
+            resolveContent(memo.content, memo.content_text)
+          )
+          lines.push(md, '\n\n---\n')
+        } catch (e) {
+          console.error(`[backup] memo ${memo.id} 변환 실패:`, e)
+          lines.push(`# ${memo.title ?? '제목 없음'}\n\n*내용 변환 실패*\n\n---\n`)
+        }
       }
       const content = lines.join('\n')
       const fileName = `${backupFolderName}_전체백업.md`
@@ -232,19 +236,25 @@ export async function POST(req: NextRequest) {
       const parentId = folderIdMap.get(folderId) ?? rootId
       const existingNames = new Set<string>()
       for (const memo of group) {
-        const md = buildMemoMarkdown(
-          {
-            title: memo.title ?? '',
-            createdAt: memo.created_at,
-            updatedAt: memo.updated_at,
-            folderName: folderId ? (folderMap.get(folderId) ?? null) : null,
-            tags: memo.tags ?? [],
-            wikiLinks: memo.wiki_links ?? [],
-            isStarred: memo.is_starred,
-            isPinned: memo.is_pinned,
-          },
-          resolveContent(memo.content, memo.content_text)
-        )
+        let md: string
+        try {
+          md = buildMemoMarkdown(
+            {
+              title: memo.title ?? '',
+              createdAt: memo.created_at,
+              updatedAt: memo.updated_at,
+              folderName: folderId ? (folderMap.get(folderId) ?? null) : null,
+              tags: memo.tags ?? [],
+              wikiLinks: memo.wiki_links ?? [],
+              isStarred: memo.is_starred,
+              isPinned: memo.is_pinned,
+            },
+            resolveContent(memo.content, memo.content_text)
+          )
+        } catch (e) {
+          console.error(`[backup] memo ${memo.id} 변환 실패:`, e)
+          md = `# ${memo.title ?? '제목 없음'}\n\n*내용 변환 실패*`
+        }
         uploadTasks.push({ md, fileName: safeFilenameUnique(memo.title ?? '', existingNames), parentId })
       }
     }
