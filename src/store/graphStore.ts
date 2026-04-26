@@ -15,6 +15,7 @@ export interface GraphNode {
   isStarred?: boolean
   folderId?: string | null
   createdAt?: string
+  contentText?: string
   // computed
   linkCount: number
 }

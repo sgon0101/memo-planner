@@ -76,6 +76,8 @@ export default function GraphView() {
   const [simStatus, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
   const [showSettings, setShowSettings] = useState(true)
   const [search, setSearch] = useState('')
+  const [searchMatches, setSearchMatches] = useState<GraphNode[]>([])
+  const [searchMatchIdx, setSearchMatchIdx] = useState(0)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; type: 'memo' | 'wiki' | 'tag'; linkCount: number } | null>(null)
   const [selectedTagPanel, setSelectedTagPanel] = useState<{
     tag: string
@@ -471,14 +473,36 @@ export default function GraphView() {
     draw()
   }
 
-  // 검색
+  // 검색 — MemoList와 동일: 제목 + 본문 포함, 전체 결과 순환
   function handleSearch(q: string) {
     setSearch(q)
-    if (!q.trim()) { setSelectedNode(null); return }
-    const found = simRef.current?.nodes().find((n) =>
-      n.type === 'memo' && n.label.toLowerCase().includes(q.toLowerCase())
+    setSearchMatchIdx(0)
+    if (!q.trim()) {
+      setSelectedNode(null)
+      setSearchMatches([])
+      return
+    }
+    const lq = q.toLowerCase()
+    const matches = (simRef.current?.nodes() ?? []).filter((n) =>
+      n.type === 'memo' &&
+      (n.label.toLowerCase().includes(lq) || (n.contentText ?? '').toLowerCase().includes(lq))
     )
-    if (found) { animateTo(found) }
+    setSearchMatches(matches)
+    if (matches.length > 0) animateTo(matches[0])
+  }
+
+  function handleSearchNext() {
+    if (searchMatches.length === 0) return
+    const next = (searchMatchIdx + 1) % searchMatches.length
+    setSearchMatchIdx(next)
+    animateTo(searchMatches[next])
+  }
+
+  function handleSearchPrev() {
+    if (searchMatches.length === 0) return
+    const prev = (searchMatchIdx - 1 + searchMatches.length) % searchMatches.length
+    setSearchMatchIdx(prev)
+    animateTo(searchMatches[prev])
   }
 
   // 레이아웃 초기화
@@ -500,15 +524,44 @@ export default function GraphView() {
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 mr-2">메모 그래프</span>
 
         {/* 검색 */}
-        <div className="flex-1 max-w-64 relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="메모 검색..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
-          />
+        <div className="flex items-center gap-1 flex-1 max-w-72">
+          <div className="relative flex-1">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.shiftKey ? handleSearchPrev() : handleSearchNext()
+                if (e.key === 'Escape') handleSearch('')
+              }}
+              placeholder="제목·본문 검색..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
+            />
+          </div>
+          {search.trim() && (
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <span className="text-xs text-gray-400 px-1 whitespace-nowrap">
+                {searchMatches.length > 0
+                  ? `${searchMatchIdx + 1}/${searchMatches.length}`
+                  : '없음'}
+              </span>
+              {searchMatches.length > 1 && (
+                <>
+                  <button
+                    onClick={handleSearchPrev}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 text-xs leading-none"
+                    title="이전 결과 (Shift+Enter)"
+                  >▲</button>
+                  <button
+                    onClick={handleSearchNext}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 text-xs leading-none"
+                    title="다음 결과 (Enter)"
+                  >▼</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <button onClick={() => reload()} title="새로고침" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
