@@ -15,6 +15,7 @@ import TimelineFilter from './TimelineFilter'
 const PAGE_SIZE = 20
 
 type SortKey = 'updated' | 'created' | 'title' | 'starred' | 'pinned'
+type TitleDir = 'asc' | 'desc'
 type ViewMode = 'card' | 'list' | 'timeline'
 
 export default function MemoList() {
@@ -58,6 +59,7 @@ export default function MemoList() {
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('updated')
+  const [titleDir, setTitleDir] = useState<TitleDir>('asc')
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
 
@@ -105,7 +107,9 @@ export default function MemoList() {
 
     if (!isTrash) {
       list.sort((a, b) => {
-        if (sort === 'title') return a.title.localeCompare(b.title, 'ko')
+        if (sort === 'title') return titleDir === 'asc'
+          ? a.title.localeCompare(b.title, 'ko')
+          : b.title.localeCompare(a.title, 'ko')
         if (sort === 'created') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         if (sort === 'starred') {
           if (b.isStarred !== a.isStarred) return Number(b.isStarred) - Number(a.isStarred)
@@ -122,7 +126,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, search, sort, isTrash, activeTag])
+  }, [memos, search, sort, titleDir, isTrash, activeTag])
 
   // 타임라인 전용 필터 적용
   const timelineFiltered = useMemo(() => {
@@ -207,7 +211,6 @@ export default function MemoList() {
     { value: 'created', label: '생성순' },
     { value: 'starred', label: '중요먼저' },
     { value: 'pinned', label: '고정먼저' },
-    { value: 'title', label: '이름순' },
   ]
 
   return (
@@ -350,7 +353,12 @@ export default function MemoList() {
               </button>
             ))}
           </div>
-          {/* 태그 드롭다운: overflow 스크롤 영역 밖에 배치해야 dropdown이 clip되지 않음 */}
+          {/* 이름순 드롭다운 + 태그 드롭다운: overflow 스크롤 영역 밖에 배치해야 dropdown이 clip되지 않음 */}
+          <TitleSortDropdown
+            isActive={sort === 'title'}
+            dir={titleDir}
+            onSelect={(d) => { setSort('title'); setTitleDir(d) }}
+          />
           <TagDropdown
             allTags={allTags}
             selectedTag={activeTag}
@@ -598,6 +606,72 @@ function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, on
       {memos.map((m) => (
         <MemoCard key={m.id} memo={m} isSelected={selectedTrashIds?.has(m.id) ?? false} {...props} />
       ))}
+    </div>
+  )
+}
+
+function TitleSortDropdown({
+  isActive,
+  dir,
+  onSelect,
+}: {
+  isActive: boolean
+  dir: TitleDir
+  onSelect: (dir: TitleDir) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const OPTIONS: { value: TitleDir; label: string; icon: string }[] = [
+    { value: 'asc',  label: '오름차순 (ㄱ → ㅎ)', icon: '↑' },
+    { value: 'desc', label: '내림차순 (ㅎ → ㄱ)', icon: '↓' },
+  ]
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          isActive
+            ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+        )}
+      >
+        이름순
+        <span className="text-[10px] leading-none font-mono">
+          {isActive ? (dir === 'asc' ? '↑' : '↓') : '▾'}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden min-w-[160px]">
+          {OPTIONS.map(({ value, label, icon }) => (
+            <div
+              key={value}
+              onClick={() => { onSelect(value); setOpen(false) }}
+              className={cn(
+                'flex items-center gap-2 px-3.5 py-2.5 text-xs cursor-pointer transition-colors select-none',
+                isActive && dir === value
+                  ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+              )}
+            >
+              <span className="w-3 text-center font-mono">{icon}</span>
+              <span className="flex-1">{label}</span>
+              {isActive && dir === value && <span className="text-violet-500">✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
