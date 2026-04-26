@@ -208,7 +208,6 @@ export default function MemoList() {
 
   const SORT_OPTIONS: { value: SortKey; label: string }[] = [
     { value: 'updated', label: '최신순' },
-    { value: 'created', label: '생성순' },
     { value: 'starred', label: '중요먼저' },
     { value: 'pinned', label: '고정먼저' },
   ]
@@ -333,27 +332,23 @@ export default function MemoList() {
         </div>
       )}
 
-      {/* 정렬 필터 + 태그 드롭다운 */}
+      {/* 정렬 필터 + 이름순 + 태그 */}
       {!isTrash && (
         <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-          {/* 정렬·월 칩: 가로 스크롤 (overflow-x-auto) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-1 min-w-0">
-            {SORT_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setSort(opt.value)}
-                className={cn(
-                  'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
-                  sort === opt.value
-                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
-                    : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {/* 이름순 드롭다운 + 태그 드롭다운: overflow 스크롤 영역 밖에 배치해야 dropdown이 clip되지 않음 */}
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setSort(opt.value)}
+              className={cn(
+                'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
+                sort === opt.value
+                  ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
           <TitleSortDropdown
             isActive={sort === 'title'}
             dir={titleDir}
