@@ -63,20 +63,51 @@ async function uploadImageToDrive(drive: any, imageUrl: string, fileName: string
   }
 }
 
-// 동시성 제한 병렬 실행 헬퍼
+// 429 rate limit 등 재시도 가능한 에러 판별
+function isRetryable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  return msg.includes('429') || msg.includes('ratelimit') || msg.includes('quota') || msg.includes('econnreset') || msg.includes('enotfound')
+}
+
+// 재시도 포함 단일 파일 업로드 (최대 3회, 지수 백오프)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function uploadWithRetry(drive: any, fileName: string, md: string, parentId: string, maxRetries = 3): Promise<boolean> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await uploadDriveFile(drive, fileName, md, parentId)
+      return true
+    } catch (err) {
+      const retryable = isRetryable(err)
+      if (!retryable || attempt === maxRetries - 1) {
+        console.error(`[backup] 업로드 최종 실패 (${fileName}):`, err)
+        return false
+      }
+      const delay = 2000 * Math.pow(2, attempt) // 2s → 4s → 8s
+      console.warn(`[backup] rate limit, ${delay}ms 후 재시도 (${attempt + 1}/${maxRetries}): ${fileName}`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  return false
+}
+
+// 동시성 제한 병렬 실행 헬퍼 — 성공 수 반환
 async function runConcurrent<T>(
   items: T[],
-  fn: (item: T) => Promise<void>,
+  fn: (item: T) => Promise<boolean>,
   limit: number
-): Promise<void> {
+): Promise<number> {
   const queue = [...items]
+  let successCount = 0
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (queue.length > 0) {
       const item = queue.shift()!
-      await fn(item).catch(console.error)
+      const ok = await fn(item).catch(() => false)
+      if (ok) successCount++
     }
   })
   await Promise.all(workers)
+  return successCount
 }
 
 // 1000개 초과 시도 모두 가져오는 페이지네이션 헬퍼
@@ -106,7 +137,11 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
       .order('created_at', { ascending: true })
       .range(from, from + BATCH - 1)
 
-    if (error || !batch || batch.length === 0) break
+    if (error) {
+      console.error('[backup] fetchAllMemos 쿼리 실패 (range', from, '-', from + BATCH - 1, '):', error.message)
+      break
+    }
+    if (!batch || batch.length === 0) break
     result.push(...(batch as typeof result))
     if (batch.length < BATCH) break
     from += BATCH
@@ -259,16 +294,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 메모 파일 병렬 업로드 (10개씩 동시)
-    await runConcurrent(
+    // 메모 파일 병렬 업로드 (5개씩 동시 + 429 자동 재시도)
+    const successCount = await runConcurrent(
       uploadTasks,
-      async ({ md, fileName, parentId }) => { await uploadDriveFile(drive, fileName, md, parentId) },
-      10
+      ({ md, fileName, parentId }) => uploadWithRetry(drive, fileName, md, parentId),
+      5
     )
+
+    const failCount = uploadTasks.length - successCount
+    if (failCount > 0) {
+      console.warn(`[backup] 개별 백업 완료 — 성공: ${successCount}, 실패: ${failCount}`)
+    }
 
     return NextResponse.json({
       message: '개별 파일 백업 완료',
-      count: uploadTasks.length,
+      count: successCount,
+      total: uploadTasks.length,
+      failCount,
       imageCount: 0,
       folderName: backupFolderName,
     })
