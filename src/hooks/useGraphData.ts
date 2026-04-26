@@ -6,7 +6,7 @@ import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStor
 import { useFolderStore } from '@/store/folderStore'
 import type { Memo, Folder } from '@/types'
 
-function toMemoNode(m: Memo & { created_at?: string }, linkCount: number): GraphNode {
+function toMemoNode(m: Memo & { created_at?: string; content_text?: string }, linkCount: number): GraphNode {
   return {
     id: m.id,
     type: 'memo',
@@ -15,6 +15,7 @@ function toMemoNode(m: Memo & { created_at?: string }, linkCount: number): Graph
     isStarred: m.isStarred,
     folderId: m.folderId,
     createdAt: m.createdAt ?? (m as unknown as Record<string, string>).created_at,
+    contentText: m.contentText ?? (m as unknown as Record<string, string>).content_text ?? '',
   }
 }
 
