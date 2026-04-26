@@ -8,12 +8,12 @@ export const maxDuration = 300  // Pro: 최대 300s, Hobby: 10s로 자동 cap
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_BACKUP_FOLDER_ID || undefined
 
-// Tiptap JSON에서 이미지 URL 추출
+// ─── Tiptap JSON에서 이미지 URL 추출 ─────────────────────────
 function extractImageUrls(content: Record<string, unknown>): string[] {
   const urls: string[] = []
   function traverse(node: Record<string, unknown>) {
-    if (node.type === 'image' && typeof node.attrs === 'object') {
-      const src = (node.attrs as Record<string, unknown>)?.src
+    if (node.type === 'image' && node.attrs && typeof node.attrs === 'object') {
+      const src = (node.attrs as Record<string, unknown>).src
       if (typeof src === 'string' && src) urls.push(src)
     }
     const children = node.content as Record<string, unknown>[] | undefined
@@ -23,54 +23,72 @@ function extractImageUrls(content: Record<string, unknown>): string[] {
   return urls
 }
 
+// ─── 이미지 파일명 생성 ──────────────────────────────────────
 function getImageFileName(url: string, memoTitle: string): string {
   const parts = url.split('/')
   const original = parts[parts.length - 1].split('?')[0]
   const ext = original.includes('.') ? original.split('.').pop() : 'webp'
   const uuid8 = original.replace(/\.[^.]+$/, '').slice(0, 8)
   const safeTitle = memoTitle
-    .replace(/[<>:"/\\|?*\[\]]/g, '')
+    .replace(/[<>:"/\\|?*\[\]'`]/g, '')
     .replace(/\s+/g, '_')
     .slice(0, 30)
     .replace(/_+$/, '') || 'memo'
   return `${safeTitle}_${uuid8}.${ext}`
 }
 
+// ─── Drive 검색 쿼리용 이스케이프 ────────────────────────────
+function escapeDriveQuery(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+// ─── 재시도 가능 에러 판별 ───────────────────────────────────
+function isRetryable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  return (
+    msg.includes('429') ||
+    msg.includes('ratelimit') ||
+    msg.includes('quota') ||
+    msg.includes('econnreset') ||
+    msg.includes('enotfound') ||
+    msg.includes('too many requests')
+  )
+}
+
+// ─── 단일 이미지 업로드 ──────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function uploadImageToDrive(drive: any, imageUrl: string, fileName: string, imagesFolderId: string): Promise<void> {
+async function uploadImageToDrive(drive: any, imageUrl: string, fileName: string, imagesFolderId: string): Promise<boolean> {
   try {
     const res = await fetch(imageUrl)
-    if (!res.ok) return
+    if (!res.ok) {
+      console.warn(`[backup] 이미지 fetch 실패 (${res.status}): ${imageUrl}`)
+      return false
+    }
     const buffer = await res.arrayBuffer()
     const { Readable } = await import('stream')
     const stream = Readable.from(Buffer.from(buffer))
     const mimeType = res.headers.get('content-type') || 'image/webp'
 
-    // 중복 방지
+    const escapedName = escapeDriveQuery(fileName)
     const existing = await drive.files.list({
-      q: `name='${fileName}' and '${imagesFolderId}' in parents and trashed=false`,
+      q: `name='${escapedName}' and '${imagesFolderId}' in parents and trashed=false`,
       fields: 'files(id)',
     })
-    if (existing.data.files?.length > 0) return
+    if ((existing.data.files?.length ?? 0) > 0) return true
 
     await drive.files.create({
       requestBody: { name: fileName, parents: [imagesFolderId], mimeType },
       media: { mimeType, body: stream },
     })
+    return true
   } catch (err) {
     console.error(`[backup] 이미지 업로드 실패: ${fileName}`, err)
-    // 이미지 실패해도 전체 백업 계속 진행
+    return false
   }
 }
 
-// 429 rate limit 등 재시도 가능한 에러 판별
-function isRetryable(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  const msg = err.message.toLowerCase()
-  return msg.includes('429') || msg.includes('ratelimit') || msg.includes('quota') || msg.includes('econnreset') || msg.includes('enotfound')
-}
-
-// 재시도 포함 단일 파일 업로드 (최대 3회, 지수 백오프)
+// ─── 재시도 포함 텍스트 파일 업로드 ──────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function uploadWithRetry(drive: any, fileName: string, md: string, parentId: string, maxRetries = 3): Promise<boolean> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -78,12 +96,11 @@ async function uploadWithRetry(drive: any, fileName: string, md: string, parentI
       await uploadDriveFile(drive, fileName, md, parentId)
       return true
     } catch (err) {
-      const retryable = isRetryable(err)
-      if (!retryable || attempt === maxRetries - 1) {
+      if (!isRetryable(err) || attempt === maxRetries - 1) {
         console.error(`[backup] 업로드 최종 실패 (${fileName}):`, err)
         return false
       }
-      const delay = 2000 * Math.pow(2, attempt) // 2s → 4s → 8s
+      const delay = 2000 * Math.pow(2, attempt)
       console.warn(`[backup] rate limit, ${delay}ms 후 재시도 (${attempt + 1}/${maxRetries}): ${fileName}`)
       await new Promise((r) => setTimeout(r, delay))
     }
@@ -91,7 +108,45 @@ async function uploadWithRetry(drive: any, fileName: string, md: string, parentI
   return false
 }
 
-// 동시성 제한 병렬 실행 헬퍼 — 성공 수 반환
+// ─── 재시도 포함 이미지 업로드 (재시도 가능 에러만) ─────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function uploadImageWithRetry(drive: any, imageUrl: string, fileName: string, imagesFolderId: string, maxRetries = 3): Promise<boolean> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const ok = await uploadImageToDrive(drive, imageUrl, fileName, imagesFolderId)
+      if (ok) return true
+      // uploadImageToDrive가 false를 반환하는 경우(404, fetch 실패 등)는 재시도 불가
+      return false
+    } catch (err) {
+      if (!isRetryable(err) || attempt === maxRetries - 1) {
+        console.error(`[backup] 이미지 최종 실패 (${fileName}):`, err)
+        return false
+      }
+      const delay = 2000 * Math.pow(2, attempt)
+      console.warn(`[backup] 이미지 rate limit, ${delay}ms 후 재시도 (${attempt + 1}/${maxRetries}): ${fileName}`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  return false
+}
+
+// ─── 재시도 포함 Drive 폴더 생성 ─────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function createFolderWithRetry(drive: any, name: string, parentId: string, maxRetries = 3): Promise<string> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await createDriveFolder(drive, name, parentId)
+    } catch (err) {
+      if (!isRetryable(err) || attempt === maxRetries - 1) throw err
+      const delay = 2000 * Math.pow(2, attempt)
+      console.warn(`[backup] 폴더 생성 rate limit, ${delay}ms 후 재시도 (${attempt + 1}/${maxRetries}): ${name}`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  throw new Error(`폴더 생성 실패: ${name}`)
+}
+
+// ─── 동시성 제한 병렬 실행 ───────────────────────────────────
 async function runConcurrent<T>(
   items: T[],
   fn: (item: T) => Promise<boolean>,
@@ -110,7 +165,7 @@ async function runConcurrent<T>(
   return successCount
 }
 
-// 1000개 초과 시도 모두 가져오는 페이지네이션 헬퍼
+// ─── 페이지네이션으로 전체 메모 가져오기 ─────────────────────
 async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const BATCH = 1000
   const result: Array<{
@@ -150,7 +205,7 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
   return result
 }
 
-// content가 비어있으면 content_text로 대체한 Tiptap JSON 반환
+// ─── content가 비어있으면 content_text로 대체한 Tiptap JSON 반환 ─
 function resolveContent(
   content: Record<string, unknown> | null,
   contentText: string | null
@@ -167,7 +222,7 @@ function resolveContent(
   return { type: 'doc', content: [{ type: 'paragraph' }] }
 }
 
-// POST /api/backup/google-drive
+// ─── POST /api/backup/google-drive ────────────────────────────
 // body: { mode: 'individual' | 'combined' }
 export async function POST(req: NextRequest) {
   try {
@@ -190,7 +245,6 @@ export async function POST(req: NextRequest) {
     try { body = await req.json() } catch { /* body 없으면 기본값 */ }
     const mode = body.mode === 'combined' ? 'combined' : 'individual'
 
-    // 페이지네이션으로 전체 메모 수집 (1000개 이상도 누락 없이)
     const [memos, { data: folders }] = await Promise.all([
       fetchAllMemos(supabase, user.id),
       supabase.from('folders').select('id, name').eq('user_id', user.id),
@@ -207,6 +261,7 @@ export async function POST(req: NextRequest) {
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-')
     const backupFolderName = `메모플래너_${dateStr}_${timeStr}`
 
+    // ─── combined 모드: 단일 .md 파일 ────────────────────────
     if (mode === 'combined') {
       const lines: string[] = [
         `# 메모 플래너 전체 백업`,
@@ -236,11 +291,15 @@ export async function POST(req: NextRequest) {
       }
       const content = lines.join('\n')
       const fileName = `${backupFolderName}_전체백업.md`
-      await uploadDriveFile(drive, fileName, content, ROOT_FOLDER_ID)
+      // [BUG FIX 3] combined 모드도 retry 적용
+      const ok = await uploadWithRetry(drive, fileName, content, ROOT_FOLDER_ID ?? '')
+      if (!ok) {
+        return NextResponse.json({ error: '통합 백업 파일 업로드 실패' }, { status: 500 })
+      }
       return NextResponse.json({ message: '단일 파일 백업 완료', count: memos.length, imageCount: 0, fileName })
     }
 
-    // 개별 파일 백업: 폴더 구조
+    // ─── individual 모드: 폴더 구조 + 이미지 백업 ────────────
     const rootId = await createDriveFolder(drive, backupFolderName, ROOT_FOLDER_ID)
 
     // 폴더별 그룹핑
@@ -251,26 +310,56 @@ export async function POST(req: NextRequest) {
       groupMap.get(key)!.push(memo)
     }
 
-    // 폴더 생성 (순차 — 각 parentId가 필요하므로)
-    const folderIdMap = new Map<string | null, string>() // folderId → drive parentId
-    folderIdMap.set(null, rootId) // 폴더 없는 메모 → 루트
+    // [BUG FIX 1] 폴더 생성: Promise.all 무제한 병렬 → 순차(5개씩) + retry
+    const folderIdMap = new Map<string | null, { memoFolderId: string; imagesFolderId: string | null }>()
+    folderIdMap.set(null, { memoFolderId: rootId, imagesFolderId: null })
 
-    for (const [folderId] of groupMap.entries()) {
-      if (folderId !== null) {
-        const folderName = folderMap.get(folderId) ?? '알 수 없는 폴더'
-        const driveParentId = await createDriveFolder(drive, folderName, rootId)
-        folderIdMap.set(folderId, driveParentId)
-      }
+    // 폴더가 있는 그룹만 순차 생성 (rate limit 방지)
+    for (const [folderId, group] of groupMap.entries()) {
+      if (folderId === null) continue
+
+      const folderName = folderMap.get(folderId) ?? '알 수 없는 폴더'
+      const memoFolderId = await createFolderWithRetry(drive, folderName, rootId)
+
+      const hasAnyImage = group.some((memo) => {
+        const c = resolveContent(memo.content, memo.content_text)
+        return extractImageUrls(c).length > 0
+      })
+      const imagesFolderId = hasAnyImage
+        ? await createFolderWithRetry(drive, 'images', memoFolderId)
+        : null
+
+      folderIdMap.set(folderId, { memoFolderId, imagesFolderId })
     }
 
-    // 업로드 태스크 구성 (이름 중복 방지는 폴더별로)
+    // null 그룹(폴더 없는 메모)에 이미지가 있으면 루트에 images 폴더 생성
+    const nullGroup = groupMap.get(null) ?? []
+    const nullHasImage = nullGroup.some((memo) => {
+      const c = resolveContent(memo.content, memo.content_text)
+      return extractImageUrls(c).length > 0
+    })
+    if (nullHasImage) {
+      const imagesRootId = await createFolderWithRetry(drive, 'images', rootId)
+      folderIdMap.set(null, { memoFolderId: rootId, imagesFolderId: imagesRootId })
+    }
+
+    // ─── 업로드 태스크 구성 ───────────────────────────────────
     interface UploadTask { md: string; fileName: string; parentId: string }
     const uploadTasks: UploadTask[] = []
 
+    interface ImageTask { url: string; fileName: string; imagesFolderId: string }
+    const imageTasks: ImageTask[] = []
+    const failedMemos: string[] = []
+    const failedImages: string[] = []
+    let totalImages = 0
+
     for (const [folderId, group] of groupMap.entries()) {
-      const parentId = folderIdMap.get(folderId) ?? rootId
+      const { memoFolderId, imagesFolderId } = folderIdMap.get(folderId)!
       const existingNames = new Set<string>()
+
       for (const memo of group) {
+        const resolvedContent = resolveContent(memo.content, memo.content_text)
+
         let md: string
         try {
           md = buildMemoMarkdown(
@@ -284,34 +373,70 @@ export async function POST(req: NextRequest) {
               isStarred: memo.is_starred,
               isPinned: memo.is_pinned,
             },
-            resolveContent(memo.content, memo.content_text)
+            resolvedContent
           )
         } catch (e) {
           console.error(`[backup] memo ${memo.id} 변환 실패:`, e)
           md = `# ${memo.title ?? '제목 없음'}\n\n*내용 변환 실패*`
         }
-        uploadTasks.push({ md, fileName: safeFilenameUnique(memo.title ?? '', existingNames), parentId })
+        uploadTasks.push({
+          md,
+          fileName: safeFilenameUnique(memo.title ?? '', existingNames),
+          parentId: memoFolderId,
+        })
+
+        if (imagesFolderId) {
+          const imageUrls = extractImageUrls(resolvedContent)
+          for (const url of imageUrls) {
+            totalImages++
+            imageTasks.push({ url, fileName: getImageFileName(url, memo.title ?? ''), imagesFolderId })
+          }
+        }
       }
     }
 
-    // 메모 파일 병렬 업로드 (5개씩 동시 + 429 자동 재시도)
+    // ─── 메모 텍스트 병렬 업로드 (동시성 5) ──────────────────
     const successCount = await runConcurrent(
       uploadTasks,
-      ({ md, fileName, parentId }) => uploadWithRetry(drive, fileName, md, parentId),
+      async (task) => {
+        const ok = await uploadWithRetry(drive, task.fileName, task.md, task.parentId)
+        if (!ok) failedMemos.push(task.fileName)
+        return ok
+      },
       5
     )
 
-    const failCount = uploadTasks.length - successCount
-    if (failCount > 0) {
-      console.warn(`[backup] 개별 백업 완료 — 성공: ${successCount}, 실패: ${failCount}`)
+    // ─── 이미지 병렬 업로드 (동시성 3) ───────────────────────
+    const imageSuccessCount = await runConcurrent(
+      imageTasks,
+      async (task) => {
+        const ok = await uploadImageWithRetry(drive, task.url, task.fileName, task.imagesFolderId)
+        if (!ok) failedImages.push(task.fileName)
+        return ok
+      },
+      3
+    )
+
+    const memoFailCount = uploadTasks.length - successCount
+    const imageFailCount = imageTasks.length - imageSuccessCount
+
+    if (memoFailCount > 0 || imageFailCount > 0) {
+      console.warn(
+        `[backup] 완료 — 메모 ${successCount}/${uploadTasks.length}, ` +
+        `이미지 ${imageSuccessCount}/${imageTasks.length}`
+      )
     }
 
     return NextResponse.json({
       message: '개별 파일 백업 완료',
       count: successCount,
       total: uploadTasks.length,
-      failCount,
-      imageCount: 0,
+      failCount: memoFailCount,
+      failedMemos: failedMemos.slice(0, 50),
+      imageCount: imageSuccessCount,
+      imageTotal: totalImages,
+      imageFailCount,
+      failedImages: failedImages.slice(0, 50),
       folderName: backupFolderName,
     })
 
@@ -322,7 +447,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET — Drive 연결 상태 확인
+// ─── GET — Drive 연결 상태 확인 ──────────────────────────────
 export async function GET() {
   try {
     const supabase = await createClient()
