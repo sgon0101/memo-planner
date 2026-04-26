@@ -52,9 +52,11 @@ interface MemoCardProps {
   onMoveToFolder?: (id: string, folderId: string | null) => void
   view: 'card' | 'list'
   isTrash?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (id: string) => void
 }
 
-export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false }: MemoCardProps) {
+export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false, isSelected = false, onToggleSelect }: MemoCardProps) {
   const router = useRouter()
   const { folders } = useFolderStore()
   const { setDraggingMemo } = useDragStore()
@@ -141,7 +143,10 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
     : null
 
   function handleClick() {
-    if (isTrash) return
+    if (isTrash) {
+      onToggleSelect?.(memo.id)
+      return
+    }
     if (memo.isLocked) {
       setLockModal('unlock')
     } else {
@@ -165,9 +170,24 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="group flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer border-b border-gray-100 dark:border-gray-800 transition-colors"
+          className={cn(
+            'group flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-gray-800 transition-colors',
+            isSelected
+              ? 'bg-violet-50 dark:bg-violet-950/20 hover:bg-violet-100 dark:hover:bg-violet-950/30'
+              : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+          )}
           onClick={handleClick}
         >
+          {isTrash && onToggleSelect && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelect(memo.id)}
+                className="w-4 h-4 accent-violet-600 cursor-pointer flex-shrink-0"
+              />
+            </div>
+          )}
           {memo.isLocked && <Lock size={13} className="text-amber-500 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
             <span className={cn('text-sm font-medium text-gray-800 dark:text-gray-200 truncate block', !memo.title && 'text-gray-400 dark:text-gray-500 italic')}>
@@ -247,9 +267,27 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="group relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md hover:border-violet-200 dark:hover:border-violet-800 transition-all overflow-hidden"
+        className={cn(
+          'group relative bg-white dark:bg-gray-800 rounded-xl border cursor-pointer hover:shadow-md transition-all overflow-hidden',
+          isSelected
+            ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-200 dark:ring-violet-800'
+            : 'border-gray-200 dark:border-gray-700 hover:border-violet-200 dark:hover:border-violet-800'
+        )}
         onClick={handleClick}
       >
+        {isTrash && onToggleSelect && (
+          <div
+            className="absolute top-2 left-2 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(memo.id)}
+              className="w-4 h-4 accent-violet-600 cursor-pointer"
+            />
+          </div>
+        )}
         {/* 이미지 썸네일 */}
         {thumbnail && (
           <div className="w-full aspect-video overflow-hidden bg-gray-100 dark:bg-gray-700">

@@ -137,15 +137,30 @@ export function useMemos(folderId: string | null | undefined) {
   )
 
   const softDelete = useCallback(async (id: string) => {
+    // DB 업데이트 전에 삭제 대상 메모의 folderId를 미리 기록
+    const target = memos.find((m) => m.id === id)
+
     await supabase
       .from('memos')
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
     deleteMemo(id)
+
+    // memo-folder-counts 캐시에서 해당 항목을 즉시 제거 (네트워크 없이)
+    queryClient.setQueryData<Array<{ folder_id: string | null }>>(
+      ['memo-folder-counts'],
+      (old) => {
+        if (!old) return old
+        const targetFolderId = target?.folderId ?? null
+        const idx = old.findIndex((row) => row.folder_id === targetFolderId)
+        if (idx === -1) return old
+        return [...old.slice(0, idx), ...old.slice(idx + 1)]
+      }
+    )
+
     queryClient.invalidateQueries({ queryKey: memoKeys.list(folderId, isTrash) })
-    // 폴더 카운트 뱃지 즉시 갱신
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-  }, [folderId, isTrash])
+  }, [folderId, isTrash, memos])
 
   const lockMemo = useCallback(async (
     id: string,
@@ -193,6 +208,17 @@ export function useMemos(folderId: string | null | undefined) {
     queryClient.invalidateQueries({ queryKey: memoKeys.list(null, false) })
   }, [])
 
+  const bulkRestore = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return
+    await supabase
+      .from('memos')
+      .update({ is_deleted: false, deleted_at: null })
+      .in('id', ids)
+    ids.forEach((id) => deleteMemo(id))
+    queryClient.invalidateQueries({ queryKey: memoKeys.list(null, false) })
+    queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+  }, [])
+
   const permanentDelete = useCallback(async (id: string) => {
     await supabase.from('memos').delete().eq('id', id)
     deleteMemo(id)
@@ -223,6 +249,7 @@ export function useMemos(folderId: string | null | undefined) {
     lockMemo,
     unlockMemo,
     restoreMemo,
+    bulkRestore,
     permanentDelete,
     emptyTrash,
     moveMemoToFolder,
