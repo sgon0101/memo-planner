@@ -28,28 +28,34 @@ export async function GET(req: NextRequest) {
     : gapAnalysisPrompt(memoTexts, planTitles)
 
   try {
-    // assistant 프리필 '{' → Claude가 반드시 JSON 객체로 시작하도록 강제
     const message = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1500,
-      system: 'JSON 객체만 반환하세요. 설명, 마크다운, 추가 텍스트 없이 JSON만.',
-      messages: [
-        { role: 'user', content: prompt },
-        { role: 'assistant', content: '{' },
-      ],
+      system: 'You must respond with only a valid JSON object. No explanation, no markdown, no code blocks — raw JSON only.',
+      messages: [{ role: 'user', content: prompt }],
     })
 
-    const tail = message.content[0].type === 'text' ? message.content[0].text : ''
-    const jsonText = '{' + tail
-    try {
-      return Response.json(JSON.parse(jsonText))
-    } catch {
-      const match = jsonText.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error('JSON 블록 없음')
-      return Response.json(JSON.parse(match[0]))
-    }
+    const raw = message.content[0].type === 'text' ? message.content[0].text : ''
+    return Response.json(extractJSON(raw))
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알 수 없는 오류'
     return Response.json({ error: `분석 실패: ${msg}` }, { status: 500 })
   }
+}
+
+function extractJSON(text: string): Record<string, unknown> {
+  try { return JSON.parse(text.trim()) } catch {}
+
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (codeBlock) {
+    try { return JSON.parse(codeBlock[1].trim()) } catch {}
+  }
+
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)) } catch {}
+  }
+
+  throw new Error('응답에서 JSON을 찾을 수 없습니다.')
 }

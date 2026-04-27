@@ -27,15 +27,13 @@ export async function POST() {
 
   let parsed: Record<string, unknown>
   try {
-    // assistant 프리필 '{' → Claude가 반드시 JSON 객체로 시작하도록 강제
     const res = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1500,
-      system: 'JSON 객체만 반환하세요. 설명, 마크다운, 추가 텍스트 없이 JSON만.',
-      messages: [
-        {
-          role: 'user',
-          content: `다음 메모들을 분석해서 사용자 프로필 JSON을 생성해줘.
+      system: 'You must respond with only a valid JSON object. No explanation, no markdown, no code blocks — raw JSON only.',
+      messages: [{
+        role: 'user',
+        content: `다음 메모들을 분석해서 사용자 프로필 JSON을 생성해줘.
 
 메모 목록:
 ${memoLines}
@@ -51,23 +49,11 @@ ${memoLines}
   "recent_changes": ["최근 변화1", "최근 변화2"],
   "raw_notes": "자유 형식 분석 메모"
 }`,
-        },
-        // 프리필: Claude가 이 텍스트에 이어서 생성 → 반드시 { 로 시작
-        { role: 'assistant', content: '{' },
-      ],
+      }],
     })
 
-    const tail = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-    // 프리필 '{' + 나머지 텍스트 = 완전한 JSON
-    const jsonText = '{' + tail
-    try {
-      parsed = JSON.parse(jsonText)
-    } catch {
-      // 혹시 tail 안에 완전한 JSON이 있을 경우 fallback
-      const match = jsonText.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error(`파싱 실패. 응답(앞 300자): ${jsonText.slice(0, 300)}`)
-      parsed = JSON.parse(match[0])
-    }
+    const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+    parsed = extractJSON(raw)
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알 수 없는 오류'
     return NextResponse.json({ error: `AI 응답 파싱 실패: ${msg}` }, { status: 500 })
@@ -84,4 +70,24 @@ ${memoLines}
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
+}
+
+function extractJSON(text: string): Record<string, unknown> {
+  // 1. 그대로 파싱 시도
+  try { return JSON.parse(text) } catch {}
+
+  // 2. 마크다운 코드블록 안의 JSON 추출 (어디든 위치 무관)
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (codeBlock) {
+    try { return JSON.parse(codeBlock[1].trim()) } catch {}
+  }
+
+  // 3. 첫 번째 { ~ 마지막 } 추출
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)) } catch {}
+  }
+
+  throw new Error('응답에서 JSON을 찾을 수 없습니다.')
 }
