@@ -27,18 +27,20 @@ export async function POST() {
 
   let parsed: Record<string, unknown>
   try {
+    // assistant 프리필 '{' → Claude가 반드시 JSON 객체로 시작하도록 강제
     const res = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1500,
-      system: '반드시 순수 JSON만 반환하세요. 마크다운 코드블록, 설명 텍스트, 줄바꿈 이외의 어떤 추가 텍스트도 포함하지 마세요.',
-      messages: [{
-        role: 'user',
-        content: `다음 메모들을 분석해서 사용자 프로필 JSON을 생성해줘.
+      system: 'JSON 객체만 반환하세요. 설명, 마크다운, 추가 텍스트 없이 JSON만.',
+      messages: [
+        {
+          role: 'user',
+          content: `다음 메모들을 분석해서 사용자 프로필 JSON을 생성해줘.
 
 메모 목록:
 ${memoLines}
 
-반환 형식 (이 JSON 구조 그대로):
+반환 형식:
 {
   "interests": ["관심사1", "관심사2"],
   "personality": ["성향1", "성향2"],
@@ -49,18 +51,21 @@ ${memoLines}
   "recent_changes": ["최근 변화1", "최근 변화2"],
   "raw_notes": "자유 형식 분석 메모"
 }`,
-      }],
+        },
+        // 프리필: Claude가 이 텍스트에 이어서 생성 → 반드시 { 로 시작
+        { role: 'assistant', content: '{' },
+      ],
     })
 
-    const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-    // 마크다운 코드블록 제거 후 JSON 파싱 시도
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    const tail = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+    // 프리필 '{' + 나머지 텍스트 = 완전한 JSON
+    const jsonText = '{' + tail
     try {
-      parsed = JSON.parse(cleaned)
+      parsed = JSON.parse(jsonText)
     } catch {
-      // 중괄호 블록만 추출하는 fallback
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error(`JSON 블록을 찾을 수 없음. 응답: ${cleaned.slice(0, 200)}`)
+      // 혹시 tail 안에 완전한 JSON이 있을 경우 fallback
+      const match = jsonText.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error(`파싱 실패. 응답(앞 300자): ${jsonText.slice(0, 300)}`)
       parsed = JSON.parse(match[0])
     }
   } catch (err) {

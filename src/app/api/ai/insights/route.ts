@@ -28,19 +28,23 @@ export async function GET(req: NextRequest) {
     : gapAnalysisPrompt(memoTexts, planTitles)
 
   try {
+    // assistant 프리필 '{' → Claude가 반드시 JSON 객체로 시작하도록 강제
     const message = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1500,
-      system: '반드시 순수 JSON만 반환하세요. 마크다운 코드블록이나 설명 텍스트 없이 JSON 객체만 반환하세요.',
-      messages: [{ role: 'user', content: prompt }],
+      system: 'JSON 객체만 반환하세요. 설명, 마크다운, 추가 텍스트 없이 JSON만.',
+      messages: [
+        { role: 'user', content: prompt },
+        { role: 'assistant', content: '{' },
+      ],
     })
 
-    const raw = message.content[0].type === 'text' ? message.content[0].text : ''
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    const tail = message.content[0].type === 'text' ? message.content[0].text : ''
+    const jsonText = '{' + tail
     try {
-      return Response.json(JSON.parse(cleaned))
+      return Response.json(JSON.parse(jsonText))
     } catch {
-      const match = cleaned.match(/\{[\s\S]*\}/)
+      const match = jsonText.match(/\{[\s\S]*\}/)
       if (!match) throw new Error('JSON 블록 없음')
       return Response.json(JSON.parse(match[0]))
     }
