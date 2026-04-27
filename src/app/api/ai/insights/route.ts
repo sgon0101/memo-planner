@@ -27,17 +27,25 @@ export async function GET(req: NextRequest) {
     ? interestAnalysisPrompt(memoTexts)
     : gapAnalysisPrompt(memoTexts, planTitles)
 
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1500,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const text = message.content[0].type === 'text' ? message.content[0].text : ''
   try {
-    const json = JSON.parse(text.replace(/```json|```/g, '').trim())
-    return Response.json(json)
-  } catch {
-    return Response.json({ raw: text })
+    const message = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system: '반드시 순수 JSON만 반환하세요. 마크다운 코드블록이나 설명 텍스트 없이 JSON 객체만 반환하세요.',
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const raw = message.content[0].type === 'text' ? message.content[0].text : ''
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    try {
+      return Response.json(JSON.parse(cleaned))
+    } catch {
+      const match = cleaned.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('JSON 블록 없음')
+      return Response.json(JSON.parse(match[0]))
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '알 수 없는 오류'
+    return Response.json({ error: `분석 실패: ${msg}` }, { status: 500 })
   }
 }
