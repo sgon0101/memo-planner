@@ -63,6 +63,10 @@ export default function MemoList() {
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
 
+  // 검색/정렬/태그 변경 시 표시 개수 초기화 (검색 필터가 항상 우선 적용)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [search, sort, titleDir, activeTag])
+
   // 카드 컬럼 수 (4~6), localStorage에 저장
   const [cols, setCols] = useState<4 | 5 | 6>(() => {
     if (typeof window === 'undefined') return 4
@@ -385,6 +389,18 @@ export default function MemoList() {
             {!isTrash && (
               <button onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')} className="text-xs text-violet-500 hover:text-violet-700 underline">
                 첫 메모 만들기
+              </button>
+            )}
+          </div>
+        ) : !isTrash && filtered.all.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
+            <p className="text-sm">검색 결과가 없습니다</p>
+            {(search || activeTag) && (
+              <button
+                onClick={() => { setSearch(''); setActiveTag(null) }}
+                className="text-xs text-violet-500 hover:text-violet-700 underline"
+              >
+                필터 초기화
               </button>
             )}
           </div>

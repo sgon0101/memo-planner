@@ -113,6 +113,10 @@ export default function AIChatLayout() {
         body: JSON.stringify({ roomId: selectedId, message: text }),
       })
 
+      if (!res.ok) {
+        throw new Error(`서버 오류 (${res.status})`)
+      }
+
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let assistantText = ''
@@ -122,8 +126,16 @@ export default function AIChatLayout() {
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
-        assistantText += decoder.decode(value)
+        if (done) {
+          // 마지막 멀티바이트 문자 flush
+          const tail = decoder.decode()
+          if (tail) {
+            assistantText += tail
+            setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
+          }
+          break
+        }
+        assistantText += decoder.decode(value, { stream: true })
         setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
       }
 

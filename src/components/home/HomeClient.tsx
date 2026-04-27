@@ -238,9 +238,12 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
                     {p.title}
                   </span>
                 </div>
-                {p.date && (
+                {(p.date || p.startDate) && (
                   <span className="text-xs text-gray-400 flex-shrink-0 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded">
-                    {format(new Date(p.date), 'M/d (E)', { locale: ko })}
+                    {p.date
+                      ? format(new Date(p.date), 'M/d (E)', { locale: ko })
+                      : `${format(new Date(p.startDate!), 'M/d', { locale: ko })}~${format(new Date(p.endDate!), 'M/d', { locale: ko })}`
+                    }
                   </span>
                 )}
               </div>

@@ -28,7 +28,12 @@ export default function GapAnalysis() {
     try {
       const res = await fetch('/api/ai/insights?type=gap')
       const data = await res.json()
-      if (data.error === 'no_data') { setError('분석할 메모가 없습니다. 먼저 메모를 작성해보세요!'); return }
+      if (!res.ok || data.error) {
+        if (data.error === 'no_data') setError('분석할 메모가 없습니다. 먼저 메모를 작성해보세요!')
+        else setError(data.error ?? '분석 중 오류가 발생했습니다.')
+        return
+      }
+      if (!data.gaps) { setError('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); return }
       setResult(data)
     } catch {
       setError('분석 중 오류가 발생했습니다.')

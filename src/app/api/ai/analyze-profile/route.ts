@@ -25,17 +25,20 @@ export async function POST() {
     return `[${folder}] ${m.title}${tags ? ` | #${tags}` : ''}${preview ? ` | ${preview}` : ''}`
   }).join('\n')
 
-  const res = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1500,
-    messages: [{
-      role: 'user',
-      content: `다음 메모들을 분석해서 사용자 프로필을 JSON으로 생성해줘. 반드시 JSON만 반환 (다른 텍스트 없이):
+  let parsed: Record<string, unknown>
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system: '반드시 순수 JSON만 반환하세요. 마크다운 코드블록, 설명 텍스트, 줄바꿈 이외의 어떤 추가 텍스트도 포함하지 마세요.',
+      messages: [{
+        role: 'user',
+        content: `다음 메모들을 분석해서 사용자 프로필 JSON을 생성해줘.
 
 메모 목록:
 ${memoLines}
 
-반환 형식:
+반환 형식 (이 JSON 구조 그대로):
 {
   "interests": ["관심사1", "관심사2"],
   "personality": ["성향1", "성향2"],
@@ -46,17 +49,23 @@ ${memoLines}
   "recent_changes": ["최근 변화1", "최근 변화2"],
   "raw_notes": "자유 형식 분석 메모"
 }`,
-    }],
-  })
+      }],
+    })
 
-  const text = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-  let parsed: Record<string, unknown>
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (!match) return NextResponse.json({ error: 'AI 응답 파싱 실패' }, { status: 500 })
-    parsed = JSON.parse(match[0])
+    const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+    // 마크다운 코드블록 제거 후 JSON 파싱 시도
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch {
+      // 중괄호 블록만 추출하는 fallback
+      const match = cleaned.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error(`JSON 블록을 찾을 수 없음. 응답: ${cleaned.slice(0, 200)}`)
+      parsed = JSON.parse(match[0])
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '알 수 없는 오류'
+    return NextResponse.json({ error: `AI 응답 파싱 실패: ${msg}` }, { status: 500 })
   }
 
   const { data, error } = await supabase

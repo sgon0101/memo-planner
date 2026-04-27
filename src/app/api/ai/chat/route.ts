@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { anthropic, MODEL } from '@/lib/ai/claude'
 import { profileChatSystemPrompt } from '@/lib/ai/prompts'
 
+export const maxDuration = 60 // Vercel Pro: 최대 60초 스트리밍 허용
+
 const RECENT_WINDOW = 20
 
 export async function POST(req: NextRequest) {
@@ -80,28 +82,34 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // assistant 메시지 저장
-        await supabase.from('chat_messages').insert({
-          room_id: roomId,
-          user_id: user.id,
-          role: 'assistant',
-          content: fullText,
-        })
+        // assistant 메시지 저장 (텍스트가 있을 때만)
+        if (fullText) {
+          await supabase.from('chat_messages').insert({
+            room_id: roomId,
+            user_id: user.id,
+            role: 'assistant',
+            content: fullText,
+          })
 
-        // 대화방 메타 업데이트 (제목 자동 생성 포함)
-        const isFirstMessage = (roomData.message_count ?? 0) === 0
-        const newTitle = isFirstMessage && roomData.title === '새 대화'
-          ? (message.length > 28 ? message.slice(0, 28) + '…' : message)
-          : roomData.title
+          // 대화방 메타 업데이트 (제목 자동 생성 포함)
+          const isFirstMessage = (roomData.message_count ?? 0) === 0
+          const newTitle = isFirstMessage && roomData.title === '새 대화'
+            ? (message.length > 28 ? message.slice(0, 28) + '…' : message)
+            : roomData.title
 
-        await supabase.from('chat_rooms').update({
-          last_message_at: new Date().toISOString(),
-          message_count: (roomData.message_count ?? 0) + 2,
-          title: newTitle,
-        }).eq('id', roomId)
+          await supabase.from('chat_rooms').update({
+            last_message_at: new Date().toISOString(),
+            message_count: (roomData.message_count ?? 0) + 2,
+            title: newTitle,
+          }).eq('id', roomId)
 
-        // 20개 초과 시 자동 요약 (비동기)
-        summarizeOldMessages(roomId, user.id, roomData.summary, roomData.message_count ?? 0, supabase).catch(() => {})
+          // 20개 초과 시 자동 요약 (비동기)
+          summarizeOldMessages(roomId, user.id, roomData.summary, roomData.message_count ?? 0, supabase).catch(() => {})
+        }
+      } catch (err) {
+        // 스트림 도중 에러 발생 시 에러 메시지를 클라이언트에 전달
+        const errMsg = err instanceof Error ? err.message : '알 수 없는 오류'
+        controller.enqueue(encoder.encode(`\n\n[오류: ${errMsg}]`))
       } finally {
         controller.close()
       }
