@@ -53,9 +53,11 @@ ${memoLines}
     })
 
     const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+    console.log('[analyze-profile] raw response:', raw.slice(0, 500))
     parsed = extractJSON(raw)
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알 수 없는 오류'
+    console.error('[analyze-profile] error:', msg)
     return NextResponse.json({ error: `AI 응답 파싱 실패: ${msg}` }, { status: 500 })
   }
 
@@ -89,5 +91,6 @@ function extractJSON(text: string): Record<string, unknown> {
     try { return JSON.parse(text.slice(start, end + 1)) } catch {}
   }
 
-  throw new Error('응답에서 JSON을 찾을 수 없습니다.')
+  // 진단용: 실제 응답 앞 400자를 에러 메시지에 포함
+  throw new Error(`JSON 없음. 실제응답: "${text.slice(0, 400)}"`)
 }
