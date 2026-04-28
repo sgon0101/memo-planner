@@ -44,7 +44,7 @@ export async function POST() {
   try {
     const res = await anthropic.messages.create({
       model: HAIKU_MODEL,
-      max_tokens: 1200,
+      max_tokens: 4096,
       system: 'You must respond with only a valid JSON object. No explanation, no markdown, no code blocks — raw JSON only.',
       messages: [{
         role: 'user',
