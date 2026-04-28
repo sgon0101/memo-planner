@@ -10,23 +10,27 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const type = new URL(req.url).searchParams.get('type') ?? 'gap'
+  const params = new URL(req.url).searchParams
+  const type = params.get('type') ?? 'gap'
+  const force = params.get('force') === '1'
   const cacheKey = type === 'interest' ? 'insights_interest' : 'insights_gap'
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
-  // 24h 캐시 확인 (retro_reports 테이블 재활용)
-  const { data: cached } = await supabase
-    .from('retro_reports')
-    .select('report_json')
-    .eq('user_id', user.id)
-    .eq('period', cacheKey)
-    .gte('created_at', format(subDays(new Date(), 1), "yyyy-MM-dd'T'HH:mm:ssxxx"))
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  // 24h 캐시 확인 (force=1이면 건너뜀)
+  if (!force) {
+    const { data: cached } = await supabase
+      .from('retro_reports')
+      .select('report_json')
+      .eq('user_id', user.id)
+      .eq('period', cacheKey)
+      .gte('created_at', format(subDays(new Date(), 1), "yyyy-MM-dd'T'HH:mm:ssxxx"))
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
 
-  if (cached?.report_json) {
-    return Response.json({ ...(cached.report_json as Record<string, unknown>), cached: true })
+    if (cached?.report_json) {
+      return Response.json({ ...(cached.report_json as Record<string, unknown>), cached: true })
+    }
   }
 
   const [{ data: memos }, { data: plans }] = await Promise.all([

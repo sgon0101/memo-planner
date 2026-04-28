@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw, TrendingUp, AlertCircle, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,7 @@ interface GapResult {
   gaps: GapItem[]
   summary: string
   suggestions: string[]
+  cached?: boolean
 }
 
 export default function GapAnalysis() {
@@ -22,11 +23,12 @@ export default function GapAnalysis() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function load() {
+  const load = useCallback(async (force = false) => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/ai/insights?type=gap')
+      const url = force ? '/api/ai/insights?type=gap&force=1' : '/api/ai/insights?type=gap'
+      const res = await fetch(url)
       const data = await res.json()
       if (!res.ok || data.error) {
         if (data.error === 'no_data') setError('분석할 메모가 없습니다. 먼저 메모를 작성해보세요!')
@@ -40,7 +42,10 @@ export default function GapAnalysis() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // 마운트 시 캐시 결과 자동 로드 (API 비용 없음 — DB 캐시 반환)
+  useEffect(() => { load() }, [load])
 
   function scoreColor(score: number) {
     if (score >= 70) return 'text-green-500'
@@ -55,14 +60,19 @@ export default function GapAnalysis() {
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">생각 — 행동 갭 분석</h3>
           <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다</p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          분석하기
-        </button>
+        <div className="flex items-center gap-2">
+          {result?.cached && (
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">캐시됨 (24h)</span>
+          )}
+          <button
+            onClick={() => load(true)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {result ? '재분석' : '분석하기'}
+          </button>
+        </div>
       </div>
 
       {error && (
