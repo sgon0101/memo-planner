@@ -1,11 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { anthropic, MODEL } from '@/lib/ai/claude'
+import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 
 export async function POST() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // 24h 이내 분석 이력 있으면 기존 결과 반환
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', user.id)
+    .single()
+
+  if (existing?.last_analyzed_at) {
+    const lastAt = new Date(existing.last_analyzed_at).getTime()
+    const hoursPassed = (Date.now() - lastAt) / (1000 * 60 * 60)
+    if (hoursPassed < 24) {
+      return NextResponse.json({ ...existing, cached: true })
+    }
+  }
 
   const { data: allMemos } = await supabase
     .from('memos')
@@ -28,8 +43,8 @@ export async function POST() {
   let parsed: Record<string, unknown>
   try {
     const res = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
+      model: HAIKU_MODEL,
+      max_tokens: 1200,
       system: 'You must respond with only a valid JSON object. No explanation, no markdown, no code blocks — raw JSON only.',
       messages: [{
         role: 'user',

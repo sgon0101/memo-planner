@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
+import { format, subDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
-import { anthropic, MODEL } from '@/lib/ai/claude'
+import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { gapAnalysisPrompt, interestAnalysisPrompt } from '@/lib/ai/prompts'
 import { extractMemoTexts } from '@/lib/ai/analyzer'
 
@@ -10,6 +11,23 @@ export async function GET(req: NextRequest) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const type = new URL(req.url).searchParams.get('type') ?? 'gap'
+  const cacheKey = type === 'interest' ? 'insights_interest' : 'insights_gap'
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+
+  // 24h 캐시 확인 (retro_reports 테이블 재활용)
+  const { data: cached } = await supabase
+    .from('retro_reports')
+    .select('report_json')
+    .eq('user_id', user.id)
+    .eq('period', cacheKey)
+    .gte('created_at', format(subDays(new Date(), 1), "yyyy-MM-dd'T'HH:mm:ssxxx"))
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (cached?.report_json) {
+    return Response.json({ ...(cached.report_json as Record<string, unknown>), cached: true })
+  }
 
   const [{ data: memos }, { data: plans }] = await Promise.all([
     supabase.from('memos').select('title,content_text,tags').eq('user_id', user.id).eq('is_deleted', false).order('updated_at', { ascending: false }).limit(20),
@@ -29,14 +47,24 @@ export async function GET(req: NextRequest) {
 
   try {
     const message = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
+      model: HAIKU_MODEL,
+      max_tokens: 1200,
       system: 'You must respond with only a valid JSON object. No explanation, no markdown, no code blocks — raw JSON only.',
       messages: [{ role: 'user', content: prompt }],
     })
 
     const raw = message.content[0].type === 'text' ? message.content[0].text : ''
-    return Response.json(extractJSON(raw))
+    const result = extractJSON(raw)
+
+    // 캐시 저장
+    await supabase.from('retro_reports').insert({
+      user_id: user.id,
+      period: cacheKey,
+      period_start: todayStr,
+      report_json: result,
+    })
+
+    return Response.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알 수 없는 오류'
     return Response.json({ error: `분석 실패: ${msg}` }, { status: 500 })

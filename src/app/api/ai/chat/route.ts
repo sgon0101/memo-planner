@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { anthropic, MODEL } from '@/lib/ai/claude'
+import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { profileChatSystemPrompt } from '@/lib/ai/prompts'
 
 export const maxDuration = 60 // Vercel Pro: 최대 60초 스트리밍 허용
@@ -61,12 +61,18 @@ export async function POST(req: NextRequest) {
   const systemPrompt = profileChatSystemPrompt(profile, recentMemos ?? [], roomData.summary)
 
   const stream = anthropic.messages.stream({
-    model: MODEL,
-    max_tokens: 1500,
-    system: systemPrompt,
+    model: HAIKU_MODEL,
+    max_tokens: 800,
     messages: [
       ...historyMessages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      { role: 'user', content: message },
+      {
+        role: 'user',
+        content: [
+          // 시스템 컨텍스트를 캐시 블록으로 → 동일 세션 반복 호출 시 입력 토큰 절감
+          { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: message },
+        ],
+      },
     ],
   })
 
@@ -145,7 +151,7 @@ async function summarizeOldMessages(
   if (!oldMessages?.length) return
 
   const summaryRes = await anthropic.messages.create({
-    model: MODEL,
+    model: HAIKU_MODEL,
     max_tokens: 400,
     messages: [{
       role: 'user',
