@@ -36,6 +36,7 @@ export default function Header() {
           className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors duration-150 cursor-pointer"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-label="메뉴"
+          aria-expanded={sidebarOpen}
         >
           <Menu size={18} />
         </button>
