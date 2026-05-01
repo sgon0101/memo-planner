@@ -231,7 +231,8 @@ aside {
 }
 .tiptap ul[data-type="taskList"] li label {
   flex-shrink: 0;
-  margin-top: 3px;
+  /* line-height 1.75 × 16px = 28px, checkbox 16px → (28-16)/2 = 6px */
+  margin-top: 6px;
   cursor: pointer;
 }
 .tiptap ul[data-type="taskList"] li input[type="checkbox"] {
@@ -239,6 +240,7 @@ aside {
   width: 16px;
   height: 16px;
   cursor: pointer;
+  display: block;
 }
 .tiptap ul[data-type="taskList"] li > div {
   flex: 1;
