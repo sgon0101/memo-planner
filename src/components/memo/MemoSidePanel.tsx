@@ -18,7 +18,9 @@ interface MemoSidePanelProps {
 
 export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClose }: MemoSidePanelProps) {
   // useMemos에서 null은 전체 보기 → 전체 캐시 공유 후 여기서 폴더 필터링
-  const { memos: allMemos, isLoading } = useMemos(folderId)
+  const { memos: allMemos, isLoading, isFetching } = useMemos(folderId)
+  // 로딩 중이거나, fetch 중인데 아직 데이터가 없으면 스켈레톤 표시
+  const showSkeleton = isLoading || (isFetching && allMemos.length === 0)
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -78,7 +80,7 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
 
       {/* 목록 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {isLoading ? (
+        {showSkeleton ? (
           <div className="flex flex-col">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="px-3 py-2.5 border-b border-gray-50 dark:border-gray-800/50">

@@ -19,7 +19,10 @@ function readSessionCache(): Memo[] | undefined {
   if (typeof window === 'undefined') return undefined
   try {
     const raw = sessionStorage.getItem(SS_KEY)
-    return raw ? (JSON.parse(raw) as Memo[]) : undefined
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw) as Memo[]
+    // 빈 배열은 캐시 미스로 처리 — isLoading = true → 스켈레톤 표시
+    return parsed.length > 0 ? parsed : undefined
   } catch {
     return undefined
   }
@@ -36,6 +39,7 @@ function readSessionCacheTs(): number {
 }
 
 function writeSessionCache(memos: Memo[]) {
+  if (memos.length === 0) return // 빈 배열 저장 방지
   try {
     sessionStorage.setItem(SS_KEY, JSON.stringify(memos))
     sessionStorage.setItem(SS_TS_KEY, String(Date.now()))
@@ -82,7 +86,7 @@ export function useMemos(folderId: string | null | undefined) {
 
   const queryKey = isTrash ? memoKeys.trash() : memoKeys.all()
 
-  const { isLoading, data: allData } = useQuery({
+  const { isLoading, isFetching, data: allData } = useQuery({
     queryKey,
     queryFn: isTrash ? fetchTrash : fetchAll,
     // 새로고침 시 sessionStorage에서 즉시 복원 → 화면 바로 표시
@@ -281,6 +285,7 @@ export function useMemos(folderId: string | null | undefined) {
   return {
     memos: data ?? [],
     isLoading,
+    isFetching,
     isTrash,
     createMemo,
     togglePin,
