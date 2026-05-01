@@ -17,7 +17,8 @@ interface MemoSidePanelProps {
 }
 
 export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClose }: MemoSidePanelProps) {
-  const { memos, isLoading } = useMemos(folderId)
+  // useMemos에서 null은 전체 보기 → 전체 캐시 공유 후 여기서 폴더 필터링
+  const { memos: allMemos, isLoading } = useMemos(folderId)
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -30,13 +31,16 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
   }, [])
 
   const filtered = useMemo(() => {
-    const active = memos.filter((m) => !m.isDeleted)
-    if (!search.trim()) return active
+    // 폴더 필터링: null이면 폴더 없는 메모, uuid이면 해당 폴더 메모
+    const folderFiltered = folderId === null
+      ? allMemos.filter((m) => !m.isDeleted && m.folderId === null)
+      : allMemos.filter((m) => !m.isDeleted && m.folderId === folderId)
+    if (!search.trim()) return folderFiltered
     const q = search.toLowerCase()
-    return active.filter((m) =>
+    return folderFiltered.filter((m) =>
       m.title.toLowerCase().includes(q) || m.contentText.toLowerCase().includes(q)
     )
-  }, [memos, search])
+  }, [allMemos, folderId, search])
 
   function handleSelect(id: string) {
     if (scrollRef.current) {
