@@ -231,9 +231,9 @@ aside {
 }
 .tiptap ul[data-type="taskList"] li label {
   flex-shrink: 0;
-  /* line-height 1.75 × 16px = 28px, checkbox 16px → (28-16)/2 = 6px */
-  margin-top: 6px;
   cursor: pointer;
+  /* p margin 리셋 후: line-height 28px, checkbox 16px → (28-16)/2 = 6px */
+  margin-top: 6px;
 }
 .tiptap ul[data-type="taskList"] li input[type="checkbox"] {
   accent-color: #7C3AED;
@@ -244,6 +244,11 @@ aside {
 }
 .tiptap ul[data-type="taskList"] li > div {
   flex: 1;
+}
+/* prose-sm이 추가하는 p 마진을 리셋해서 체크박스와 정확히 맞춤 */
+.tiptap ul[data-type="taskList"] li > div p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
   text-decoration: line-through;
