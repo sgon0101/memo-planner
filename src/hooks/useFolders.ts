@@ -155,6 +155,9 @@ export function useFolders() {
     if (error) throw error
     deleteFolder(id)
     queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) => old?.filter((f) => f.id !== id))
+    // 삭제된 폴더가 현재 선택 중이면 전체 보기로 리셋
+    const { selectedFolderId, selectFolder } = useFolderStore.getState()
+    if (selectedFolderId === id) selectFolder(null)
   }, [queryClient, supabase, deleteFolder])
 
   return { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder }
