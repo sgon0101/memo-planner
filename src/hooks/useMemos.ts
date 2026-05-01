@@ -12,6 +12,38 @@ export { toMemo, LIST_COLS } from '@/lib/memos/shared'
 
 export const TRASH_ID = '__trash__'
 
+const SS_KEY = 'memos-all-cache'
+const SS_TS_KEY = 'memos-all-cache-ts'
+
+function readSessionCache(): Memo[] | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const raw = sessionStorage.getItem(SS_KEY)
+    return raw ? (JSON.parse(raw) as Memo[]) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readSessionCacheTs(): number {
+  if (typeof window === 'undefined') return 0
+  try {
+    const ts = sessionStorage.getItem(SS_TS_KEY)
+    return ts ? parseInt(ts, 10) : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeSessionCache(memos: Memo[]) {
+  try {
+    sessionStorage.setItem(SS_KEY, JSON.stringify(memos))
+    sessionStorage.setItem(SS_TS_KEY, String(Date.now()))
+  } catch {
+    // 용량 초과 시 무시 — 기능에는 영향 없음
+  }
+}
+
 // 전체 활성 메모 단일 키 — 폴더 필터링은 클라이언트에서 수행
 export const memoKeys = {
   all: () => ['memos', 'all', false] as const,
@@ -53,7 +85,18 @@ export function useMemos(folderId: string | null | undefined) {
   const { isLoading, data: allData } = useQuery({
     queryKey,
     queryFn: isTrash ? fetchTrash : fetchAll,
+    // 새로고침 시 sessionStorage에서 즉시 복원 → 화면 바로 표시
+    // initialDataUpdatedAt 기준으로 staleTime 계산 → 백그라운드 refetch 여부 결정
+    ...(isTrash ? {} : {
+      initialData: readSessionCache,
+      initialDataUpdatedAt: readSessionCacheTs,
+    }),
   })
+
+  // fetch 완료(또는 갱신) 시 sessionStorage에 저장
+  useEffect(() => {
+    if (allData && !isTrash) writeSessionCache(allData)
+  }, [allData, isTrash])
 
   // folderId로 클라이언트 필터링 — 추가 fetch 없이 즉각 반응
   // null·undefined 모두 전체 보기 (기존 fetchMemos 동작과 동일)
