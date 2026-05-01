@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemoStore } from '@/store/memoStore'
+import { useMemos } from '@/hooks/useMemos'
 
 const SCROLL_KEY = 'memo-side-panel-scroll'
 
@@ -17,6 +18,7 @@ interface MemoSidePanelProps {
 
 export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: MemoSidePanelProps) {
   const { memos } = useMemoStore()
+  useMemos(undefined)  // 빈 store일 때 자동 fetch + 동기화
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
