@@ -56,11 +56,11 @@ export function useMemos(folderId: string | null | undefined) {
   })
 
   // folderId로 클라이언트 필터링 — 추가 fetch 없이 즉각 반응
+  // null·undefined 모두 전체 보기 (기존 fetchMemos 동작과 동일)
   const data = useMemo(() => {
     if (!allData) return undefined
     if (isTrash) return allData
-    if (folderId === undefined) return allData          // 전체
-    if (folderId === null) return allData.filter((m) => m.folderId === null)
+    if (folderId === undefined || folderId === null) return allData
     return allData.filter((m) => m.folderId === folderId)
   }, [allData, folderId, isTrash])
 
