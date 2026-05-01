@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { memoKeys } from '@/hooks/useMemos'
+import { memoKeys, useMemos } from '@/hooks/useMemos'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -113,6 +113,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const queryClient = useQueryClient()
   const { setCurrentMemo, updateMemo, addMemo, deleteMemo } = useMemoStore()
   const { folders } = useFolders()
+  useMemos(undefined) // 전체 메모 캐시 사전 로드 → MemoSidePanel 즉각 표시
 
   const [title, setTitle] = useState(initialTitle)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
