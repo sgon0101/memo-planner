@@ -47,6 +47,7 @@ interface MemoEditorProps {
   initialIsStarred?: boolean
   initialIsPinned?: boolean
   initialFolderId?: string | null
+  initialFolderName?: string | null
   isNew?: boolean
 }
 
@@ -104,7 +105,7 @@ function extractTags(text: string): string[] {
   return [...new Set(matches.map((m) => m[1]))]
 }
 
-export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, isNew = false }: MemoEditorProps) {
+export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, initialFolderName = null, isNew = false }: MemoEditorProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromGraph = searchParams.get('from') === 'graph'
@@ -719,7 +720,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <Folder size={12} />
-            <span>{folderId ? (folders.find((f) => f.id === folderId)?.name ?? '폴더') : '폴더 없음'}</span>
+            <span>{folderId ? (folders.find((f) => f.id === folderId)?.name ?? initialFolderName ?? '폴더') : '폴더 없음'}</span>
             <ChevronDown size={10} />
           </button>
           {showFolderDropdown && (
