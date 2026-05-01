@@ -293,7 +293,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     content: Object.keys(initialContent).length > 0 ? initialContent : EMPTY_DOC,
     editorProps: {
       attributes: {
-        class: 'outline-none min-h-[calc(100vh-220px)] px-8 py-6 prose prose-sm dark:prose-invert max-w-none',
+        class: 'outline-none min-h-[calc(100vh-220px)] px-3 md:px-8 py-4 md:py-6 prose prose-sm dark:prose-invert max-w-none',
       },
     },
     onUpdate({ editor }) {
@@ -580,7 +580,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     <div className="flex h-full bg-white dark:bg-gray-900">
       <div className="flex flex-col flex-1 min-w-0">
         {/* 상단 바 */}
-        <div className="flex items-center justify-between px-8 py-2 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between px-3 md:px-8 py-1.5 md:py-2 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <button
               onClick={handleBackToList}
@@ -706,7 +706,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         </div>
 
         {/* 폴더 선택 */}
-        <div className="relative px-8 pt-4">
+        <div className="relative px-3 md:px-8 pt-3 md:pt-4">
           <button
             onClick={() => setShowFolderDropdown((v) => !v)}
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -718,7 +718,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           {showFolderDropdown && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowFolderDropdown(false)} />
-              <div className="absolute left-8 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-44">
+              <div className="absolute left-3 md:left-8 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-44">
                 <button
                   onClick={() => handleChangeFolder(null)}
                   className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors', !folderId ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700')}
@@ -746,7 +746,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="제목 없음"
-          className="w-full px-8 pt-4 pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 */}
@@ -776,7 +776,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         </div>
 
         {/* 하단 푸터 */}
-        <div className="flex items-center gap-3 px-8 py-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">
+        <div className="flex items-center gap-3 px-3 md:px-8 py-1.5 md:py-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">
           <span>{charCount.toLocaleString()}자</span>
           <span className="text-gray-200 dark:text-gray-700">|</span>
           <span>약 {readMinutes}분 분량</span>
