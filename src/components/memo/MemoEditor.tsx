@@ -346,6 +346,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   // eslint-disable-next-line react-hooks/refs
   editorRef.current = editor
 
+  // 모바일 첫 진입 시 사이드 패널 자동 닫힘 (작성 영역 확보)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setShowSidePanel(false)
+    }
+  }, [])
+
   // 30초 자동 저장
   useEffect(() => {
     const interval = setInterval(() => {
@@ -601,23 +608,23 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           </div>
           <div className="flex items-center gap-2">
             {/* 저장 상태 표시 */}
-            <div className="flex items-center gap-1.5 min-w-[80px] justify-end">
+            <div className="flex items-center gap-1.5 min-w-[20px] md:min-w-[80px] justify-end">
               {saveStatus === 'unsaved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                  <span className="text-xs text-amber-500">저장 안 됨</span>
+                  <span className="hidden md:inline text-xs text-amber-500">저장 안 됨</span>
                 </>
               )}
               {saveStatus === 'saving' && (
                 <>
                   <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                  <span className="text-xs text-violet-400">저장 중...</span>
+                  <span className="hidden md:inline text-xs text-violet-400">저장 중...</span>
                 </>
               )}
               {saveStatus === 'saved' && (
                 <>
                   <span className="text-green-500 text-sm">✓</span>
-                  <span className="text-xs text-green-500">저장됨</span>
+                  <span className="hidden md:inline text-xs text-green-500">저장됨</span>
                 </>
               )}
             </div>
@@ -654,7 +661,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
               >
                 <Trash2 size={12} />
-                <span>삭제</span>
+                <span className="hidden md:inline">삭제</span>
               </button>
             )}
 
@@ -666,7 +673,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-default"
             >
               <Save size={12} />
-              <span>저장</span>
+              <span className="hidden md:inline">저장</span>
             </button>
 
             {/* 메모 목록 패널 토글 */}
@@ -699,7 +706,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 )}
               >
                 <History size={13} />
-                <span>이력</span>
+                <span className="hidden md:inline">이력</span>
               </button>
             )}
           </div>
