@@ -40,6 +40,16 @@ export default async function MemoEditorPage({ params, searchParams }: Props) {
 
   if (!memo) notFound()
 
+  let initialFolderName: string | null = null
+  if (memo.folder_id) {
+    const { data: folder } = await supabase
+      .from('folders')
+      .select('name')
+      .eq('id', memo.folder_id)
+      .single()
+    initialFolderName = folder?.name ?? null
+  }
+
   return (
     <Suspense>
       <MemoEditor
@@ -49,6 +59,7 @@ export default async function MemoEditorPage({ params, searchParams }: Props) {
         initialIsStarred={memo.is_starred ?? false}
         initialIsPinned={memo.is_pinned ?? false}
         initialFolderId={memo.folder_id ?? null}
+        initialFolderName={initialFolderName}
       />
     </Suspense>
   )
