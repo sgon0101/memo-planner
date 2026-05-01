@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useFolderStore } from '@/store/folderStore'
 import type { Folder } from '@/types'
@@ -20,20 +21,30 @@ function toFolder(row: Record<string, unknown>): Folder {
   }
 }
 
+export const folderKeys = {
+  all: () => ['folders'] as const,
+}
+
 export function useFolders() {
   const { folders, setFolders, addFolder, updateFolder, deleteFolder } = useFolderStore()
   const supabase = createClient()
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    async function load() {
+  const { data } = useQuery({
+    queryKey: folderKeys.all(),
+    queryFn: async () => {
       const { data } = await supabase
         .from('folders')
         .select('*')
         .order('order_index', { ascending: true })
-      if (data) setFolders(data.map(toFolder))
-    }
-    load()
-  }, [])
+      return (data ?? []).map(toFolder)
+    },
+  })
+
+  // React Query 캐시 → Zustand 동기화 (다른 컴포넌트 호환)
+  useEffect(() => {
+    if (data) setFolders(data)
+  }, [data, setFolders])
 
   const createFolder = useCallback(async (name: string, parentId: string | null = null) => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -44,15 +55,20 @@ export function useFolders() {
       .select()
       .single()
     if (error) throw error
-    addFolder(toFolder(data))
-    return toFolder(data)
-  }, [folders])
+    const folder = toFolder(data)
+    addFolder(folder)
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) => [...(old ?? []), folder])
+    return folder
+  }, [folders, queryClient, supabase, addFolder])
 
   const renameFolder = useCallback(async (id: string, name: string) => {
     const { error } = await supabase.from('folders').update({ name }).eq('id', id)
     if (error) throw error
     updateFolder(id, { name })
-  }, [])
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) =>
+      old?.map((f) => f.id === id ? { ...f, name } : f)
+    )
+  }, [queryClient, supabase, updateFolder])
 
   const updateColor = useCallback(async (id: string, colorH: number, colorS: number, colorL: number) => {
     const { error } = await supabase
@@ -61,7 +77,10 @@ export function useFolders() {
       .eq('id', id)
     if (error) throw error
     updateFolder(id, { colorH, colorS, colorL })
-  }, [])
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) =>
+      old?.map((f) => f.id === id ? { ...f, colorH, colorS, colorL } : f)
+    )
+  }, [queryClient, supabase, updateFolder])
 
   const reorderFolder = useCallback(async (
     dragId: string,
@@ -71,7 +90,6 @@ export function useFolders() {
     const dragFolder = folders.find((f) => f.id === dragId)
     if (!dragFolder) return
 
-    // 같은 부모의 형제 폴더만 대상
     const siblings = folders
       .filter((f) => f.parentId === dragFolder.parentId)
       .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -87,25 +105,27 @@ export function useFolders() {
       ...withoutDrag.slice(insertIdx),
     ]
 
-    // 낙관적 업데이트
     reordered.forEach((f, i) => updateFolder(f.id, { orderIndex: i }))
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) => {
+      if (!old) return old
+      const orderMap = new Map(reordered.map((f, i) => [f.id, i]))
+      return old.map((f) => orderMap.has(f.id) ? { ...f, orderIndex: orderMap.get(f.id)! } : f)
+    })
 
-    // Supabase 저장
     await Promise.all(
       reordered.map((f, i) =>
         supabase.from('folders').update({ order_index: i }).eq('id', f.id)
       )
     )
-  }, [folders, updateFolder])
+  }, [folders, queryClient, supabase, updateFolder])
 
   const nestFolder = useCallback(async (dragId: string, targetId: string) => {
     if (dragId === targetId) return
 
     const dragFolder = folders.find((f) => f.id === dragId)
     if (!dragFolder) return
-    if (dragFolder.parentId === targetId) return  // 이미 자식
+    if (dragFolder.parentId === targetId) return
 
-    // 순환 참조 방지: targetId가 dragId의 자손이면 중단
     const getDescendantIds = (id: string): string[] => {
       const children = folders.filter((f) => f.parentId === id)
       return [...children.map((c) => c.id), ...children.flatMap((c) => getDescendantIds(c.id))]
@@ -114,16 +134,18 @@ export function useFolders() {
 
     const childCount = folders.filter((f) => f.parentId === targetId).length
     updateFolder(dragId, { parentId: targetId, orderIndex: childCount })
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) =>
+      old?.map((f) => f.id === dragId ? { ...f, parentId: targetId, orderIndex: childCount } : f)
+    )
 
     await supabase
       .from('folders')
       .update({ parent_id: targetId, order_index: childCount })
       .eq('id', dragId)
-  }, [folders, updateFolder])
+  }, [folders, queryClient, supabase, updateFolder])
 
   const removeFolder = useCallback(async (id: string) => {
     const { data: { user } } = await supabase.auth.getUser()
-    // 폴더 내 메모 소프트 삭제 (휴지통으로 이동)
     await supabase
       .from('memos')
       .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder_id: null })
@@ -132,7 +154,8 @@ export function useFolders() {
     const { error } = await supabase.from('folders').delete().eq('id', id)
     if (error) throw error
     deleteFolder(id)
-  }, [])
+    queryClient.setQueryData<Folder[]>(folderKeys.all(), (old) => old?.filter((f) => f.id !== id))
+  }, [queryClient, supabase, deleteFolder])
 
   return { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder }
 }

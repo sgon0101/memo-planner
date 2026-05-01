@@ -181,13 +181,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
         const patch = { title: titleRef.current, content, contentText: text, updatedAt }
         updateMemo(id, patch)
-        // 현재 폴더 + 전체 목록 캐시 즉시 반영
-        ;[folderIdRef.current, null].forEach((fid) => {
-          queryClient.setQueryData<Memo[]>(
-            memoKeys.list(fid, false),
-            (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
-          )
-        })
+        // 단일 전체 캐시 업데이트
+        queryClient.setQueryData<Memo[]>(
+          memoKeys.all(),
+          (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
+        )
 
         const now = Date.now()
         if (now - lastVersionSavedAtRef.current > VERSION_COOLDOWN_MS) {
@@ -216,19 +214,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         setCurrentMemo(newMemo)
         addMemo(newMemo)
 
-        // 신규 메모를 RQ 캐시에 즉시 추가 → 목록 복귀 시 바로 표시
-        const targetFolderId = folderIdRef.current
+        // 신규 메모를 단일 전체 캐시에 즉시 추가 → 목록 복귀 시 바로 표시
         queryClient.setQueryData<Memo[]>(
-          memoKeys.list(targetFolderId, false),
-          (old) => [newMemo, ...(old ?? [])]
+          memoKeys.all(),
+          (old) => old ? [newMemo, ...old] : [newMemo]
         )
-        if (targetFolderId !== null) {
-          queryClient.setQueryData<Memo[]>(
-            memoKeys.list(null, false),
-            (old) => old ? [newMemo, ...old] : [newMemo]
-          )
-        }
         // 폴더 카운트 즉시 반영
+        const targetFolderId = folderIdRef.current
         queryClient.setQueryData<Array<{ folder_id: string | null }>>(
           ['memo-folder-counts'],
           (old) => old ? [...old, { folder_id: targetFolderId }] : [{ folder_id: targetFolderId }]
@@ -553,13 +545,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
 
-    // RQ 캐시에서 즉시 제거
-    ;[folderIdRef.current, null].forEach((fid) => {
-      queryClient.setQueryData<import('@/types').Memo[]>(
-        memoKeys.list(fid, false),
-        (old) => old?.filter((m) => m.id !== id) ?? []
-      )
-    })
+    // 단일 전체 캐시에서 즉시 제거
+    queryClient.setQueryData<import('@/types').Memo[]>(
+      memoKeys.all(),
+      (old) => old?.filter((m) => m.id !== id) ?? []
+    )
     // 폴더 카운트 감소
     queryClient.setQueryData<Array<{ folder_id: string | null }>>(
       ['memo-folder-counts'],
