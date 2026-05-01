@@ -31,9 +31,9 @@ interface WeekPlan {
 
 interface HomeClientProps {
   userEmail: string
-  totalMemos: number
+  totalMemos: number | undefined   // undefined = 로딩 중
   completedPlans: number
-  recentMemos: RecentMemo[]
+  recentMemos: RecentMemo[] | undefined  // undefined = 로딩 중
   weekPlans: WeekPlan[]
 }
 
@@ -166,7 +166,13 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
             전체 보기 <ArrowRight size={10} />
           </button>
         </div>
-        {recentMemos.length === 0 ? (
+        {recentMemos === undefined ? (
+          <div className="space-y-1.5">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : recentMemos.length === 0 ? (
           <EmptyState
             message="아직 메모가 없어요"
             action="첫 메모 만들기"
@@ -259,7 +265,7 @@ function StatCard({ icon, iconBg, label, value, onClick }: {
   icon: React.ReactNode
   iconBg: string
   label: string
-  value: number | string
+  value: number | string | undefined
   onClick: () => void
 }) {
   return (
@@ -271,7 +277,10 @@ function StatCard({ icon, iconBg, label, value, onClick }: {
         {icon}
       </div>
       <div>
-        <p className="text-xl font-bold text-gray-900 dark:text-white leading-none">{value}</p>
+        {value === undefined
+          ? <div className="h-7 w-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+          : <p className="text-xl font-bold text-gray-900 dark:text-white leading-none">{value}</p>
+        }
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
       </div>
     </button>

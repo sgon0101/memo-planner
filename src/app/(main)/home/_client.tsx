@@ -10,12 +10,15 @@ import HomeClient from '@/components/home/HomeClient'
 const HOME_STALE = 5 * 60 * 1000
 
 export default function HomePageClient() {
-  const { memos } = useMemos(undefined)
+  const { memos, isLoading, isFetching } = useMemos(undefined)
+  // 데이터가 실제로 준비됐는지 확인 — 로딩 중 0/빈값 표시 방지
+  const memosReady = !isLoading && !(isFetching && memos.length === 0)
 
   // 메모 캐시에서 즉각 계산 — 서버 왕복 없음
-  const totalMemos = memos.length
-  const recentMemos = useMemo(() =>
-    [...memos]
+  const totalMemos = memosReady ? memos.length : undefined
+  const recentMemos = useMemo(() => {
+    if (!memosReady) return undefined
+    return [...memos]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 5)
       .map((m) => ({
@@ -25,8 +28,8 @@ export default function HomePageClient() {
         updatedAt: m.updatedAt,
         isStarred: m.isStarred,
         isPinned: m.isPinned,
-      })),
-  [memos])
+      }))
+  }, [memos, memosReady])
 
   // 사용자 이메일 — Supabase 클라이언트 세션에서 즉각 (로컬 토큰)
   const { data: userEmail = '' } = useQuery({
