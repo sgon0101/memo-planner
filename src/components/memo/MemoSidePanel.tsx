@@ -5,20 +5,19 @@ import { Search, X, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { useMemoStore } from '@/store/memoStore'
 import { useMemos } from '@/hooks/useMemos'
 
 const SCROLL_KEY = 'memo-side-panel-scroll'
 
 interface MemoSidePanelProps {
   currentMemoId: string
+  folderId: string | null
   onSelect: (id: string) => void
   onClose: () => void
 }
 
-export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: MemoSidePanelProps) {
-  const { memos } = useMemoStore()
-  useMemos(undefined)  // 빈 store일 때 자동 fetch + 동기화
+export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClose }: MemoSidePanelProps) {
+  const { memos, isLoading } = useMemos(folderId)
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -75,7 +74,16 @@ export default function MemoSidePanel({ currentMemoId, onSelect, onClose }: Memo
 
       {/* 목록 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="px-3 py-2.5 border-b border-gray-50 dark:border-gray-800/50">
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-1.5 animate-pulse" />
+                <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded w-1/2 animate-pulse" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-xs text-gray-400">결과 없음</div>
         ) : (
           filtered.map((memo) => {

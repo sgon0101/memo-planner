@@ -22,7 +22,7 @@ import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, N
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
-import { useFolderStore } from '@/store/folderStore'
+import { useFolders } from '@/hooks/useFolders'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -111,7 +111,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const supabase = createClient()
   const queryClient = useQueryClient()
   const { setCurrentMemo, updateMemo, addMemo, deleteMemo } = useMemoStore()
-  const { folders } = useFolderStore()
+  const { folders } = useFolders()
 
   const [title, setTitle] = useState(initialTitle)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -807,6 +807,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       {showSidePanel && (
         <MemoSidePanel
           currentMemoId={createdId ?? memoId}
+          folderId={folderId}
           onSelect={handleSidePanelSelect}
           onClose={() => setShowSidePanel(false)}
         />
