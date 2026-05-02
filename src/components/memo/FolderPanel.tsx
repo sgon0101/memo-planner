@@ -276,6 +276,20 @@ export default function FolderPanel() {
     void queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
   }, [folders, updateMemo, queryClient])
 
+  // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달
+  // inline edit(editingId)은 input onKeyDown에서 처리되므로 여기선 불필요
+  useEffect(() => {
+    if (!menu && !colorTarget && !showNewFolderModal) return
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (menu) { setMenu(null); return }
+      if (colorTarget) { setColorTarget(null); return }
+      if (showNewFolderModal) { setShowNewFolderModal(false); return }
+    }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [menu, colorTarget, showNewFolderModal])
+
   // 터치 드래그 커스텀 이벤트 수신
   useEffect(() => {
     function onTouchDrop(e: Event) {

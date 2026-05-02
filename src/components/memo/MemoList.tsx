@@ -62,7 +62,7 @@ export default function MemoList() {
     obsRef.current.observe(el)
   }, []) // setDisplayCount는 React 보장 stable → deps 불필요
 
-  // 모바일 폴더 드롭다운 — 외부 클릭 / ESC 닫힘
+  // 모바일 폴더 드롭다운 — 외부 클릭 닫힘
   useEffect(() => {
     if (!showFolderDropdown) return
     // 다른 모달이나 inline edit 활성 시 외부 클릭 감지 비활성 (드롭다운 유지)
@@ -72,15 +72,23 @@ export default function MemoList() {
         setShowFolderDropdown(false)
       }
     }
-    function handleEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowFolderDropdown(false)
-    }
     document.addEventListener('mousedown', handleOutside)
-    document.addEventListener('keydown', handleEsc)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside)
-      document.removeEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showFolderDropdown, menu, colorTarget, showNewFolderModal, editingId])
+
+  // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달 → 폴더 드롭다운
+  // inline edit(editingId)은 input onKeyDown에서 처리되므로 여기선 무시
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (editingId) return
+      if (menu) { setMenu(null); return }
+      if (colorTarget) { setColorTarget(null); return }
+      if (showNewFolderModal) { setShowNewFolderModal(false); return }
+      if (showFolderDropdown) { setShowFolderDropdown(false); return }
     }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
   }, [showFolderDropdown, menu, colorTarget, showNewFolderModal, editingId])
 
   // 폴더 변경 시 표시 개수 + 선택 초기화
