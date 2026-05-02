@@ -64,7 +64,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
   const [showFolderPicker, setShowFolderPicker] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
-  const touchRef = useRef<{ startX: number; startY: number; ghost: HTMLDivElement | null; started: boolean } | null>(null)
 
   function handleDragStart(e: React.DragEvent) {
     if (isTrash) return
@@ -78,59 +77,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   function handleDragEnd(e: React.DragEvent) {
     ;(e.currentTarget as HTMLElement).style.opacity = '1'
     setDraggingMemo(null)
-  }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    if (isTrash) return
-    const t = e.touches[0]
-    touchRef.current = { startX: t.clientX, startY: t.clientY, ghost: null, started: false }
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    const ts = touchRef.current
-    if (!ts) return
-    const t = e.touches[0]
-    if (!ts.started) {
-      const dx = t.clientX - ts.startX, dy = t.clientY - ts.startY
-      if (Math.sqrt(dx * dx + dy * dy) < 8) return
-      ts.started = true
-      const ghost = document.createElement('div')
-      ghost.textContent = memo.title || '제목 없음'
-      Object.assign(ghost.style, {
-        position: 'fixed', zIndex: '9999', pointerEvents: 'none',
-        background: '#fff', border: '2px solid #7c3aed', borderRadius: '10px',
-        padding: '8px 14px', boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-        opacity: '0.92', fontSize: '13px', fontWeight: '600', color: '#111',
-        maxWidth: '200px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-      })
-      document.body.appendChild(ghost)
-      ts.ghost = ghost
-      setDraggingMemo(memo.id)
-      if (cardRef.current) cardRef.current.style.opacity = '0.4'
-    }
-    if (ts.ghost) {
-      ts.ghost.style.left = `${t.clientX - 80}px`
-      ts.ghost.style.top = `${t.clientY - 20}px`
-      e.preventDefault()
-    }
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    const ts = touchRef.current
-    if (!ts) return
-    if (ts.ghost) { document.body.removeChild(ts.ghost); ts.ghost = null }
-    if (cardRef.current) cardRef.current.style.opacity = '1'
-    setDraggingMemo(null)
-    if (ts.started) {
-      const t = e.changedTouches[0]
-      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
-      const folderEl = el?.closest('[data-folder-id]') as HTMLElement | null
-      if (folderEl) {
-        const folderId = folderEl.getAttribute('data-folder-id')
-        window.dispatchEvent(new CustomEvent('memo-folder-drop', { detail: { memoId: memo.id, folderId } }))
-      }
-    }
-    touchRef.current = null
   }
 
   const currentFolder = memo.folderId ? folders.find((f) => f.id === memo.folderId) : null
@@ -167,9 +113,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           draggable={!isTrash}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
           className={cn(
             'group flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-gray-800 transition-colors',
             isSelected
@@ -264,9 +207,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
         draggable={!isTrash}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         className={cn(
           'group relative bg-white dark:bg-gray-800 rounded-xl border cursor-pointer hover:shadow-md transition-all overflow-hidden',
           isSelected

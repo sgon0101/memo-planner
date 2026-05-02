@@ -477,69 +477,75 @@ type MoreItem =
 
 function MoreMenu({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
 
   const items: MoreItem[] = [
-    { key: 'code',      label: '인라인 코드', Icon: Code,  action: () => editor.chain().focus().toggleCode().run(),          isActive: editor.isActive('code') },
+    { key: 'code',       label: '인라인 코드', Icon: Code,  action: () => editor.chain().focus().toggleCode().run(),         isActive: editor.isActive('code') },
     { divider: true },
-    { key: 'blockquote',label: '인용',        Icon: Quote, action: () => editor.chain().focus().toggleBlockquote().run(),    isActive: editor.isActive('blockquote') },
-    { key: 'codeBlock', label: '코드 블록',   Icon: Code2, action: () => editor.chain().focus().toggleCodeBlock().run(),     isActive: editor.isActive('codeBlock') },
-    { key: 'hr',        label: '구분선',       Icon: Minus, action: () => editor.chain().focus().setHorizontalRule().run(),  isActive: false },
+    { key: 'blockquote', label: '인용',        Icon: Quote, action: () => editor.chain().focus().toggleBlockquote().run(),   isActive: editor.isActive('blockquote') },
+    { key: 'codeBlock',  label: '코드 블록',   Icon: Code2, action: () => editor.chain().focus().toggleCodeBlock().run(),    isActive: editor.isActive('codeBlock') },
+    { key: 'hr',         label: '구분선',       Icon: Minus, action: () => editor.chain().focus().setHorizontalRule().run(), isActive: false },
     { divider: true },
-    { key: 'table',     label: '표 (3×3)',    Icon: null,  customIcon: true, action: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), isActive: false },
+    { key: 'table',      label: '표 (3×3)',    Icon: null,  customIcon: true, action: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), isActive: false },
   ]
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
         type="button"
-        onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
+        onMouseDown={(e) => { e.preventDefault(); setOpen(true) }}
         title="더보기"
         className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         <MoreHorizontal size={14} />
       </button>
       {open && (
-        <div className="absolute top-9 right-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-44">
-          {items.map((item, i) => {
-            if ('divider' in item) {
-              return <div key={`d-${i}`} className="border-t border-gray-100 dark:border-gray-700 my-1" />
-            }
-            const { key, label, Icon, customIcon, action, isActive } = item
-            return (
-              <button
-                key={key}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); action(); setOpen(false) }}
-                className={cn(
-                  'flex items-center justify-between w-full px-3 py-2 text-sm transition-colors',
-                  isActive
-                    ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                )}
-              >
-                <span className="flex items-center gap-2">
-                  {customIcon ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <line x1="3" y1="9" x2="21" y2="9" />
-                      <line x1="3" y1="15" x2="21" y2="15" />
-                      <line x1="9" y1="3" x2="9" y2="21" />
-                      <line x1="15" y1="3" x2="15" y2="21" />
-                    </svg>
-                  ) : Icon ? (
-                    <Icon size={14} />
-                  ) : null}
-                  {label}
-                </span>
-                {isActive && <span className="text-violet-500 text-xs">✓</span>}
-              </button>
-            )
-          })}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onMouseDown={(e) => { e.preventDefault(); setOpen(false) }}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-56"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {items.map((item, i) => {
+              if ('divider' in item) {
+                return <div key={`d-${i}`} className="border-t border-gray-100 dark:border-gray-700 my-1" />
+              }
+              const { key, label, Icon, customIcon, action, isActive } = item
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); action(); setOpen(false) }}
+                  className={cn(
+                    'flex items-center justify-between w-full px-3 py-2.5 text-sm transition-colors',
+                    isActive
+                      ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    {customIcon ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="3" y1="9" x2="21" y2="9" />
+                        <line x1="3" y1="15" x2="21" y2="15" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
+                        <line x1="15" y1="3" x2="15" y2="21" />
+                      </svg>
+                    ) : Icon ? (
+                      <Icon size={14} />
+                    ) : null}
+                    {label}
+                  </span>
+                  {isActive && <span className="text-violet-500 text-xs">✓</span>}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
