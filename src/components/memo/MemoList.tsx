@@ -2,12 +2,14 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useFolders } from '@/hooks/useFolders'
+import { createClient } from '@/lib/supabase/client'
+import type { Folder as FolderType } from '@/types'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
@@ -24,11 +26,17 @@ type ViewMode = 'card' | 'list' | 'timeline'
 export default function MemoList() {
   const router = useRouter()
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
-  const { createFolder, updateColor } = useFolders()
+  const { createFolder, renameFolder, updateColor, removeFolder } = useFolders()
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const folderDropdownRef = useRef<HTMLDivElement>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
+  const [menu, setMenu] = useState<{ folderId: string } | null>(null)
+  const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null)
+  const editInputRef = useRef<HTMLInputElement | null>(null)
   const {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
@@ -225,11 +233,52 @@ export default function MemoList() {
     setShowNewFolderModal(false)
     if (!name?.trim()) return
     try {
-      const folder = await createFolder(name.trim(), null)
+      const folder = await createFolder(name.trim(), newFolderParentId)
       if (h !== 260 || s !== 60 || l !== 80) {
         await updateColor(folder.id, h, s, l).catch(console.error)
       }
+      if (newFolderParentId) {
+        setExpandedFolders((prev) => new Set([...prev, newFolderParentId as string]))
+      }
     } catch (e) { console.error(e) }
+  }
+
+  function openMenu(folderId: string) {
+    setMenu({ folderId })
+  }
+
+  function startEdit(folderId: string, currentName: string) {
+    setEditingId(folderId)
+    setEditValue(currentName)
+    setMenu(null)
+    setTimeout(() => editInputRef.current?.focus(), 50)
+  }
+
+  async function commitEdit(id: string) {
+    const original = folders.find((f) => f.id === id)?.name ?? ''
+    if (editValue.trim() && editValue.trim() !== original) {
+      await renameFolder(id, editValue.trim()).catch(console.error)
+    }
+    setEditingId(null)
+  }
+
+  function cancelEdit() { setEditingId(null) }
+
+  async function handleDelete(id: string) {
+    setMenu(null)
+    const supabase = createClient()
+    const { count } = await supabase
+      .from('memos')
+      .select('id', { count: 'exact' })
+      .eq('folder_id', id)
+      .eq('is_deleted', false)
+    const folderName = folders.find((f) => f.id === id)?.name ?? '폴더'
+    const msg = count && count > 0
+      ? `"${folderName}" 폴더를 삭제하면\n안에 있는 메모 ${count}개도 휴지통으로 이동해요.\n\n계속하시겠어요?`
+      : `"${folderName}" 폴더를 삭제할까요?`
+    if (!confirm(msg)) return
+    await removeFolder(id).catch(console.error)
+    if (selectedFolderId === id) selectFolder(null)
   }
 
   async function handleBulkRestore() {
@@ -313,7 +362,7 @@ export default function MemoList() {
 
                 {/* + 새 폴더 */}
                 <button
-                  onClick={() => { setShowFolderDropdown(false); setShowNewFolderModal(true) }}
+                  onClick={() => { setShowFolderDropdown(false); setNewFolderParentId(null); setShowNewFolderModal(true) }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors"
                 >
                   <Plus size={12} className="flex-shrink-0" />
@@ -365,36 +414,86 @@ export default function MemoList() {
                           >
                             <ChevronRight size={11} className={cn(isExpanded && 'rotate-90')} />
                           </button>
-                          {/* 폴더명: 클릭 시 폴더 선택 */}
-                          <button
-                            onClick={() => { selectFolder(parent.id); setShowFolderDropdown(false) }}
-                            className="flex items-center gap-2 flex-1 text-left min-w-0"
-                          >
-                            <span
-                              className="w-3 h-3 rounded-full flex-shrink-0"
-                              style={{ background: `hsl(${parent.colorH}, ${parent.colorS}%, ${parent.colorL}%)` }}
-                            />
-                            <span className="truncate">{parent.name}</span>
-                          </button>
+                          {/* 폴더명: inline edit 또는 클릭 시 폴더 선택 */}
+                          {editingId === parent.id ? (
+                            <div className="flex-1 flex items-center gap-2 pl-1">
+                              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${parent.colorH}, ${parent.colorS}%, ${parent.colorL}%)` }} />
+                              <input
+                                ref={editInputRef}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={() => commitEdit(parent.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') { e.preventDefault(); void commitEdit(parent.id) }
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                                }}
+                                className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => { selectFolder(parent.id); setShowFolderDropdown(false) }}
+                                className="flex items-center gap-2 flex-1 text-left min-w-0"
+                              >
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${parent.colorH}, ${parent.colorS}%, ${parent.colorL}%)` }} />
+                                <span className="truncate">{parent.name}</span>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openMenu(parent.id) }}
+                                className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                              >
+                                <MoreHorizontal size={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
                         {/* 서브폴더 */}
                         {isExpanded && children.map((child) => (
-                          <button
+                          <div
                             key={child.id}
-                            onClick={() => { selectFolder(child.id); setShowFolderDropdown(false) }}
                             className={cn(
-                              'w-full flex items-center gap-2 pl-9 pr-3 py-2 text-xs text-left transition-colors',
+                              'w-full flex items-center gap-2 pl-9 py-2 text-xs transition-colors',
                               selectedFolderId === child.id && !isTrash
                                 ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
                                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
                             )}
                           >
-                            <span
-                              className="w-3 h-3 rounded-full flex-shrink-0"
-                              style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }}
-                            />
-                            <span className="truncate">{child.name}</span>
-                          </button>
+                            {editingId === child.id ? (
+                              <div className="flex-1 flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
+                                <input
+                                  ref={editInputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => commitEdit(child.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.preventDefault(); void commitEdit(child.id) }
+                                    if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                                  }}
+                                  className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => { selectFolder(child.id); setShowFolderDropdown(false) }}
+                                  className="flex items-center gap-2 flex-1 text-left min-w-0"
+                                >
+                                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
+                                  <span className="truncate">{child.name}</span>
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openMenu(child.id) }}
+                                  className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                                >
+                                  <MoreHorizontal size={14} />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )
@@ -639,6 +738,63 @@ export default function MemoList() {
           </div>
         )}
       </div>
+
+      {/* 폴더 컨텍스트 메뉴 */}
+      {menu && (() => {
+        const menuFolder = folders.find((f) => f.id === menu.folderId)
+        if (!menuFolder) return null
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={() => setMenu(null)}
+          >
+            <div
+              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-56"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700 truncate">
+                {menuFolder.name}
+              </div>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                onClick={() => startEdit(menuFolder.id, menuFolder.name)}
+              >
+                <Pencil size={14} /> 이름 변경
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                onClick={() => { setColorTarget(menuFolder); setMenu(null) }}
+              >
+                <Palette size={14} /> 색상 변경
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                onClick={() => { setNewFolderParentId(menuFolder.id); setMenu(null); setShowNewFolderModal(true) }}
+              >
+                <Plus size={14} /> 하위 폴더
+              </button>
+              <hr className="my-1 border-gray-200 dark:border-gray-700" />
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                onClick={() => handleDelete(menuFolder.id)}
+              >
+                <Trash2 size={14} /> 삭제
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* 색상 변경 모달 */}
+      {colorTarget && (
+        <ColorWheelModal
+          initialH={colorTarget.colorH}
+          initialS={colorTarget.colorS}
+          initialL={colorTarget.colorL}
+          onConfirm={(h, s, l) => { updateColor(colorTarget.id, h, s, l).catch(console.error); setColorTarget(null) }}
+          onClose={() => setColorTarget(null)}
+        />
+      )}
 
       {/* 모바일 폴더 생성 모달 */}
       {showNewFolderModal && (
