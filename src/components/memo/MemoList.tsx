@@ -7,9 +7,11 @@ import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
+import { useFolders } from '@/hooks/useFolders'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
+import ColorWheelModal from './ColorWheelModal'
 import TimelineFilter from './TimelineFilter'
 
 const PAGE_SIZE = 20
@@ -22,9 +24,11 @@ type ViewMode = 'card' | 'list' | 'timeline'
 export default function MemoList() {
   const router = useRouter()
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
+  const { createFolder, updateColor } = useFolders()
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const folderDropdownRef = useRef<HTMLDivElement>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
@@ -217,6 +221,17 @@ export default function MemoList() {
     })
   }
 
+  async function handleNewFolderConfirm(h: number, s: number, l: number, name?: string) {
+    setShowNewFolderModal(false)
+    if (!name?.trim()) return
+    try {
+      const folder = await createFolder(name.trim(), null)
+      if (h !== 260 || s !== 60 || l !== 80) {
+        await updateColor(folder.id, h, s, l).catch(console.error)
+      }
+    } catch (e) { console.error(e) }
+  }
+
   async function handleBulkRestore() {
     const ids = [...selectedTrashIds]
     if (ids.length === 0) return
@@ -294,6 +309,15 @@ export default function MemoList() {
                 >
                   <Folder size={12} className="text-gray-400 flex-shrink-0" />
                   전체 메모
+                </button>
+
+                {/* + 새 폴더 */}
+                <button
+                  onClick={() => { setShowFolderDropdown(false); setShowNewFolderModal(true) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors"
+                >
+                  <Plus size={12} className="flex-shrink-0" />
+                  새 폴더
                 </button>
 
                 {/* 휴지통 */}
@@ -615,6 +639,16 @@ export default function MemoList() {
           </div>
         )}
       </div>
+
+      {/* 모바일 폴더 생성 모달 */}
+      {showNewFolderModal && (
+        <ColorWheelModal
+          showNameInput
+          initialName=""
+          onConfirm={handleNewFolderConfirm}
+          onClose={() => setShowNewFolderModal(false)}
+        />
+      )}
     </div>
   )
 }
