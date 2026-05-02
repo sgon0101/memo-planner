@@ -129,7 +129,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showSidePanel, setShowSidePanel] = useState(() => {
-    if (typeof window === 'undefined') return true
+    if (typeof window === 'undefined') return false
+    if (window.innerWidth < 768) return false  // 모바일: 항상 숨김
     const saved = localStorage.getItem('memoPanelOpen')
     return saved !== 'false'
   })
@@ -340,12 +341,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   // eslint-disable-next-line react-hooks/refs
   editorRef.current = editor
 
-  // 모바일 첫 진입 시 사이드 패널 자동 닫힘 (작성 영역 확보)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setShowSidePanel(false)
-    }
-  }, [])
 
   // 30초 자동 저장
   useEffect(() => {
