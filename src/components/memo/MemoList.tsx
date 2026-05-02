@@ -65,6 +65,8 @@ export default function MemoList() {
   // 모바일 폴더 드롭다운 — 외부 클릭 / ESC 닫힘
   useEffect(() => {
     if (!showFolderDropdown) return
+    // 다른 모달이나 inline edit 활성 시 외부 클릭 감지 비활성 (드롭다운 유지)
+    if (menu || colorTarget || showNewFolderModal || editingId) return
     function handleOutside(e: MouseEvent) {
       if (folderDropdownRef.current && !folderDropdownRef.current.contains(e.target as Node)) {
         setShowFolderDropdown(false)
@@ -79,7 +81,7 @@ export default function MemoList() {
       document.removeEventListener('mousedown', handleOutside)
       document.removeEventListener('keydown', handleEsc)
     }
-  }, [showFolderDropdown])
+  }, [showFolderDropdown, menu, colorTarget, showNewFolderModal, editingId])
 
   // 폴더 변경 시 표시 개수 + 선택 초기화
   // eslint-disable-next-line react-hooks/set-state-in-effect
