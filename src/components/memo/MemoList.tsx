@@ -26,7 +26,7 @@ type ViewMode = 'card' | 'list' | 'timeline'
 export default function MemoList() {
   const router = useRouter()
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
-  const { createFolder, renameFolder, updateColor, removeFolder } = useFolders()
+  const { createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder } = useFolders()
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const folderDropdownRef = useRef<HTMLDivElement>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -37,6 +37,13 @@ export default function MemoList() {
   const [editValue, setEditValue] = useState('')
   const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
+
+  // 모바일 폴더 touch DnD 상태
+  const [touchDragId, setTouchDragId] = useState<string | null>(null)
+  const [touchDropId, setTouchDropId] = useState<string | null>(null)
+  const [touchDropPos, setTouchDropPos] = useState<'before' | 'inside' | 'after' | null>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null)
   const {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
@@ -90,6 +97,14 @@ export default function MemoList() {
     document.addEventListener('keydown', handleEsc)
     return () => document.removeEventListener('keydown', handleEsc)
   }, [showFolderDropdown, menu, colorTarget, showNewFolderModal, editingId])
+
+  // 드래그 중 스크롤 방지 (non-passive touchmove)
+  useEffect(() => {
+    if (!touchDragId) return
+    function prevent(e: TouchEvent) { e.preventDefault() }
+    document.addEventListener('touchmove', prevent, { passive: false })
+    return () => document.removeEventListener('touchmove', prevent)
+  }, [touchDragId])
 
   // 폴더 변경 시 표시 개수 + 선택 초기화
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -274,6 +289,71 @@ export default function MemoList() {
 
   function cancelEdit() { setEditingId(null) }
 
+  // 모바일 폴더 touch DnD 핸들러
+  function onFolderTouchStart(e: React.TouchEvent, folderId: string) {
+    const t = e.touches[0]
+    touchOrigin.current = { x: t.clientX, y: t.clientY }
+    longPressTimer.current = setTimeout(() => {
+      setTouchDragId(folderId)
+      navigator.vibrate?.(50)
+    }, 500)
+  }
+
+  function onFolderTouchMove(e: React.TouchEvent) {
+    if (!touchOrigin.current) return
+    const t = e.touches[0]
+
+    if (!touchDragId) {
+      // 500ms 전 — 8px 이상 이동 시 long-press 취소 (스크롤 허용)
+      const dx = t.clientX - touchOrigin.current.x
+      const dy = t.clientY - touchOrigin.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > 8) {
+        if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
+      }
+      return
+    }
+
+    // 드래그 중 — 드롭 대상 탐색
+    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+    const row = el?.closest('[data-fdrag]') as HTMLElement | null
+    const targetId = row?.getAttribute('data-fdrag')
+
+    if (targetId && targetId !== touchDragId) {
+      const rect = row!.getBoundingClientRect()
+      const relY = t.clientY - rect.top
+      const h = rect.height || 1
+      const pos: 'before' | 'inside' | 'after' =
+        relY < h * 0.3 ? 'before' : relY > h * 0.7 ? 'after' : 'inside'
+      setTouchDropId(targetId)
+      setTouchDropPos(pos)
+    } else {
+      setTouchDropId(null)
+      setTouchDropPos(null)
+    }
+  }
+
+  async function onFolderTouchEnd() {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
+    touchOrigin.current = null
+
+    const dragId = touchDragId
+    const dropId = touchDropId
+    const pos = touchDropPos
+
+    setTouchDragId(null)
+    setTouchDropId(null)
+    setTouchDropPos(null)
+
+    if (!dragId || !dropId || !pos || dragId === dropId) return
+
+    if (pos === 'inside') {
+      await nestFolder(dragId, dropId).catch(console.error)
+      setExpandedFolders((prev) => new Set([...prev, dropId]))
+    } else {
+      await reorderFolder(dragId, dropId, pos).catch(console.error)
+    }
+  }
+
   async function handleDelete(id: string) {
     setMenu(null)
     const supabase = createClient()
@@ -398,7 +478,7 @@ export default function MemoList() {
                   <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                 )}
 
-                {/* 폴더 목록 — Accordion (깊이 2까지) */}
+                {/* 폴더 목록 — Accordion + touch DnD */}
                 {folders
                   .filter((f) => !f.parentId)
                   .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -408,15 +488,30 @@ export default function MemoList() {
                       .sort((a, b) => a.orderIndex - b.orderIndex)
                     const hasChildren = children.length > 0
                     const isExpanded = expandedFolders.has(parent.id)
+                    const isDragging = touchDragId === parent.id
+                    const isDropBefore = touchDropId === parent.id && touchDropPos === 'before'
+                    const isDropInside = touchDropId === parent.id && touchDropPos === 'inside'
+                    const isDropAfter  = touchDropId === parent.id && touchDropPos === 'after'
                     return (
                       <div key={parent.id}>
+                        {/* before 인디케이터 */}
+                        {isDropBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
+
                         {/* 부모 폴더 행 */}
-                        <div className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors',
-                          selectedFolderId === parent.id && !isTrash
-                            ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
-                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                        )}>
+                        <div
+                          data-fdrag={parent.id}
+                          onTouchStart={(e) => onFolderTouchStart(e, parent.id)}
+                          onTouchMove={onFolderTouchMove}
+                          onTouchEnd={onFolderTouchEnd}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors',
+                            isDragging && 'opacity-40',
+                            isDropInside
+                              ? 'ring-1 ring-violet-500 bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400'
+                              : selectedFolderId === parent.id && !isTrash
+                                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          )}>
                           {/* 화살표: 자식 있을 때만 */}
                           <button
                             onClick={(e) => { e.stopPropagation(); toggleFolderExpand(parent.id) }}
@@ -459,52 +554,72 @@ export default function MemoList() {
                             </>
                           )}
                         </div>
+
+                        {/* after 인디케이터 */}
+                        {isDropAfter && <div className="h-0.5 bg-violet-500 rounded mx-2 mt-0.5" />}
+
                         {/* 서브폴더 */}
-                        {isExpanded && children.map((child) => (
-                          <div
-                            key={child.id}
-                            className={cn(
-                              'w-full flex items-center gap-2 pl-9 py-2 text-xs transition-colors',
-                              selectedFolderId === child.id && !isTrash
-                                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
-                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                            )}
-                          >
-                            {editingId === child.id ? (
-                              <div className="flex-1 flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
-                                <input
-                                  ref={editInputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={() => commitEdit(child.id)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') { e.preventDefault(); void commitEdit(child.id) }
-                                    if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
-                                  }}
-                                  className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                        {isExpanded && children.map((child) => {
+                          const cIsDragging  = touchDragId === child.id
+                          const cDropBefore  = touchDropId === child.id && touchDropPos === 'before'
+                          const cDropInside  = touchDropId === child.id && touchDropPos === 'inside'
+                          const cDropAfter   = touchDropId === child.id && touchDropPos === 'after'
+                          return (
+                            <div key={child.id}>
+                              {cDropBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
+                              <div
+                                data-fdrag={child.id}
+                                onTouchStart={(e) => onFolderTouchStart(e, child.id)}
+                                onTouchMove={onFolderTouchMove}
+                                onTouchEnd={onFolderTouchEnd}
+                                className={cn(
+                                  'w-full flex items-center gap-2 pl-9 py-2 text-xs transition-colors',
+                                  cIsDragging && 'opacity-40',
+                                  cDropInside
+                                    ? 'ring-1 ring-violet-500 bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400'
+                                    : selectedFolderId === child.id && !isTrash
+                                      ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                )}
+                              >
+                                {editingId === child.id ? (
+                                  <div className="flex-1 flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
+                                    <input
+                                      ref={editInputRef}
+                                      value={editValue}
+                                      onChange={(e) => setEditValue(e.target.value)}
+                                      onBlur={() => commitEdit(child.id)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); void commitEdit(child.id) }
+                                        if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                                      }}
+                                      className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => { selectFolder(child.id); setShowFolderDropdown(false) }}
+                                      className="flex items-center gap-2 flex-1 text-left min-w-0"
+                                    >
+                                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
+                                      <span className="truncate">{child.name}</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openMenu(child.id) }}
+                                      className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                                    >
+                                      <MoreHorizontal size={14} />
+                                    </button>
+                                  </>
+                                )}
                               </div>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => { selectFolder(child.id); setShowFolderDropdown(false) }}
-                                  className="flex items-center gap-2 flex-1 text-left min-w-0"
-                                >
-                                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
-                                  <span className="truncate">{child.name}</span>
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); openMenu(child.id) }}
-                                  className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
-                                >
-                                  <MoreHorizontal size={14} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        ))}
+                              {cDropAfter && <div className="h-0.5 bg-violet-500 rounded mx-2 mt-0.5" />}
+                            </div>
+                          )
+                        })}
                       </div>
                     )
                   })}
