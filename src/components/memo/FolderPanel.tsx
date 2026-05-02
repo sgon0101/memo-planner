@@ -3,6 +3,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, ChevronRight, Star } from 'lucide-react'
+import {
+  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+  useDraggable, useDroppable,
+  type DragStartEvent, type DragOverEvent, type DragEndEvent,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { cn } from '@/lib/utils'
 import { useFolders } from '@/hooks/useFolders'
 import { useFolderStore } from '@/store/folderStore'
@@ -16,6 +22,8 @@ import type { Folder as FolderType } from '@/types'
 interface MenuState { folderId: string; x: number; y: number }
 
 type DropTarget = { id: string; position: 'before' | 'after' | 'inside' } | null
+
+// ── 데스크톱 전용 FolderItem (native HTML5 drag, 기존 그대로) ────────────────
 
 interface FolderItemProps {
   folder: FolderType
@@ -81,7 +89,6 @@ function FolderItem({
         if (!e.dataTransfer.types.includes('folderid')) return
         e.preventDefault()
         e.stopPropagation()
-        // 폴더 행(rowRef) 기준으로 위치 판단 — 상 30% before / 중 40% inside / 하 30% after
         const rect = rowRef.current?.getBoundingClientRect() ?? e.currentTarget.getBoundingClientRect()
         const relY = e.clientY - rect.top
         const h    = rect.height || 1
@@ -102,7 +109,6 @@ function FolderItem({
         onFolderDragEnd()
       }}
     >
-      {/* 앞 인디케이터 */}
       {showBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
 
       <div
@@ -169,7 +175,6 @@ function FolderItem({
         )}
       </div>
 
-      {/* 뒤 인디케이터 */}
       {showAfter && <div className="h-0.5 bg-violet-500 rounded mx-2 mt-0.5" />}
 
       {isExpanded && children.map((child) => (
@@ -203,13 +208,171 @@ function FolderItem({
   )
 }
 
+// ── 모바일 전용 FolderItem (dnd-kit, long-press 500ms) ────────────────────────
+
+interface FolderItemMobileProps {
+  folder: FolderType
+  depth: number
+  allFolders: FolderType[]
+  expanded: Set<string>
+  selectedFolderId: string | null
+  editingId: string | null
+  editValue: string
+  editInputRef: React.RefObject<HTMLInputElement | null>
+  memoCountMap: Map<string, number>
+  dropTargetId: string | null
+  dropPosition: 'before' | 'inside' | 'after' | null
+  onSelect: (id: string) => void
+  onToggleExpand: (id: string) => void
+  onOpenMenu: (e: React.MouseEvent, id: string) => void
+  onEditValueChange: (value: string) => void
+  onCommitEdit: (id: string) => void
+  onCancelEdit: () => void
+}
+
+function FolderItemMobile({
+  folder, depth, allFolders, expanded, selectedFolderId,
+  editingId, editValue, editInputRef, memoCountMap,
+  dropTargetId, dropPosition,
+  onSelect, onToggleExpand, onOpenMenu,
+  onEditValueChange, onCommitEdit, onCancelEdit,
+}: FolderItemMobileProps) {
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: folder.id,
+    data: { type: 'folder', folder },
+  })
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: folder.id,
+    data: { type: 'folder', folder },
+  })
+
+  const setNodeRef = useCallback((el: HTMLDivElement | null) => {
+    setDragRef(el)
+    setDropRef(el)
+  }, [setDragRef, setDropRef])
+
+  const memoCount = memoCountMap.get(folder.id) ?? 0
+  const isSelected = selectedFolderId === folder.id
+  const isExpanded = expanded.has(folder.id)
+  const isEditing = editingId === folder.id
+  const children = allFolders
+    .filter((f) => f.parentId === folder.id)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+  const hasChildren = children.length > 0
+  const folderColor = `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)`
+
+  const showBefore = dropTargetId === folder.id && dropPosition === 'before'
+  const showInside = dropTargetId === folder.id && dropPosition === 'inside'
+  const showAfter  = dropTargetId === folder.id && dropPosition === 'after'
+
+  return (
+    <div>
+      {showBefore && <div className="h-0.5 bg-violet-500 rounded mx-2 mb-0.5" />}
+
+      <div
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        data-folder-id={folder.id}
+        className={cn(
+          'group flex items-center gap-1.5 rounded-lg select-none text-sm py-1.5 pr-2 transition-colors',
+          isDragging && 'opacity-40',
+          showInside
+            ? 'ring-2 ring-violet-500 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300'
+            : isSelected
+              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+              : 'text-gray-700 dark:text-gray-300'
+        )}
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+      >
+        {/* 펼침/접힘 화살표 — 드래그 이벤트 차단 */}
+        <button
+          className={cn('flex-shrink-0 p-0.5 transition-transform', !hasChildren && 'invisible')}
+          onClick={(e) => { e.stopPropagation(); onToggleExpand(folder.id) }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <ChevronRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} />
+        </button>
+
+        {/* 색상 동그라미 */}
+        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: folderColor }} />
+
+        {/* 이름 또는 inline edit */}
+        {isEditing ? (
+          <input
+            ref={editInputRef}
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onBlur={() => onCommitEdit(folder.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); onCommitEdit(folder.id) }
+              if (e.key === 'Escape') { e.preventDefault(); onCancelEdit() }
+            }}
+            className="flex-1 bg-transparent outline-none text-sm min-w-0 border-b border-violet-400 dark:border-violet-500"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="flex-1 truncate text-sm" onClick={() => onSelect(folder.id)}>
+            {folder.name}
+          </span>
+        )}
+
+        {/* 메모 카운트 + ⋯ 메뉴 — 드래그 이벤트 차단 */}
+        {!isEditing && (
+          <>
+            {memoCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 flex-shrink-0">
+                {memoCount}
+              </span>
+            )}
+            <button
+              className="flex-shrink-0 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+              onClick={(e) => onOpenMenu(e, folder.id)}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {showAfter && <div className="h-0.5 bg-violet-500 rounded mx-2 mt-0.5" />}
+
+      {isExpanded && children.map((child) => (
+        <FolderItemMobile
+          key={child.id}
+          folder={child}
+          depth={depth + 1}
+          allFolders={allFolders}
+          expanded={expanded}
+          selectedFolderId={selectedFolderId}
+          editingId={editingId}
+          editValue={editValue}
+          editInputRef={editInputRef}
+          memoCountMap={memoCountMap}
+          dropTargetId={dropTargetId}
+          dropPosition={dropPosition}
+          onSelect={onSelect}
+          onToggleExpand={onToggleExpand}
+          onOpenMenu={onOpenMenu}
+          onEditValueChange={onEditValueChange}
+          onCommitEdit={onCommitEdit}
+          onCancelEdit={onCancelEdit}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ── FolderPanel ───────────────────────────────────────────────────────────────
+
 export default function FolderPanel() {
   const { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
   const { updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
 
-  // 폴더 선택과 무관하게 항상 전체 메모 개수를 집계하는 경량 쿼리
   const { data: allFolderIds } = useQuery({
     queryKey: ['memo-folder-counts'],
     queryFn: async () => {
@@ -232,6 +395,7 @@ export default function FolderPanel() {
 
   const queryClient = useQueryClient()
 
+  // 공통 상태
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
@@ -239,11 +403,25 @@ export default function FolderPanel() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const editInputRef = useRef<HTMLInputElement | null>(null)
+
+  // 데스크톱 전용 드래그 상태
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null)
   const [folderDropTarget, setFolderDropTarget] = useState<DropTarget>(null)
-  const editInputRef = useRef<HTMLInputElement | null>(null)
+
+  // 모바일 dnd-kit 상태
+  const [activeDragFolder, setActiveDragFolder] = useState<FolderType | null>(null)
+  const [mobileDropTargetId, setMobileDropTargetId] = useState<string | null>(null)
+  const [mobileDropPosition, setMobileDropPosition] = useState<'before' | 'inside' | 'after' | null>(null)
+
+  // dnd-kit 센서 — long-press 500ms, 5px 흔들림 허용
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 500, tolerance: 5 },
+    })
+  )
 
   const topLevel = folders
     .filter((f) => f.parentId === null)
@@ -276,9 +454,7 @@ export default function FolderPanel() {
     void queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
   }, [folders, updateMemo, queryClient])
 
-  // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달
-  // inline edit(editingId)은 input onKeyDown에서 처리되므로 여기선 불필요
-  // 조기 return 없이 항상 리스너 등록 — 상태 전환 타이밍에 리스너 누락 방지
+  // ESC 핸들러
   useEffect(() => {
     function handleEsc(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
@@ -290,7 +466,7 @@ export default function FolderPanel() {
     return () => document.removeEventListener('keydown', handleEsc)
   }, [menu, colorTarget, showNewFolderModal])
 
-  // 터치 드래그 커스텀 이벤트 수신
+  // 터치 드래그 커스텀 이벤트 수신 (메모→폴더)
   useEffect(() => {
     function onTouchDrop(e: Event) {
       const { memoId, folderId } = (e as CustomEvent<{ memoId: string; folderId: string | null }>).detail
@@ -367,7 +543,7 @@ export default function FolderPanel() {
 
   const menuFolder = menu ? folders.find((f) => f.id === menu.folderId) : null
 
-  // 폴더 순서 변경 핸들러
+  // ── 데스크톱 폴더 드래그 핸들러 (native HTML5) ─────────────────────────────
   function handleFolderDragStart(id: string) {
     setDraggingFolderId(id)
     setFolderDropTarget(null)
@@ -384,14 +560,13 @@ export default function FolderPanel() {
     setFolderDropTarget(null)
     if (position === 'inside') {
       await nestFolder(dragId, targetId).catch(console.error)
-      // 드롭 대상 폴더 자동 펼치기
       setExpanded((prev) => new Set([...prev, targetId]))
     } else {
       await reorderFolder(dragId, targetId, position).catch(console.error)
     }
   }
 
-  // 드래그 이벤트 위임 핸들러
+  // 메모→폴더 드래그 이벤트 위임 (데스크톱)
   function onPanelDragOver(e: React.DragEvent) {
     if (!draggingMemoId) return
     e.preventDefault()
@@ -415,6 +590,74 @@ export default function FolderPanel() {
     if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
       setDragOverFolderId(null)
     }
+  }
+
+  // ── 모바일 dnd-kit 핸들러 ────────────────────────────────────────────────────
+  function handleMobileDragStart(event: DragStartEvent) {
+    const folder = folders.find((f) => f.id === event.active.id)
+    if (folder) setActiveDragFolder(folder)
+  }
+
+  function handleMobileDragOver(event: DragOverEvent) {
+    if (!event.over || event.active.id === event.over.id) {
+      setMobileDropTargetId(null)
+      setMobileDropPosition(null)
+      return
+    }
+
+    const overRect = event.over.rect
+    const activeRect = event.active.rect.current.translated
+    if (!activeRect) return
+
+    const activeCenterY = activeRect.top + activeRect.height / 2
+    const relY = activeCenterY - overRect.top
+    const h = overRect.height || 1
+
+    let position: 'before' | 'inside' | 'after'
+    if (relY < h * 0.30)      position = 'before'
+    else if (relY > h * 0.70) position = 'after'
+    else                       position = 'inside'
+
+    setMobileDropTargetId(event.over.id as string)
+    setMobileDropPosition(position)
+  }
+
+  async function handleMobileDragEnd(event: DragEndEvent) {
+    const dragId = event.active.id as string
+    const targetId = event.over?.id as string | undefined
+    const position = mobileDropPosition
+
+    setActiveDragFolder(null)
+    setMobileDropTargetId(null)
+    setMobileDropPosition(null)
+
+    if (!targetId || !position || dragId === targetId) return
+
+    if (position === 'inside') {
+      await nestFolder(dragId, targetId).catch(console.error)
+      setExpanded((prev) => new Set([...prev, targetId]))
+    } else {
+      await reorderFolder(dragId, targetId, position).catch(console.error)
+    }
+  }
+
+  // 공통 FolderItemMobile props
+  const mobileItemProps = {
+    allFolders: folders,
+    expanded,
+    selectedFolderId,
+    editingId,
+    editValue,
+    editInputRef,
+    memoCountMap,
+    dropTargetId: mobileDropTargetId,
+    dropPosition: mobileDropPosition,
+    onSelect: handleSelect,
+    onToggleExpand: toggleExpand,
+    onOpenMenu: openMenu,
+    onEditValueChange: setEditValue,
+    onCommitEdit: commitEdit,
+    onCancelEdit: cancelEdit,
   }
 
   return (
@@ -458,7 +701,7 @@ export default function FolderPanel() {
         )}
       </div>
 
-      {/* ★ 중요 드랍존 (드래그 중일 때만 표시) */}
+      {/* ★ 중요 드랍존 (데스크톱 메모 드래그 중일 때만) */}
       {draggingMemoId && (
         <div
           data-folder-id="__starred__"
@@ -474,8 +717,10 @@ export default function FolderPanel() {
         </div>
       )}
 
-      {/* 폴더 목록 */}
-      <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
+      {/* 폴더 목록 — 데스크톱: native HTML5 drag / 모바일: dnd-kit */}
+
+      {/* 데스크톱 */}
+      <div className="hidden sm:block flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
         {topLevel.map((folder) => (
           <FolderItem
             key={folder.id}
@@ -503,6 +748,37 @@ export default function FolderPanel() {
             onFolderDrop={handleFolderDrop}
           />
         ))}
+      </div>
+
+      {/* 모바일 */}
+      <div className="sm:hidden flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleMobileDragStart}
+          onDragOver={handleMobileDragOver}
+          onDragEnd={handleMobileDragEnd}
+          modifiers={[restrictToVerticalAxis]}
+        >
+          {topLevel.map((folder) => (
+            <FolderItemMobile
+              key={folder.id}
+              folder={folder}
+              depth={0}
+              {...mobileItemProps}
+            />
+          ))}
+          <DragOverlay>
+            {activeDragFolder && (
+              <div className="bg-white dark:bg-gray-800 px-3 py-2 rounded-lg shadow-lg border border-violet-400 flex items-center gap-2">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ background: `hsl(${activeDragFolder.colorH}, ${activeDragFolder.colorS}%, ${activeDragFolder.colorL}%)` }}
+                />
+                <span className="text-sm text-gray-800 dark:text-gray-200">{activeDragFolder.name}</span>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* 컨텍스트 메뉴 */}
