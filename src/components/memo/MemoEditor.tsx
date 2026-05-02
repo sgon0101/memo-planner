@@ -18,7 +18,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, Network, Trash2 } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, ChevronRight, Network, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -127,6 +127,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [isPinned, setIsPinned] = useState(initialIsPinned)
   const [folderId, setFolderId] = useState<string | null>(initialFolderId)
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
+    // useState 초기화 시 folders가 빈 배열일 수 있어 useEffect로 보완
+    return new Set<string>()
+  })
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showSidePanel, setShowSidePanel] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -368,6 +372,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // 서브폴더에 있는 메모 열 때 부모 폴더 자동 펼침 (folders 로드 후 실행)
+  useEffect(() => {
+    if (folders.length === 0 || !folderId) return
+    const current = folders.find((f) => f.id === folderId)
+    if (current?.parentId) {
+      setExpandedFolders((prev) => new Set([...prev, current.parentId!]))
+    }
+  }, [folders, folderId])
+
   // 제목 변경 시 unsaved 표시
   useEffect(() => {
     if (title !== initialTitle) {
@@ -522,6 +535,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       await supabase.from('memos').update({ folder_id: newFolderId }).eq('id', id)
       updateMemo(id, { folderId: newFolderId })
     }
+  }
+
+  function toggleFolderExpand(parentId: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(parentId)) next.delete(parentId)
+      else next.add(parentId)
+      return next
+    })
   }
 
   function handleManualSave() {
@@ -706,29 +728,80 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <Folder size={12} />
-            <span>{folderId ? (folders.find((f) => f.id === folderId)?.name ?? initialFolderName ?? '폴더') : '폴더 없음'}</span>
+            {/* C. 현재 폴더 라벨 — 서브폴더면 "부모 / 자식" 경로 표시 */}
+            <span>{(() => {
+              if (!folderId) return '폴더 없음'
+              const current = folders.find((f) => f.id === folderId)
+              if (!current) return initialFolderName ?? '폴더'
+              if (current.parentId) {
+                const parent = folders.find((f) => f.id === current.parentId)
+                return parent ? `${parent.name} / ${current.name}` : current.name
+              }
+              return current.name
+            })()}</span>
             <ChevronDown size={10} />
           </button>
           {showFolderDropdown && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowFolderDropdown(false)} />
-              <div className="absolute left-3 md:left-8 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-44">
+              {/* E. w-48 max-h-80 스크롤 */}
+              <div className="absolute left-3 md:left-8 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-48 max-h-80 overflow-y-auto">
+                {/* 폴더 없음 */}
                 <button
                   onClick={() => handleChangeFolder(null)}
                   className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors', !folderId ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700')}
                 >
                   <Folder size={12} /> 폴더 없음
                 </button>
-                {folders.filter((f) => !f.parentId).map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => handleChangeFolder(f.id)}
-                    className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors', folderId === f.id ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700')}
-                  >
-                    <Folder size={12} style={{ color: `hsl(${f.colorH},${f.colorS}%,${f.colorL}%)` }} />
-                    {f.name}
-                  </button>
-                ))}
+                {/* D. 부모 폴더 + Accordion 서브폴더 */}
+                {folders.filter((f) => !f.parentId).map((parent) => {
+                  const children = folders.filter((f) => f.parentId === parent.id)
+                  const hasChildren = children.length > 0
+                  const isExpanded = expandedFolders.has(parent.id)
+                  return (
+                    <div key={parent.id}>
+                      {/* 부모 폴더 행 */}
+                      <div className={cn(
+                        'w-full flex items-center gap-1 px-2 py-1.5 text-xs transition-colors',
+                        folderId === parent.id
+                          ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20'
+                          : 'text-gray-600 dark:text-gray-400'
+                      )}>
+                        {/* 화살표: 자식 있을 때만 표시, 클릭 시 펼침/접힘 */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleFolderExpand(parent.id) }}
+                          className={cn('flex-shrink-0 p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors', !hasChildren && 'invisible')}
+                        >
+                          <ChevronRight size={10} className={cn('transition-transform', isExpanded && 'rotate-90')} />
+                        </button>
+                        {/* 폴더명: 클릭 시 폴더 선택 */}
+                        <button
+                          onClick={() => handleChangeFolder(parent.id)}
+                          className="flex items-center gap-2 flex-1 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 py-0.5"
+                        >
+                          <Folder size={12} style={{ color: `hsl(${parent.colorH},${parent.colorS}%,${parent.colorL}%)` }} />
+                          {parent.name}
+                        </button>
+                      </div>
+                      {/* 서브폴더 (펼쳤을 때만) */}
+                      {isExpanded && children.map((child) => (
+                        <button
+                          key={child.id}
+                          onClick={() => handleChangeFolder(child.id)}
+                          className={cn(
+                            'w-full flex items-center gap-2 pl-9 pr-3 py-1.5 text-xs text-left transition-colors',
+                            folderId === child.id
+                              ? 'text-violet-600 bg-violet-50 dark:bg-violet-950/20'
+                              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          )}
+                        >
+                          <Folder size={12} style={{ color: `hsl(${child.colorH},${child.colorS}%,${child.colorL}%)` }} />
+                          {child.name}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             </>
           )}
