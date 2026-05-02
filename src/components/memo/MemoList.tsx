@@ -2,13 +2,12 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, Folder } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
-import type { Folder as FolderType } from '@/types'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import TimelineFilter from './TimelineFilter'
@@ -17,20 +16,6 @@ const PAGE_SIZE = 20
 
 type SortKey = 'updated' | 'created' | 'title' | 'starred' | 'pinned'
 
-// 폴더 트리를 깊이 정보와 함께 평탄화 (서브폴더 들여쓰기용)
-function flattenFolders(
-  all: FolderType[],
-  parentId: string | null = null,
-  depth = 0
-): Array<{ folder: FolderType; depth: number }> {
-  return all
-    .filter((f) => f.parentId === parentId)
-    .sort((a, b) => a.orderIndex - b.orderIndex)
-    .flatMap((f) => [
-      { folder: f, depth },
-      ...flattenFolders(all, f.id, depth + 1),
-    ])
-}
 type TitleDir = 'asc' | 'desc'
 type ViewMode = 'card' | 'list' | 'timeline'
 
@@ -39,6 +24,7 @@ export default function MemoList() {
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const folderDropdownRef = useRef<HTMLDivElement>(null)
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
@@ -222,6 +208,15 @@ export default function MemoList() {
     setSelectedTrashIds(new Set())
   }
 
+  function toggleFolderExpand(parentId: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(parentId)) next.delete(parentId)
+      else next.add(parentId)
+      return next
+    })
+  }
+
   async function handleBulkRestore() {
     const ids = [...selectedTrashIds]
     if (ids.length === 0) return
@@ -320,26 +315,66 @@ export default function MemoList() {
                   <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                 )}
 
-                {/* 폴더 목록 (서브폴더 들여쓰기 포함) */}
-                {flattenFolders(folders).map(({ folder, depth }) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => { selectFolder(folder.id); setShowFolderDropdown(false) }}
-                    style={{ paddingLeft: `${12 + depth * 14}px` }}
-                    className={cn(
-                      'w-full flex items-center gap-2 pr-3 py-2 text-xs text-left transition-colors',
-                      selectedFolderId === folder.id && !isTrash
-                        ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    )}
-                  >
-                    <span
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ background: `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)` }}
-                    />
-                    <span className="truncate">{folder.name}</span>
-                  </button>
-                ))}
+                {/* 폴더 목록 — Accordion (깊이 2까지) */}
+                {folders
+                  .filter((f) => !f.parentId)
+                  .sort((a, b) => a.orderIndex - b.orderIndex)
+                  .map((parent) => {
+                    const children = folders
+                      .filter((f) => f.parentId === parent.id)
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                    const hasChildren = children.length > 0
+                    const isExpanded = expandedFolders.has(parent.id)
+                    return (
+                      <div key={parent.id}>
+                        {/* 부모 폴더 행 */}
+                        <div className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors',
+                          selectedFolderId === parent.id && !isTrash
+                            ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        )}>
+                          {/* 화살표: 자식 있을 때만 */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleFolderExpand(parent.id) }}
+                            className={cn('flex-shrink-0 transition-transform', !hasChildren && 'invisible')}
+                          >
+                            <ChevronRight size={11} className={cn(isExpanded && 'rotate-90')} />
+                          </button>
+                          {/* 폴더명: 클릭 시 폴더 선택 */}
+                          <button
+                            onClick={() => { selectFolder(parent.id); setShowFolderDropdown(false) }}
+                            className="flex items-center gap-2 flex-1 text-left min-w-0"
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ background: `hsl(${parent.colorH}, ${parent.colorS}%, ${parent.colorL}%)` }}
+                            />
+                            <span className="truncate">{parent.name}</span>
+                          </button>
+                        </div>
+                        {/* 서브폴더 */}
+                        {isExpanded && children.map((child) => (
+                          <button
+                            key={child.id}
+                            onClick={() => { selectFolder(child.id); setShowFolderDropdown(false) }}
+                            className={cn(
+                              'w-full flex items-center gap-2 pl-9 pr-3 py-2 text-xs text-left transition-colors',
+                              selectedFolderId === child.id && !isTrash
+                                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                            )}
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }}
+                            />
+                            <span className="truncate">{child.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })}
               </div>
             </>
           )}

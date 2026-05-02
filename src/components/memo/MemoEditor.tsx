@@ -372,15 +372,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // 서브폴더에 있는 메모 열 때 부모 폴더 자동 펼침 (folders 로드 후 실행)
-  useEffect(() => {
-    if (folders.length === 0 || !folderId) return
-    const current = folders.find((f) => f.id === folderId)
-    if (current?.parentId) {
-      setExpandedFolders((prev) => new Set([...prev, current.parentId!]))
-    }
-  }, [folders, folderId])
-
   // 제목 변경 시 unsaved 표시
   useEffect(() => {
     if (title !== initialTitle) {
@@ -727,7 +718,24 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             onClick={() => setShowFolderDropdown((v) => !v)}
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
-            <Folder size={12} />
+            {/* 데스크톱: 컬러 Folder 아이콘 */}
+            <Folder
+              size={12}
+              className="hidden sm:inline-block flex-shrink-0"
+              style={{ color: folderId
+                ? `hsl(${folders.find((f) => f.id === folderId)?.colorH ?? 260}, ${folders.find((f) => f.id === folderId)?.colorS ?? 60}%, ${folders.find((f) => f.id === folderId)?.colorL ?? 80}%)`
+                : 'currentColor'
+              }}
+            />
+            {/* 모바일: 색상 동그라미 or 회색 Folder 아이콘 */}
+            {folderId ? (
+              <span
+                className="sm:hidden w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: `hsl(${folders.find((f) => f.id === folderId)?.colorH ?? 260}, ${folders.find((f) => f.id === folderId)?.colorS ?? 60}%, ${folders.find((f) => f.id === folderId)?.colorL ?? 80}%)` }}
+              />
+            ) : (
+              <Folder size={12} className="sm:hidden" />
+            )}
             {/* C. 현재 폴더 라벨 — 서브폴더면 "부모 / 자식" 경로 표시 */}
             <span>{(() => {
               if (!folderId) return '폴더 없음'
@@ -777,10 +785,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                         {/* 폴더명: 클릭 시 폴더 선택 */}
                         <button
                           onClick={() => handleChangeFolder(parent.id)}
-                          className="flex items-center gap-2 flex-1 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 py-0.5"
+                          className="flex items-center gap-2 flex-1 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 py-0.5 min-w-0"
                         >
-                          <Folder size={12} style={{ color: `hsl(${parent.colorH},${parent.colorS}%,${parent.colorL}%)` }} />
-                          {parent.name}
+                          {/* 데스크톱: Folder 아이콘 */}
+                          <Folder size={12} className="hidden sm:inline-block flex-shrink-0" style={{ color: `hsl(${parent.colorH},${parent.colorS}%,${parent.colorL}%)` }} />
+                          {/* 모바일: 색상 동그라미 */}
+                          <span className="sm:hidden w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${parent.colorH},${parent.colorS}%,${parent.colorL}%)` }} />
+                          <span className="truncate">{parent.name}</span>
                         </button>
                       </div>
                       {/* 서브폴더 (펼쳤을 때만) */}
@@ -795,8 +806,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                           )}
                         >
-                          <Folder size={12} style={{ color: `hsl(${child.colorH},${child.colorS}%,${child.colorL}%)` }} />
-                          {child.name}
+                          {/* 데스크톱: Folder 아이콘 */}
+                          <Folder size={12} className="hidden sm:inline-block flex-shrink-0" style={{ color: `hsl(${child.colorH},${child.colorS}%,${child.colorL}%)` }} />
+                          {/* 모바일: 색상 동그라미 */}
+                          <span className="sm:hidden w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH},${child.colorS}%,${child.colorL}%)` }} />
+                          <span className="truncate">{child.name}</span>
                         </button>
                       ))}
                     </div>
