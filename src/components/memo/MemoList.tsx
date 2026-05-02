@@ -575,7 +575,7 @@ export default function MemoList() {
           </div>
           {/* 카드 뷰 컬럼 수 선택 (4~6) */}
           {view === 'card' && !isTrash && (
-            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="hidden sm:flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
               {([4, 5, 6] as const).map((n) => (
                 <button
                   key={n}
