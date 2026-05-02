@@ -278,8 +278,8 @@ export default function FolderPanel() {
 
   // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달
   // inline edit(editingId)은 input onKeyDown에서 처리되므로 여기선 불필요
+  // 조기 return 없이 항상 리스너 등록 — 상태 전환 타이밍에 리스너 누락 방지
   useEffect(() => {
-    if (!menu && !colorTarget && !showNewFolderModal) return
     function handleEsc(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
       if (menu) { setMenu(null); return }
