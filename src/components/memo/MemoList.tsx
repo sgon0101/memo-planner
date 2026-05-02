@@ -2,12 +2,13 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, Folder } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
-import { useMemos } from '@/hooks/useMemos'
+import { useMemos, TRASH_ID } from '@/hooks/useMemos'
+import type { Folder as FolderType } from '@/types'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import TimelineFilter from './TimelineFilter'
@@ -15,12 +16,29 @@ import TimelineFilter from './TimelineFilter'
 const PAGE_SIZE = 20
 
 type SortKey = 'updated' | 'created' | 'title' | 'starred' | 'pinned'
+
+// 폴더 트리를 깊이 정보와 함께 평탄화 (서브폴더 들여쓰기용)
+function flattenFolders(
+  all: FolderType[],
+  parentId: string | null = null,
+  depth = 0
+): Array<{ folder: FolderType; depth: number }> {
+  return all
+    .filter((f) => f.parentId === parentId)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .flatMap((f) => [
+      { folder: f, depth },
+      ...flattenFolders(all, f.id, depth + 1),
+    ])
+}
 type TitleDir = 'asc' | 'desc'
 type ViewMode = 'card' | 'list' | 'timeline'
 
 export default function MemoList() {
   const router = useRouter()
-  const { selectedFolderId, folders } = useFolderStore()
+  const { selectedFolderId, folders, selectFolder } = useFolderStore()
+  const [showFolderDropdown, setShowFolderDropdown] = useState(false)
+  const folderDropdownRef = useRef<HTMLDivElement>(null)
   const {
     memos, isLoading, isTrash,
     togglePin, toggleStar, softDelete,
@@ -45,6 +63,25 @@ export default function MemoList() {
     )
     obsRef.current.observe(el)
   }, []) // setDisplayCount는 React 보장 stable → deps 불필요
+
+  // 모바일 폴더 드롭다운 — 외부 클릭 / ESC 닫힘
+  useEffect(() => {
+    if (!showFolderDropdown) return
+    function handleOutside(e: MouseEvent) {
+      if (folderDropdownRef.current && !folderDropdownRef.current.contains(e.target as Node)) {
+        setShowFolderDropdown(false)
+      }
+    }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowFolderDropdown(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [showFolderDropdown])
 
   // 폴더 변경 시 표시 개수 + 선택 초기화
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -220,9 +257,93 @@ export default function MemoList() {
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <h2 className={cn('text-sm font-semibold', isTrash ? 'text-red-500' : 'text-gray-800 dark:text-gray-200')}>
+        {/* 데스크톱: 폴더명 텍스트 */}
+        <h2 className={cn('hidden sm:block text-sm font-semibold', isTrash ? 'text-red-500' : 'text-gray-800 dark:text-gray-200')}>
           {folderName}
         </h2>
+
+        {/* 모바일: 커스텀 폴더 선택 드롭다운 */}
+        <div ref={folderDropdownRef} className="relative sm:hidden">
+          <button
+            onClick={() => setShowFolderDropdown((v) => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            {/* 트리거: 현재 선택 상태 표시 */}
+            {isTrash ? (
+              <Trash2 size={12} className="text-red-500" />
+            ) : selectedFolderId ? (
+              <span
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: `hsl(${folders.find((f) => f.id === selectedFolderId)?.colorH ?? 260}, ${folders.find((f) => f.id === selectedFolderId)?.colorS ?? 60}%, ${folders.find((f) => f.id === selectedFolderId)?.colorL ?? 80}%)` }}
+              />
+            ) : (
+              <Folder size={12} className="text-gray-400" />
+            )}
+            <span className={isTrash ? 'text-red-500' : ''}>{folderName}</span>
+            <ChevronDown size={11} className={cn('text-gray-400 transition-transform', showFolderDropdown && 'rotate-180')} />
+          </button>
+
+          {showFolderDropdown && (
+            <>
+              {/* 드롭다운 패널 */}
+              <div className="absolute left-0 top-full mt-1 z-50 min-w-44 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 overflow-hidden">
+                {/* 전체 메모 */}
+                <button
+                  onClick={() => { selectFolder(null); setShowFolderDropdown(false) }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
+                    !selectedFolderId && !isTrash
+                      ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  )}
+                >
+                  <Folder size={12} className="text-gray-400 flex-shrink-0" />
+                  전체 메모
+                </button>
+
+                {/* 휴지통 */}
+                <button
+                  onClick={() => { selectFolder(TRASH_ID); setShowFolderDropdown(false) }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
+                    isTrash
+                      ? 'bg-red-50 dark:bg-red-950/20 text-red-500 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  )}
+                >
+                  <Trash2 size={12} className="text-red-400 flex-shrink-0" />
+                  휴지통
+                </button>
+
+                {/* 구분선 */}
+                {folders.length > 0 && (
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                )}
+
+                {/* 폴더 목록 (서브폴더 들여쓰기 포함) */}
+                {flattenFolders(folders).map(({ folder, depth }) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => { selectFolder(folder.id); setShowFolderDropdown(false) }}
+                    style={{ paddingLeft: `${12 + depth * 14}px` }}
+                    className={cn(
+                      'w-full flex items-center gap-2 pr-3 py-2 text-xs text-left transition-colors',
+                      selectedFolderId === folder.id && !isTrash
+                        ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    )}
+                  >
+                    <span
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ background: `hsl(${folder.colorH}, ${folder.colorS}%, ${folder.colorL}%)` }}
+                    />
+                    <span className="truncate">{folder.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         {isTrash ? (
           <div className="flex items-center gap-2">
             <button
