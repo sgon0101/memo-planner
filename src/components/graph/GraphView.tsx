@@ -267,29 +267,25 @@ export default function GraphView() {
     setSimStatus('active')
   }, [])
 
-  const buildSim = useCallback(() => {
-      console.log('🟣 [A] buildSim START')  // ← 추가
-      const tBuild = performance.now()       // ← 추가
-    
-    simRef.current?.stop()
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    const s = settingsRef.current  // 스냅샷 — settings를 dep에 추가하지 않기 위함
+  // 시뮬레이션 인스턴스 — 마운트·size 변경 시만 재생성
+  useEffect(() => {
+    const s = settingsRef.current
 
-    const sim = d3.forceSimulation<GraphNode, GraphLink>(nodes)
-      .force('link', d3.forceLink<GraphNode, GraphLink>(links).id((n) => n.id)
+    const sim = d3.forceSimulation<GraphNode, GraphLink>([])
+      .force('link', d3.forceLink<GraphNode, GraphLink>([]).id((n) => n.id)
         .distance(toDistance(s.linkDistance))
         .strength(0.3))
       .force('charge', d3.forceManyBody<GraphNode>().strength(toCharge(s.repulsion)))
       .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(toCenterStrength(s.centerTension)))
       .force('collision', d3.forceCollide<GraphNode>(20))
-      .alphaDecay(0.04)
+      .alphaDecay(0.1)       // 0.04 → 0.1 (약 1초 안정화)
       .velocityDecay(0.55)
       .alphaMin(0.001)
 
     simRef.current = sim
 
     const tick = () => {
-      drawRef.current()  // drawRef로 stale closure 방지 (draw를 dep에서 제외)
+      drawRef.current()
       if (sim.alpha() > sim.alphaMin()) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
@@ -298,19 +294,24 @@ export default function GraphView() {
       }
     }
     sim.on('tick', () => { if (!rafRef.current) rafRef.current = requestAnimationFrame(tick) })
-    setSimStatus('active')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, links, size])  // settings/draw 제외 — force 업데이트는 별도 effect에서 처리
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    buildSim()
     return () => {
-      simRef.current?.stop()
+      sim.stop()
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (labelAnimRafRef.current) cancelAnimationFrame(labelAnimRafRef.current)
     }
-  }, [buildSim])
+  }, [size.w, size.h])
+
+  // nodes/links 변경 시 incremental update — 기존 위치 유지 + 약하게 재가동
+  useEffect(() => {
+    const sim = simRef.current
+    if (!sim) return
+
+    sim.nodes(nodes)
+    ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
+    sim.alpha(0.3).restart()
+    setSimStatus('active')
+  }, [nodes, links])
 
   // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
   useEffect(() => {
