@@ -60,6 +60,7 @@ export default function GraphView() {
   const rafRef = useRef<number | null>(null)
   const transformRef = useRef({ x: 0, y: 0, k: 1 })
   const labelOpacityRef = useRef(1) // 초기 zoom=1 → opacity=1
+  const isFirstNodesUpdateRef = useRef(true)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -302,10 +303,11 @@ export default function GraphView() {
     }
   }, [size.w, size.h])
 
-  // nodes/links 변경 시 incremental update — 기존 위치 복사 후 약하게 재가동
+  // nodes/links 변경 시 incremental update — 기존 위치 복사 후 조건부 alpha
   useEffect(() => {
     const sim = simRef.current
     if (!sim) return
+    if (nodes.length === 0) return  // 빈 데이터 스킵
 
     // 기존 노드의 위치·속도·고정 정보를 새 노드 객체에 복사 (위치 보존)
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
@@ -323,11 +325,20 @@ export default function GraphView() {
 
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
-    sim.alpha(0.1).restart()  // 위치 유지하므로 약한 alpha로 충분
+
+    // 첫 데이터 로드: alpha 1로 force layout 충분히 적용
+    // 이후 토글/추가: alpha 0.1로 약하게 (위치 유지)
+    if (isFirstNodesUpdateRef.current) {
+      sim.alpha(1).restart()
+      isFirstNodesUpdateRef.current = false
+    } else {
+      sim.alpha(0.1).restart()
+    }
 
     // RAF가 멈춰있으면 즉시 한 프레임 그리기 (지연 방지)
     if (!rafRef.current) drawRef.current()
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
   }, [nodes, links])
 
