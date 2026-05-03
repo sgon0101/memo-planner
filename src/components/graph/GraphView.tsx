@@ -302,14 +302,32 @@ export default function GraphView() {
     }
   }, [size.w, size.h])
 
-  // nodes/links 변경 시 incremental update — 기존 위치 유지 + 약하게 재가동
+  // nodes/links 변경 시 incremental update — 기존 위치 복사 후 약하게 재가동
   useEffect(() => {
     const sim = simRef.current
     if (!sim) return
 
+    // 기존 노드의 위치·속도·고정 정보를 새 노드 객체에 복사 (위치 보존)
+    const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
+    for (const n of nodes) {
+      const old = oldNodesById.get(n.id)
+      if (old) {
+        n.x  = old.x
+        n.y  = old.y
+        n.vx = old.vx
+        n.vy = old.vy
+        n.fx = old.fx
+        n.fy = old.fy
+      }
+    }
+
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
-    sim.alpha(0.3).restart()
+    sim.alpha(0.1).restart()  // 위치 유지하므로 약한 alpha로 충분
+
+    // RAF가 멈춰있으면 즉시 한 프레임 그리기 (지연 방지)
+    if (!rafRef.current) drawRef.current()
+
     setSimStatus('active')
   }, [nodes, links])
 
