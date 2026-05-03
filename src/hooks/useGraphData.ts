@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
@@ -40,7 +40,7 @@ export function useGraphData() {
   const supabase = createClient()
 
   const settingsRef = useRef(settings)
-  settingsRef.current = settings
+  useLayoutEffect(() => { settingsRef.current = settings })
 
   const load = useCallback(async () => {
     const s = settingsRef.current
@@ -182,23 +182,23 @@ export function useGraphData() {
 
     setNodes(finalNodes)
     setLinks(finalLinks)
-  }, []) // settingsRef로 항상 최신 settings 참조하므로 의존성 불필요
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // settingsRef로 항상 최신 settings 참조
 
   // settings 변경 시 즉시 reload
   useEffect(() => {
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.folderFilter])
 
-  // Supabase Realtime 구독 — 마운트 시 한 번만
-  const loadRef = useRef(load)
-  loadRef.current = load
-
+  // Supabase Realtime 구독 — 마운트 시 한 번만 (load는 [] 의존성으로 불변)
   useEffect(() => {
     const channel = supabase
       .channel('graph-memos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'memos' }, () => loadRef.current())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'memos' }, load)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { reload: load }
