@@ -599,10 +599,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             {fromGraph && (
               <button
                 onClick={handleBackToGraph}
+                title="그래프 뷰"
                 className="flex items-center gap-1.5 text-xs text-violet-500 hover:text-violet-700 dark:hover:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/20 px-2 py-1.5 rounded-lg transition-colors"
               >
                 <Network size={13} />
-                <span>그래프 뷰</span>
+                <span className="hidden md:inline whitespace-nowrap">그래프 뷰</span>
               </button>
             )}
           </div>
