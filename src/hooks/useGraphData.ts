@@ -210,10 +210,12 @@ export function useGraphData() {
         document.body.appendChild(debugDiv)
       }
       const totalMs = (performance.now() - t0).toFixed(0)
+      const cacheStatus = sessionStorage.getItem('graph-analyze-cache-v1') ? 'HIT ✓' : 'MISS ✗'
       debugDiv.innerHTML = `
         <div>buildGraph: ${totalMs}ms</div>
         <div>nodes: ${finalNodes.length}</div>
         <div>links: ${finalLinks.length}</div>
+        <div>cache: ${cacheStatus}</div>
         <div>time: ${new Date().toLocaleTimeString()}</div>
       `
     }
