@@ -6,6 +6,10 @@ import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStor
 import { useFolderStore } from '@/store/folderStore'
 import type { Memo, Folder } from '@/types'
 
+const ANALYZE_CACHE_KEY    = 'graph-analyze-cache-v1'
+const ANALYZE_CACHE_TS_KEY = 'graph-analyze-cache-ts-v1'
+const ANALYZE_CACHE_TTL_MS = 5 * 60 * 1000  // 5분
+
 // Supabase에서 내려오는 snake_case 원시 행
 interface RawMemo {
   id: string
@@ -258,21 +262,44 @@ export function useGraphData() {
 
     if (!memos) return
 
-    const tAnalyze = performance.now()
+    // 1) sessionStorage 캐시 확인
     let simLinks: Array<{ source: string; target: string }> = []
     try {
-      const res = await fetch('/api/graph/analyze')
-      if (res.ok) {
-        const json = await res.json()
-        simLinks = json.links ?? []
+      const cached   = sessionStorage.getItem(ANALYZE_CACHE_KEY)
+      const cachedTs = sessionStorage.getItem(ANALYZE_CACHE_TS_KEY)
+      if (cached && cachedTs) {
+        const age = Date.now() - parseInt(cachedTs)
+        if (age < ANALYZE_CACHE_TTL_MS) {
+          simLinks = JSON.parse(cached)
+          console.log('🟢 analyze cache HIT, age:', Math.round(age / 1000), 's')
+        }
       }
-    } catch { /* 분석 실패 시 무시 */ }
-    console.log('🔴 [N5] /api/graph/analyze:', (performance.now() - tAnalyze).toFixed(1), 'ms', 'simLinks:', simLinks.length)
+    } catch { /* 캐시 파싱 실패 시 무시 */ }
 
+    // 2) 캐시 있으면 즉시, 없으면 빈 simLinks로 먼저 그래프 표시
     rawRef.current = { memos: memos as RawMemo[], simLinks }
     console.log('🔴 [N6] fetchRawData TOTAL:', (performance.now() - tFetchStart).toFixed(1), 'ms')
     console.log('🔴 [N7] → calling buildGraph')
     buildGraph()
+
+    // 3) 캐시 없을 때 백그라운드에서 analyze 호출
+    if (simLinks.length === 0) {
+      console.log('🔴 analyze cache MISS, fetching in background...')
+      fetch('/api/graph/analyze')
+        .then((res) => res.ok ? res.json() : { links: [] })
+        .then((json) => {
+          const newSimLinks: Array<{ source: string; target: string }> = json.links ?? []
+          try {
+            sessionStorage.setItem(ANALYZE_CACHE_KEY, JSON.stringify(newSimLinks))
+            sessionStorage.setItem(ANALYZE_CACHE_TS_KEY, String(Date.now()))
+          } catch { /* 저장 실패 시 무시 */ }
+          if (rawRef.current) {
+            rawRef.current.simLinks = newSimLinks
+            buildGraph()
+          }
+        })
+        .catch(() => { /* 분석 실패 시 무시 */ })
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // settingsRef / supabase (singleton) / buildGraph (안정적 참조)
 
