@@ -97,6 +97,7 @@ export default function GraphView() {
 
   // draw
   const draw = useCallback(() => {
+    const t0 = performance.now()
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -267,6 +268,9 @@ export default function GraphView() {
   }, [])
 
   const buildSim = useCallback(() => {
+      console.log('🟣 [A] buildSim START')  // ← 추가
+      const tBuild = performance.now()       // ← 추가
+    
     simRef.current?.stop()
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     const s = settingsRef.current  // 스냅샷 — settings를 dep에 추가하지 않기 위함
