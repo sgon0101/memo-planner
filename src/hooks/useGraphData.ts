@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
@@ -39,7 +39,11 @@ export function useGraphData() {
   const { setFolders } = useFolderStore()
   const supabase = createClient()
 
+  const settingsRef = useRef(settings)
+  useLayoutEffect(() => { settingsRef.current = settings })
+
   const load = useCallback(async () => {
+    const s = settingsRef.current
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
@@ -54,8 +58,8 @@ export function useGraphData() {
       .eq('user_id', user.id)
       .eq('is_deleted', false)
 
-    if (settings.folderFilter) {
-      query = query.eq('folder_id', settings.folderFilter)
+    if (s.folderFilter) {
+      query = query.eq('folder_id', s.folderFilter)
     }
 
     const { data: memos } = await query.limit(5000)
@@ -68,7 +72,7 @@ export function useGraphData() {
 
     // 1단계: 위키/태그 허브 노드 수집
     for (const m of memos) {
-      if (settings.showWiki) {
+      if (s.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
           if (!wikiMap.has(kw)) {
             const nid = `wiki:${kw}`
@@ -76,7 +80,7 @@ export function useGraphData() {
           }
         }
       }
-      if (settings.showTag) {
+      if (s.showTag) {
         for (const tag of (m.tags ?? [])) {
           if (!tagMap.has(tag)) {
             const nid = `tag:${tag}`
@@ -90,7 +94,7 @@ export function useGraphData() {
     const memoLinkCounts = new Map<string, number>()
     for (const m of memos) {
       let count = 0
-      if (settings.showWiki) {
+      if (s.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
           if (wikiMap.has(kw)) {
             links.push({ source: m.id, target: wikiMap.get(kw)!, type: 'wiki' })
@@ -98,7 +102,7 @@ export function useGraphData() {
           }
         }
       }
-      if (settings.showTag) {
+      if (s.showTag) {
         for (const tag of (m.tags ?? [])) {
           if (tagMap.has(tag)) {
             links.push({ source: m.id, target: tagMap.get(tag)!, type: 'tag' })
@@ -130,18 +134,18 @@ export function useGraphData() {
     // 4단계: 메모 노드 생성 (고립 필터)
     for (const m of memos) {
       const lc = memoLinkCounts.get(m.id) ?? 0
-      if (!settings.showIsolated && lc === 0) continue
+      if (!s.showIsolated && lc === 0) continue
       nodes.push(toMemoNode(m as unknown as Memo & { wiki_links: string[] }, lc))
     }
 
     // 5단계: 위키/태그 허브 노드 생성
-    if (settings.showWiki) {
+    if (s.showWiki) {
       for (const [kw, nid] of wikiMap) {
         const lc = links.filter((l) => l.target === nid).length
         nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: lc })
       }
     }
-    if (settings.showTag) {
+    if (s.showTag) {
       for (const [tag, nid] of tagMap) {
         const lc = links.filter((l) => l.target === nid).length
         nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: lc })
@@ -178,18 +182,24 @@ export function useGraphData() {
 
     setNodes(finalNodes)
     setLinks(finalLinks)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // settingsRef로 항상 최신 settings 참조
+
+  // settings 변경 시 즉시 reload
+  useEffect(() => {
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.folderFilter])
 
-  useEffect(() => { load() }, [load])
-
-  // Supabase Realtime 구독
+  // Supabase Realtime 구독 — 마운트 시 한 번만 (load는 [] 의존성으로 불변)
   useEffect(() => {
     const channel = supabase
       .channel('graph-memos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'memos' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'memos' }, load)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [load])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return { reload: load }
 }
