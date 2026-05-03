@@ -111,12 +111,10 @@ export function useGraphData() {
       memoLinkCounts.set(m.id, count)
     }
 
-    // 3단계: 유사도 링크 (캐시된 결과 재사용)
+    // 3단계: 유사도 링크 — Set으로 O(1) 조회 (기존 O(N²) → O(N))
+    const memoIdSet = new Set(memos.map((m) => m.id))
     for (const sl of simLinks) {
-      if (
-        memos.some((m) => m.id === sl.source) &&
-        memos.some((m) => m.id === sl.target)
-      ) {
+      if (memoIdSet.has(sl.source) && memoIdSet.has(sl.target)) {
         links.push({ source: sl.source, target: sl.target, type: 'similarity' })
         memoLinkCounts.set(sl.source, (memoLinkCounts.get(sl.source) ?? 0) + 1)
         memoLinkCounts.set(sl.target, (memoLinkCounts.get(sl.target) ?? 0) + 1)
@@ -130,17 +128,21 @@ export function useGraphData() {
       nodes.push(toMemoNode(m as unknown as Memo & { wiki_links: string[] }, lc))
     }
 
-    // 5단계: 위키/태그 허브 노드 생성
+    // 5단계: 위키/태그 허브 노드 생성 — 한 번 순회로 target 카운트 (기존 O(N²) → O(N))
+    const linkCountByTarget = new Map<string, number>()
+    for (const l of links) {
+      const tid = typeof l.target === 'string' ? l.target : l.target.id
+      linkCountByTarget.set(tid, (linkCountByTarget.get(tid) ?? 0) + 1)
+    }
+
     if (s.showWiki) {
       for (const [kw, nid] of wikiMap) {
-        const lc = links.filter((l) => l.target === nid).length
-        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: lc })
+        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: linkCountByTarget.get(nid) ?? 0 })
       }
     }
     if (s.showTag) {
       for (const [tag, nid] of tagMap) {
-        const lc = links.filter((l) => l.target === nid).length
-        nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: lc })
+        nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: linkCountByTarget.get(nid) ?? 0 })
       }
     }
 
