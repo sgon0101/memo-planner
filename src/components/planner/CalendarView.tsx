@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
   isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
@@ -137,8 +137,8 @@ export default function CalendarView() {
       {/* 캘린더 메인 */}
       <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-3 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-2">
             <button
               onClick={() => {
                 if (viewMode === 'month') setCurrentMonth(subMonths(currentMonth, 1))
@@ -149,7 +149,9 @@ export default function CalendarView() {
             >
               <ChevronLeft size={16} />
             </button>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white w-40 text-center">
+
+            {/* 데스크톱: 기존 전체 날짜 표시 */}
+            <h2 className="hidden sm:block text-base font-semibold text-gray-900 dark:text-white w-40 text-center">
               {viewMode === 'month' && format(currentMonth, 'yyyy년 M월', { locale: ko })}
               {viewMode === 'week' && (() => {
                 const ws = currentWeek
@@ -158,6 +160,18 @@ export default function CalendarView() {
               })()}
               {viewMode === 'day' && format(parseISO(selectedDate || today), 'yyyy년 M월 d일 (eee)', { locale: ko })}
             </h2>
+
+            {/* 모바일: 짧게 */}
+            <h2 className="sm:hidden text-sm font-semibold text-gray-900 dark:text-white w-20 text-center">
+              {viewMode === 'month' && format(currentMonth, 'M월', { locale: ko })}
+              {viewMode === 'week' && (() => {
+                const ws = currentWeek
+                const we = addDays(ws, 6)
+                return format(ws, 'M/d') + '–' + format(we, 'M/d')
+              })()}
+              {viewMode === 'day' && format(parseISO(selectedDate || today), 'M/d (eee)', { locale: ko })}
+            </h2>
+
             <button
               onClick={() => {
                 if (viewMode === 'month') setCurrentMonth(addMonths(currentMonth, 1))
@@ -172,7 +186,7 @@ export default function CalendarView() {
               onClick={goToToday}
               disabled={isViewingToday}
               className={cn(
-                'text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:cursor-default',
+                'text-xs px-2 sm:px-2.5 py-1 rounded-lg border transition-colors disabled:cursor-default whitespace-nowrap',
                 isViewingToday
                   ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
                   : 'border-violet-500 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/30'
@@ -182,34 +196,43 @@ export default function CalendarView() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* Google Calendar 동기화 */}
             <button
               onClick={handleSync}
               disabled={syncing}
               title="Google Calendar 동기화"
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-              Google 동기화
+              <RefreshCw size={13} className={cn('flex-shrink-0', syncing && 'animate-spin')} />
+              <span className="hidden sm:inline">Google 동기화</span>
+              <span className="sm:hidden flex flex-col items-start leading-tight text-[10px]">
+                <span>Google</span>
+                <span>동기화</span>
+              </span>
             </button>
 
-            {/* 뷰 토글 */}
-            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {(['month', 'week', 'day'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium transition-colors',
-                  viewMode === mode
-                    ? 'bg-violet-600 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                )}
-              >
-                {{ month: '월', week: '주', day: '일' }[mode]}
-              </button>
-            ))}
+            {/* 데스크톱: 평탄 뷰 토글 */}
+            <div className="hidden sm:flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {(['month', 'week', 'day'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium transition-colors',
+                    viewMode === mode
+                      ? 'bg-violet-600 text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  )}
+                >
+                  {{ month: '월', week: '주', day: '일' }[mode]}
+                </button>
+              ))}
+            </div>
+
+            {/* 모바일: 드롭다운 */}
+            <div className="sm:hidden">
+              <ViewModeDropdown viewMode={viewMode} onChange={setViewMode} />
             </div>
           </div>
         </div>
@@ -376,6 +399,57 @@ export default function CalendarView() {
           onClose={() => setFormState({ open: false, date: '' })}
           onSaved={() => { setFormState({ open: false, date: '' }); load() }}
         />
+      )}
+    </div>
+  )
+}
+
+function ViewModeDropdown({
+  viewMode,
+  onChange,
+}: {
+  viewMode: 'month' | 'week' | 'day'
+  onChange: (mode: 'month' | 'week' | 'day') => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [open])
+
+  const labels = { month: '월', week: '주', day: '일' } as const
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-0.5 px-2 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      >
+        <span>{labels[viewMode]}</span>
+        <ChevronDown size={10} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 w-20">
+          {(['month', 'week', 'day'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => { onChange(mode); setOpen(false) }}
+              className={cn(
+                'w-full px-3 py-1.5 text-xs text-left transition-colors',
+                viewMode === mode
+                  ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+              )}
+            >
+              {labels[mode]}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
