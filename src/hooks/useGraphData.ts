@@ -211,8 +211,8 @@ export function useGraphData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // settingsRef / supabase (singleton) / buildGraph (안정적 참조)
 
-  // showIsolated / showWiki / showTag 변경 → 로컬 계산만 (네트워크 없음)
-  useEffect(() => {
+  // showIsolated / showWiki / showTag 변경 → 페인트 전에 동기 반영
+  useLayoutEffect(() => {
     buildGraph()
   }, [settings.showIsolated, settings.showWiki, settings.showTag, buildGraph])
 
