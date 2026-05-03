@@ -104,6 +104,7 @@ export function useGraphData() {
     }
     console.log('🔵 [5] stage1 (hub collect):', (performance.now() - tStage1).toFixed(1), 'ms')
 
+
     const tStage2 = performance.now()
     // 2단계: 링크 생성 (위키 + 태그)
     const memoLinkCounts = new Map<string, number>()
@@ -194,6 +195,24 @@ export function useGraphData() {
     }
     console.log('🔵 [10] stage6 (hub limit):', (performance.now() - tStage6).toFixed(1), 'ms')
     console.log('🔵 [11] finalNodes:', finalNodes.length, 'finalLinks:', finalLinks.length)
+
+    // 임시 디버그 — 화면 우측 상단 표시
+    if (typeof document !== 'undefined') {
+      let debugDiv = document.getElementById('graph-debug')
+      if (!debugDiv) {
+        debugDiv = document.createElement('div')
+        debugDiv.id = 'graph-debug'
+        debugDiv.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.8);color:lime;padding:10px;font-family:monospace;font-size:11px;z-index:9999;max-width:300px;border-radius:4px;line-height:1.4;'
+        document.body.appendChild(debugDiv)
+      }
+      const totalMs = (performance.now() - t0).toFixed(0)
+      debugDiv.innerHTML = `
+        <div>buildGraph: ${totalMs}ms</div>
+        <div>nodes: ${finalNodes.length}</div>
+        <div>links: ${finalLinks.length}</div>
+        <div>time: ${new Date().toLocaleTimeString()}</div>
+      `
+    }
 
     const tSetState = performance.now()
     setNodes(finalNodes)
