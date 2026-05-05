@@ -63,6 +63,7 @@ export default function GraphView() {
   const isFirstNodesUpdateRef = useRef(true)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
+  const drawCountRef = useRef(0)
   const dragNodeRef = useRef<GraphNode | null>(null)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
@@ -98,6 +99,17 @@ export default function GraphView() {
 
   // draw
   const draw = useCallback(() => {
+    drawCountRef.current++
+    if (typeof document !== 'undefined') {
+      let drawBox = document.getElementById('draw-debug')
+      if (!drawBox) {
+        drawBox = document.createElement('div')
+        drawBox.id = 'draw-debug'
+        drawBox.style.cssText = 'position:fixed;top:200px;right:10px;background:rgba(0,0,0,0.8);color:cyan;padding:8px;font-family:monospace;font-size:11px;z-index:9999;border-radius:4px;'
+        document.body.appendChild(drawBox)
+      }
+      drawBox.innerHTML = `draws: ${drawCountRef.current}`
+    }
     const t0 = performance.now()
     const canvas = canvasRef.current
     if (!canvas) return
@@ -347,8 +359,22 @@ export default function GraphView() {
       sim.alpha(0.1).restart()
     }
 
-    // RAF가 멈춰있으면 즉시 한 프레임 그리기 (지연 방지)
-    if (!rafRef.current) drawRef.current()
+    // 항상 즉시 draw (RAF 상태 무관)
+    drawRef.current()
+
+    // RAF 멈춰있으면 강제로 시작 (sim.tick 이벤트 기다리지 않음)
+    if (!rafRef.current && sim.alpha() > sim.alphaMin()) {
+      const tick = () => {
+        drawRef.current()
+        if (sim.alpha() > sim.alphaMin()) {
+          rafRef.current = requestAnimationFrame(tick)
+        } else {
+          setSimStatus('sleeping')
+          rafRef.current = null
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
