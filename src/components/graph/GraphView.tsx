@@ -64,6 +64,14 @@ export default function GraphView() {
   const labelOpacityRef = useRef(1) // 초기 zoom=1 → opacity=1
   const isFirstNodesUpdateRef = useRef(true)
   const isMobileRef = useRef(false)
+  const pinchRef = useRef<{
+    startDist: number
+    startK: number
+    centerX: number
+    centerY: number
+    startTransformX: number
+    startTransformY: number
+  } | null>(null)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -510,6 +518,17 @@ export default function GraphView() {
     return { mx: t.clientX - r.left, my: t.clientY - r.top }
   }
 
+  function pinchInfo(e: React.TouchEvent) {
+    const r = canvasRef.current!.getBoundingClientRect()
+    const t1 = e.touches[0], t2 = e.touches[1]
+    const dx = t2.clientX - t1.clientX, dy = t2.clientY - t1.clientY
+    return {
+      dist: Math.sqrt(dx * dx + dy * dy),
+      cx: (t1.clientX + t2.clientX) / 2 - r.left,
+      cy: (t1.clientY + t2.clientY) / 2 - r.top,
+    }
+  }
+
   function hitNode(mx: number, my: number): GraphNode | null {
     const { x, y, k } = transformRef.current
     const wx = (mx - x) / k, wy = (my - y) / k
@@ -602,8 +621,24 @@ export default function GraphView() {
     draw()
   }
 
-  // 터치 이벤트 — 마우스 핸들러로 위임 (로직 통합)
+  // 터치 이벤트 — 한 손가락: 마우스 위임 / 두 손가락: 핀치 줌
   function onTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const { dist, cx, cy } = pinchInfo(e)
+      pinchRef.current = {
+        startDist: dist,
+        startK: transformRef.current.k,
+        centerX: cx,
+        centerY: cy,
+        startTransformX: transformRef.current.x,
+        startTransformY: transformRef.current.y,
+      }
+      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      canvasDragRef.current = null
+      isDraggingRef.current = false
+      return
+    }
     if (e.touches.length !== 1) return
     e.preventDefault()
     const t = e.touches[0]
@@ -611,6 +646,20 @@ export default function GraphView() {
   }
 
   function onTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault()
+      const { dist, cx, cy } = pinchInfo(e)
+      const p = pinchRef.current
+      const newK = Math.max(0.3, Math.min(3, p.startK * (dist / p.startDist)))
+      const worldX = (p.centerX - p.startTransformX) / p.startK
+      const worldY = (p.centerY - p.startTransformY) / p.startK
+      transformRef.current.k = newK
+      transformRef.current.x = cx - worldX * newK
+      transformRef.current.y = cy - worldY * newK
+      startLabelAnimation()
+      draw()
+      return
+    }
     if (e.touches.length !== 1) return
     e.preventDefault()
     const t = e.touches[0]
@@ -618,6 +667,16 @@ export default function GraphView() {
   }
 
   function onTouchEnd(e: React.TouchEvent) {
+    if (pinchRef.current && e.touches.length < 2) {
+      pinchRef.current = null
+      if (e.touches.length === 1) {
+        const r = canvasRef.current!.getBoundingClientRect()
+        const t = e.touches[0]
+        dragStartRef.current = { x: t.clientX - r.left, y: t.clientY - r.top }
+        isDraggingRef.current = false
+        return
+      }
+    }
     if (e.touches.length > 0) return
     const t = e.changedTouches[0]
     if (!t) return
