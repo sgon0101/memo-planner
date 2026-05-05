@@ -10,6 +10,8 @@ const ANALYZE_CACHE_KEY    = 'graph-analyze-cache-v1'
 const ANALYZE_CACHE_TS_KEY = 'graph-analyze-cache-ts-v1'
 const ANALYZE_CACHE_TTL_MS = 5 * 60 * 1000  // 5분
 
+let buildCountRef = 0
+
 // Supabase에서 내려오는 snake_case 원시 행
 interface RawMemo {
   id: string
@@ -69,6 +71,7 @@ export function useGraphData() {
 
   // 로컬 계산만 수행 — 네트워크 없음, 즉각 반영
   const buildGraph = useCallback(() => {
+    buildCountRef++
     console.log('🔵 [1] buildGraph START', new Date().toISOString())
     const t0 = performance.now()
 
@@ -216,6 +219,7 @@ export function useGraphData() {
         <div>nodes: ${finalNodes.length}</div>
         <div>links: ${finalLinks.length}</div>
         <div>cache: ${cacheStatus}</div>
+        <div>build count: ${buildCountRef}</div>
         <div>time: ${new Date().toLocaleTimeString()}</div>
       `
     }
