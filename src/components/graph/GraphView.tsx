@@ -504,6 +504,12 @@ export default function GraphView() {
     return { mx: e.clientX - r.left, my: e.clientY - r.top }
   }
 
+  function touchXY(e: React.TouchEvent, touchIndex = 0) {
+    const r = canvasRef.current!.getBoundingClientRect()
+    const t = e.touches[touchIndex] || e.changedTouches[touchIndex]
+    return { mx: t.clientX - r.left, my: t.clientY - r.top }
+  }
+
   function hitNode(mx: number, my: number): GraphNode | null {
     const { x, y, k } = transformRef.current
     const wx = (mx - x) / k, wy = (my - y) / k
@@ -583,6 +589,77 @@ export default function GraphView() {
       }
     }
 
+    if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+    canvasDragRef.current = null
+    isDraggingRef.current = false
+    draw()
+  }
+
+  // 터치 이벤트 (모바일 한 손가락)
+  function onTouchStart(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return
+    const { mx, my } = touchXY(e)
+    dragStartRef.current = { x: mx, y: my }
+    isDraggingRef.current = false
+    const n = hitNode(mx, my)
+    if (n) {
+      dragNodeRef.current = n
+      wake(0.3)
+    } else {
+      canvasDragRef.current = { sx: mx, sy: my, px: transformRef.current.x, py: transformRef.current.y }
+    }
+  }
+
+  function onTouchMove(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return
+    const { mx, my } = touchXY(e)
+    const dx = mx - dragStartRef.current.x
+    const dy = my - dragStartRef.current.y
+    if (Math.sqrt(dx * dx + dy * dy) > 5) isDraggingRef.current = true
+    if (dragNodeRef.current) {
+      const { x, y, k } = transformRef.current
+      dragNodeRef.current.fx = (mx - x) / k
+      dragNodeRef.current.fy = (my - y) / k
+      wake(0.08)
+      e.preventDefault()
+    } else if (canvasDragRef.current) {
+      const { sx, sy, px, py } = canvasDragRef.current
+      transformRef.current.x = px + (mx - sx)
+      transformRef.current.y = py + (my - sy)
+      draw()
+      e.preventDefault()
+    }
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    if (e.touches.length > 0) return
+    const { mx, my } = touchXY(e)
+    const isClick = !isDraggingRef.current &&
+      (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 49
+    if (isClick) {
+      const n = hitNode(mx, my)
+      if (n) {
+        setSelectedNode(n.id === selectedNodeId ? null : n.id)
+        if (n.type === 'memo') {
+          setSelectedTagPanel(null)
+          router.push(`/memo/${n.id}?from=graph`)
+        } else if (n.type === 'tag') {
+          const tagNodeId = n.id
+          const sNodes = simRef.current?.nodes() ?? []
+          const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
+          const tagMemos = sNodes.filter((node) =>
+            node.type === 'memo' &&
+            sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
+          )
+          setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
+        } else {
+          setSelectedTagPanel(null)
+        }
+      } else {
+        setSelectedNode(null)
+        setSelectedTagPanel(null)
+      }
+    }
     if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
     canvasDragRef.current = null
     isDraggingRef.current = false
@@ -806,7 +883,11 @@ export default function GraphView() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
             onWheel={onWheel}
-            className="block"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            onTouchCancel={onTouchEnd}
+            className="block touch-none"
           />
           {/* 노드 없을 때 안내 */}
           {nodes.length === 0 && (
