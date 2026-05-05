@@ -321,11 +321,17 @@ export default function GraphView() {
     if (!sim) return
     if (nodes.length === 0) return  // 빈 데이터 스킵
 
-    // 기존 노드 위치 복사 + 새 노드는 화면 중앙 부근 랜덤 배치
+    // 기존 노드 위치 복사 + 새 노드는 화면 크기 비례 원형 분산
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
     const cx = size.w / 2
     const cy = size.h / 2
     let hasNewNodes = false
+
+    // 첫 진입: 화면 80% 원형 분산 / 토글 켜기: 화면 30% 원형 분산
+    const isFirst = isFirstNodesUpdateRef.current
+    const spreadRadius = isFirst
+      ? Math.min(size.w, size.h) * 0.4
+      : Math.min(size.w, size.h) * 0.15
 
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
@@ -337,9 +343,11 @@ export default function GraphView() {
         n.fx = old.fx
         n.fy = old.fy
       } else {
-        // 새 노드: 화면 중앙 ±100px 랜덤 (D3 기본 0,0보다 자연스러움)
-        n.x = cx + (Math.random() - 0.5) * 200
-        n.y = cy + (Math.random() - 0.5) * 200
+        // 새 노드: 화면 크기 비례 원형 분산 (중앙 뭉침 방지)
+        const angle = Math.random() * 2 * Math.PI
+        const radius = Math.random() * spreadRadius
+        n.x = cx + Math.cos(angle) * radius
+        n.y = cy + Math.sin(angle) * radius
         hasNewNodes = true
       }
     }
