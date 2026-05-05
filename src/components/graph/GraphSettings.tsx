@@ -31,7 +31,7 @@ export default function GraphSettings({ onReset }: Props) {
   const { folders } = useFolderStore()
 
   return (
-    <div className="w-60 flex-shrink-0 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-y-auto flex flex-col">
+    <div className="w-full md:w-60 md:flex-shrink-0 bg-white dark:bg-gray-900 md:border-l md:border-gray-200 md:dark:border-gray-800 overflow-y-auto flex flex-col">
       <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
         <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">그래프 설정</p>
       </div>

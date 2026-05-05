@@ -10,6 +10,7 @@ import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStor
 import { useGraphData } from '@/hooks/useGraphData'
 import GraphSettings from './GraphSettings'
 import GraphTooltip from './GraphTooltip'
+import { Drawer } from 'vaul'
 
 // 슬라이더 1~10 → D3 force 파라미터 변환
 const toCharge         = (v: number) => -(v * 30)   // -30 – -300
@@ -747,11 +748,30 @@ export default function GraphView() {
           )}
         </div>
 
-        {/* 설정 패널 — 데스크톱만 사이드 패널 표시 */}
+        {/* 데스크톱: 사이드 패널 (기존) */}
         <div className="hidden md:contents">
           {showSettings && <GraphSettings onReset={handleReset} />}
         </div>
-        {/* 모바일: 다음 PR에서 Bottom Sheet로 연결 */}
+
+        {/* 모바일: Bottom Sheet */}
+        <Drawer.Root
+          open={showSettings}
+          onOpenChange={setShowSettings}
+          shouldScaleBackground={false}
+        >
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40 md:hidden" />
+            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] outline-none">
+              {/* 드래그 핸들 */}
+              <div className="flex-shrink-0 mx-auto w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mt-3 mb-2" />
+              <Drawer.Title className="sr-only">그래프 설정</Drawer.Title>
+              {/* 설정 내용 */}
+              <div className="flex-1 overflow-y-auto pb-safe">
+                <GraphSettings onReset={() => { handleReset(); setShowSettings(false) }} />
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       </div>
 
       {/* 하단 상태 바 */}
