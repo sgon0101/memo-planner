@@ -63,7 +63,6 @@ export default function GraphView() {
   const isFirstNodesUpdateRef = useRef(true)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
-  const drawCountRef = useRef(0)
   const dragNodeRef = useRef<GraphNode | null>(null)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
@@ -99,17 +98,6 @@ export default function GraphView() {
 
   // draw
   const draw = useCallback(() => {
-    drawCountRef.current++
-    if (typeof document !== 'undefined') {
-      let drawBox = document.getElementById('draw-debug')
-      if (!drawBox) {
-        drawBox = document.createElement('div')
-        drawBox.id = 'draw-debug'
-        drawBox.style.cssText = 'position:fixed;top:200px;right:10px;background:rgba(0,0,0,0.8);color:cyan;padding:8px;font-family:monospace;font-size:11px;z-index:9999;border-radius:4px;'
-        document.body.appendChild(drawBox)
-      }
-      drawBox.innerHTML = `draws: ${drawCountRef.current}`
-    }
     const t0 = performance.now()
     const canvas = canvasRef.current
     if (!canvas) return
@@ -428,48 +416,6 @@ export default function GraphView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
 
-    // 디버그 박스 — isVirtuallyFirst 추가 (노란색)
-    if (typeof document !== 'undefined') {
-      let debugBox = document.getElementById('actual-debug')
-      if (!debugBox) {
-        debugBox = document.createElement('div')
-        debugBox.id = 'actual-debug'
-        debugBox.style.cssText = 'position:fixed;top:300px;right:10px;background:rgba(0,0,0,0.8);color:yellow;padding:8px;font-family:monospace;font-size:11px;z-index:9999;border-radius:4px;line-height:1.4;'
-        document.body.appendChild(debugBox)
-      }
-      const widthDiff = actualW - size.w
-      const widthStatus = Math.abs(widthDiff) < 10 ? '✓ match' : '⚠ diff:' + widthDiff
-      const count = parseInt(debugBox.dataset.count ?? '0') + 1
-      debugBox.dataset.count = String(count)
-      debugBox.innerHTML = `
-        <div>=== 캔버스 측정 ===</div>
-        <div>actualW: ${actualW}px</div>
-        <div>actualH: ${actualH}px</div>
-        <div>size.w: ${size.w}px</div>
-        <div>size.h: ${size.h}px</div>
-        <div>${widthStatus}</div>
-        <div>spread: ${Math.round(actualW * 0.9)}×${Math.round(actualH * 0.9)}</div>
-        <div>isFirst: ${isFirstNodesUpdateRef.current}</div>
-        <div>vFirst: ${isVirtuallyFirst}</div>
-        <div>oldSize: ${oldNodesById.size}</div>
-        <div>oldArea: ${Math.round(oldWidth)}×${Math.round(oldHeight)}</div>
-        <div>validOld: ${validOldCount}</div>
-        <div>newNodes: ${hasNewNodes}</div>
-        <div>updates: ${count}</div>
-      `
-    }
-
-    console.log('🟡 [GraphView]', {
-      actualW, actualH,
-      sizeW: size.w, sizeH: size.h,
-      isFirst,
-      isVirtuallyFirst,
-      hasNewNodes,
-      nodeCount: nodes.length,
-      oldMapSize: oldNodesById.size,
-      centerStrength: isFirst ? 0.001 : (hasNewNodes ? normalCenterStrength * 0.1 : normalCenterStrength),
-      alpha: isFirst ? 1 : (hasNewNodes ? 0.8 : 0.1),
-    })
   }, [nodes, links, size.w, size.h])
 
   // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
