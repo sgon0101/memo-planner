@@ -75,7 +75,10 @@ export default function GraphView() {
   settingsRef.current = settings  // 항상 최신값 유지
 
   const [simStatus, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
-  const [showSettings, setShowSettings] = useState(true)
+  const [showSettings, setShowSettings] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.matchMedia('(min-width: 768px)').matches
+  })
   const [search, setSearch] = useState('')
   const [searchMatches, setSearchMatches] = useState<GraphNode[]>([])
   const [searchMatchIdx, setSearchMatchIdx] = useState(0)
@@ -744,8 +747,11 @@ export default function GraphView() {
           )}
         </div>
 
-        {/* 설정 패널 */}
-        {showSettings && <GraphSettings onReset={handleReset} />}
+        {/* 설정 패널 — 데스크톱만 사이드 패널 표시 */}
+        <div className="hidden md:contents">
+          {showSettings && <GraphSettings onReset={handleReset} />}
+        </div>
+        {/* 모바일: 다음 PR에서 Bottom Sheet로 연결 */}
       </div>
 
       {/* 하단 상태 바 */}
