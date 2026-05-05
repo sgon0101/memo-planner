@@ -631,11 +631,62 @@ export default function GraphView() {
 
   // 레이아웃 초기화 (설정 + 위치 + 줌 모두 리셋)
   function handleReset() {
+    const sim = simRef.current
+    if (!sim) return
+
+    // 1. 슬라이더/토글/필터 모두 기본값으로
     resetSettings()
-    simRef.current?.nodes().forEach((n) => { n.fx = null; n.fy = null; n.x = undefined; n.y = undefined })
+
+    // 2. 줌/팬 리셋
     transformRef.current = { x: 0, y: 0, k: 1 }
+
+    // 3. 화면 크기 측정 (DOM 직접 읽기)
+    const actualW = containerRef.current?.clientWidth || size.w
+    const actualH = containerRef.current?.clientHeight || size.h
+    const cx = actualW / 2
+    const cy = actualH / 2
+
+    // 4. 모든 노드 좌표를 화면 가득 직사각형 분산 (undefined 아님 → draw 스킵 방지)
+    sim.nodes().forEach((n) => {
+      n.fx = null
+      n.fy = null
+      n.vx = 0
+      n.vy = 0
+      n.x = cx + (Math.random() - 0.5) * actualW * 0.9
+      n.y = cy + (Math.random() - 0.5) * actualH * 0.9
+    })
+
+    // 5. forceCenter 일시 약화 (중앙 뭉침 방지)
+    const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
+    centerForce?.strength(0.001)
+    setTimeout(() => {
+      const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
+      cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+    }, 800)
+
+    // 6. isFirst true (다음 nodes/links 변경 시 첫 진입 분기로)
     isFirstNodesUpdateRef.current = true
-    wake(1)
+
+    // 7. 시뮬레이션 alpha 1로 강하게 재시작
+    sim.alpha(1).restart()
+    setSimStatus('active')
+
+    // 8. 즉시 한 프레임 그리기
+    drawRef.current()
+
+    // 9. RAF 시작
+    if (!rafRef.current) {
+      const tick = () => {
+        drawRef.current()
+        if (sim.alpha() > sim.alphaMin()) {
+          rafRef.current = requestAnimationFrame(tick)
+        } else {
+          setSimStatus('sleeping')
+          rafRef.current = null
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
   }
 
   const memoCount = nodes.filter((n) => n.type === 'memo').length
