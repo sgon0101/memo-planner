@@ -321,16 +321,18 @@ export default function GraphView() {
     if (!sim) return
     if (nodes.length === 0) return  // 빈 데이터 스킵
 
-    // 기존 노드 위치 복사 + 새 노드는 화면 크기 비례 분산
-    const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
     // size state가 아직 초기값(800×600)일 수 있으므로 DOM에서 직접 읽음
     const actualW = containerRef.current?.clientWidth  || size.w
     const actualH = containerRef.current?.clientHeight || size.h
     const cx = actualW / 2
     const cy = actualH / 2
+
+    const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
     let hasNewNodes = false
 
-    const isFirst = isFirstNodesUpdateRef.current
+    // 시뮬레이션이 비어있으면 (size 변경 등으로 재생성) 첫 진입과 동일하게 처리
+    const isVirtuallyFirst = oldNodesById.size === 0
+    const isFirst = isFirstNodesUpdateRef.current || isVirtuallyFirst
 
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
@@ -343,11 +345,11 @@ export default function GraphView() {
         n.fy = old.fy
       } else {
         if (isFirst) {
-          // 첫 진입: 캔버스 전체 직사각형 균등 분산 (중앙 뭉침 완전 제거)
+          // 첫 진입 또는 시뮬레이션 빈 상태: 화면 가득 직사각형 분산
           n.x = cx + (Math.random() - 0.5) * actualW * 0.9
           n.y = cy + (Math.random() - 0.5) * actualH * 0.9
         } else {
-          // 토글 켜기: 균등 원형 분산 (sqrt → 면적 균등), 반경 60%
+          // 토글 켜기 (기존 노드 있는 상태): 균등 원형 분산, 반경 60%
           const angle  = Math.random() * 2 * Math.PI
           const radius = Math.sqrt(Math.random()) * Math.min(actualW, actualH) * 0.6
           n.x = cx + Math.cos(angle) * radius
@@ -364,7 +366,8 @@ export default function GraphView() {
     const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
     const normalCenterStrength = toCenterStrength(settingsRef.current.centerTension)
 
-    if (isFirstNodesUpdateRef.current) {
+    if (isFirst) {
+      // 첫 진입 또는 시뮬레이션 빈 상태: 강하게
       centerForce?.strength(0.001)
       sim.alpha(1).restart()
       isFirstNodesUpdateRef.current = false
@@ -373,6 +376,7 @@ export default function GraphView() {
         cf?.strength(toCenterStrength(settingsRef.current.centerTension))
       }, 800)
     } else if (hasNewNodes) {
+      // 기존 노드 + 새 노드 추가 (진짜 토글 켜기)
       centerForce?.strength(normalCenterStrength * 0.1)
       sim.alpha(0.8).restart()
       setTimeout(() => {
@@ -380,6 +384,7 @@ export default function GraphView() {
         cf?.strength(toCenterStrength(settingsRef.current.centerTension))
       }, 1200)
     } else {
+      // 노드 추가 없음 (토글 끄기, 링크만 변경)
       sim.alpha(0.1).restart()
     }
 
@@ -403,7 +408,7 @@ export default function GraphView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
 
-    // 디버그 박스 — actualW/H vs size 측정값 표시 (노란색)
+    // 디버그 박스 — isVirtuallyFirst 추가 (노란색)
     if (typeof document !== 'undefined') {
       let debugBox = document.getElementById('actual-debug')
       if (!debugBox) {
@@ -424,7 +429,9 @@ export default function GraphView() {
         <div>size.h: ${size.h}px</div>
         <div>${widthStatus}</div>
         <div>spread: ${Math.round(actualW * 0.9)}×${Math.round(actualH * 0.9)}</div>
-        <div>isFirst: ${isFirst}</div>
+        <div>isFirst: ${isFirstNodesUpdateRef.current}</div>
+        <div>vFirst: ${isVirtuallyFirst}</div>
+        <div>oldSize: ${oldNodesById.size}</div>
         <div>newNodes: ${hasNewNodes}</div>
         <div>updates: ${count}</div>
       `
@@ -434,10 +441,12 @@ export default function GraphView() {
       actualW, actualH,
       sizeW: size.w, sizeH: size.h,
       isFirst,
+      isVirtuallyFirst,
       hasNewNodes,
       nodeCount: nodes.length,
-      centerStrength: isFirst ? 0.001 : (hasNewNodes ? normalCenterStrength * 0.3 : normalCenterStrength),
-      alpha: isFirst ? 1 : (hasNewNodes ? 0.5 : 0.1),
+      oldMapSize: oldNodesById.size,
+      centerStrength: isFirst ? 0.001 : (hasNewNodes ? normalCenterStrength * 0.1 : normalCenterStrength),
+      alpha: isFirst ? 1 : (hasNewNodes ? 0.8 : 0.1),
     })
   }, [nodes, links, size.w, size.h])
 
