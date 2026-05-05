@@ -48,6 +48,7 @@ interface GraphStore {
   setNodes: (nodes: GraphNode[]) => void
   setLinks: (links: GraphLink[]) => void
   setSettings: (patch: Partial<GraphSettings>) => void
+  resetSettings: () => void
   setSelectedNode: (id: string | null) => void
   setHighlightNode: (id: string | null) => void
 }
@@ -74,6 +75,7 @@ export const useGraphStore = create<GraphStore>((set) => ({
   setNodes: (nodes) => set({ nodes }),
   setLinks: (links) => set({ links }),
   setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+  resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
   setSelectedNode: (id) => set({ selectedNodeId: id }),
   setHighlightNode: (id) => set({ highlightNodeId: id }),
 }))

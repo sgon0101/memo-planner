@@ -70,7 +70,7 @@ export default function GraphView() {
   const canvasDragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
 
-  const { nodes, links, settings, selectedNodeId, setSelectedNode, setHighlightNode } = useGraphStore()
+  const { nodes, links, settings, selectedNodeId, setSelectedNode, setHighlightNode, resetSettings } = useGraphStore()
   const { reload } = useGraphData()
   const settingsRef = useRef(settings)
   settingsRef.current = settings  // 항상 최신값 유지
@@ -88,6 +88,16 @@ export default function GraphView() {
     tag: string
     memos: Array<{ id: string; label: string; createdAt?: string }>
   } | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 모바일 감지
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const check = () => setIsMobile(mq.matches)
+    check()
+    mq.addEventListener('change', check)
+    return () => mq.removeEventListener('change', check)
+  }, [])
 
   // 캔버스 크기 추적
   useEffect(() => {
@@ -619,10 +629,12 @@ export default function GraphView() {
     animateTo(searchMatches[prev])
   }
 
-  // 레이아웃 초기화
+  // 레이아웃 초기화 (설정 + 위치 + 줌 모두 리셋)
   function handleReset() {
+    resetSettings()
     simRef.current?.nodes().forEach((n) => { n.fx = null; n.fy = null; n.x = undefined; n.y = undefined })
     transformRef.current = { x: 0, y: 0, k: 1 }
+    isFirstNodesUpdateRef.current = true
     wake(1)
   }
 
@@ -753,25 +765,25 @@ export default function GraphView() {
           {showSettings && <GraphSettings onReset={handleReset} />}
         </div>
 
-        {/* 모바일: Bottom Sheet */}
-        <Drawer.Root
-          open={showSettings}
-          onOpenChange={setShowSettings}
-          shouldScaleBackground={false}
-        >
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40 md:hidden" />
-            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] outline-none">
-              {/* 드래그 핸들 */}
-              <div className="flex-shrink-0 mx-auto w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mt-3 mb-2" />
-              <Drawer.Title className="sr-only">그래프 설정</Drawer.Title>
-              {/* 설정 내용 */}
-              <div className="flex-1 overflow-y-auto pb-safe">
-                <GraphSettings onReset={() => { handleReset(); setShowSettings(false) }} />
-              </div>
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
+        {/* 모바일: Bottom Sheet (isMobile일 때만 마운트) */}
+        {isMobile && (
+          <Drawer.Root
+            open={showSettings}
+            onOpenChange={setShowSettings}
+            shouldScaleBackground={false}
+          >
+            <Drawer.Portal>
+              <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40" />
+              <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] outline-none">
+                <div className="flex-shrink-0 mx-auto w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mt-3 mb-2" />
+                <Drawer.Title className="sr-only">그래프 설정</Drawer.Title>
+                <div className="flex-1 overflow-y-auto pb-safe">
+                  <GraphSettings onReset={() => { handleReset(); setShowSettings(false) }} />
+                </div>
+              </Drawer.Content>
+            </Drawer.Portal>
+          </Drawer.Root>
+        )}
       </div>
 
       {/* 하단 상태 바 */}
