@@ -673,11 +673,9 @@ export default function GraphView() {
       pinchRef.current = null
       lastPinchEndAtRef.current = Date.now()
       if (e.touches.length === 1) {
-        // 한 손가락 남음 → 클릭 의도 없음으로 처리
         isDraggingRef.current = true
         return
       }
-      // 두 손가락 모두 뗐으면 정리만 (onMouseUp 호출 안 함)
       isDraggingRef.current = false
       return
     }
@@ -692,18 +690,26 @@ export default function GraphView() {
       return
     }
 
-    // 패닝 중이었으면 (isDragging true) 클릭 차단 — 정리만
-    if (isDraggingRef.current) {
+    const t = e.changedTouches[0]
+    if (!t) return
+    const r = canvasRef.current!.getBoundingClientRect()
+    const ex = t.clientX - r.left
+    const ey = t.clientY - r.top
+
+    // 터치 거리로 탭 직접 판단 — isDraggingRef는 5px 기준이라 탭도 막을 수 있음
+    const tapDist = Math.sqrt((ex - dragStartRef.current.x) ** 2 + (ey - dragStartRef.current.y) ** 2)
+
+    if (tapDist < 12) {
+      // 탭: isDraggingRef 리셋 후 onMouseUp 위임 (isClick 판정 정상화)
+      isDraggingRef.current = false
+      onMouseUp({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
+    } else {
+      // 패닝/드래그: 정리만
       if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
       canvasDragRef.current = null
       isDraggingRef.current = false
       draw()
-      return
     }
-
-    const t = e.changedTouches[0]
-    if (!t) return
-    onMouseUp({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
   }
 
   function onWheel(e: React.WheelEvent) {
