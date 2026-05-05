@@ -321,17 +321,16 @@ export default function GraphView() {
     if (!sim) return
     if (nodes.length === 0) return  // 빈 데이터 스킵
 
-    // 기존 노드 위치 복사 + 새 노드는 화면 크기 비례 원형 분산
+    // 기존 노드 위치 복사 + 새 노드는 화면 크기 비례 분산
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
-    const cx = size.w / 2
-    const cy = size.h / 2
+    // size state가 아직 초기값(800×600)일 수 있으므로 DOM에서 직접 읽음
+    const actualW = containerRef.current?.clientWidth  || size.w
+    const actualH = containerRef.current?.clientHeight || size.h
+    const cx = actualW / 2
+    const cy = actualH / 2
     let hasNewNodes = false
 
-    // 첫 진입: 화면 80% 원형 분산 / 토글 켜기: 화면 30% 원형 분산
     const isFirst = isFirstNodesUpdateRef.current
-    const spreadRadius = isFirst
-      ? Math.min(size.w, size.h) * 0.4
-      : Math.min(size.w, size.h) * 0.15
 
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
@@ -343,11 +342,17 @@ export default function GraphView() {
         n.fx = old.fx
         n.fy = old.fy
       } else {
-        // 새 노드: 화면 크기 비례 원형 분산 (중앙 뭉침 방지)
-        const angle = Math.random() * 2 * Math.PI
-        const radius = Math.random() * spreadRadius
-        n.x = cx + Math.cos(angle) * radius
-        n.y = cy + Math.sin(angle) * radius
+        if (isFirst) {
+          // 첫 진입: 캔버스 전체 직사각형 균등 분산 (중앙 뭉침 완전 제거)
+          n.x = cx + (Math.random() - 0.5) * actualW * 0.9
+          n.y = cy + (Math.random() - 0.5) * actualH * 0.9
+        } else {
+          // 토글 켜기: 균등 원형 분산 (sqrt → 면적 균등), 반경 40%
+          const angle  = Math.random() * 2 * Math.PI
+          const radius = Math.sqrt(Math.random()) * Math.min(actualW, actualH) * 0.4
+          n.x = cx + Math.cos(angle) * radius
+          n.y = cy + Math.sin(angle) * radius
+        }
         hasNewNodes = true
       }
     }
