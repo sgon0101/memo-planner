@@ -64,7 +64,6 @@ export default function GraphView() {
   const labelOpacityRef = useRef(1) // 초기 zoom=1 → opacity=1
   const isFirstNodesUpdateRef = useRef(true)
   const isMobileRef = useRef(false)
-  const isTouchActiveRef = useRef(false)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -525,7 +524,6 @@ export default function GraphView() {
   }
 
   function onMouseDown(e: React.MouseEvent) {
-    if (isTouchActiveRef.current) return
     const { mx, my } = canvasXY(e)
     dragStartRef.current = { x: mx, y: my }
     isDraggingRef.current = false
@@ -536,10 +534,9 @@ export default function GraphView() {
   }
 
   function onMouseMove(e: React.MouseEvent) {
-    if (isTouchActiveRef.current) return
     const { mx, my } = canvasXY(e)
     const dx = mx - dragStartRef.current.x, dy = my - dragStartRef.current.y
-    if (Math.sqrt(dx * dx + dy * dy) > 3) isDraggingRef.current = true
+    if (Math.sqrt(dx * dx + dy * dy) > 5) isDraggingRef.current = true
 
     if (dragNodeRef.current) {
       const { x, y, k } = transformRef.current
@@ -564,9 +561,11 @@ export default function GraphView() {
   }
 
   function onMouseUp(e: React.MouseEvent) {
-    if (isTouchActiveRef.current) return
     const { mx, my } = canvasXY(e)
-    const isClick = (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 25
+    const wasOnNode = dragNodeRef.current !== null
+    const isClick = wasOnNode
+      ? !isDraggingRef.current
+      : (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 25
 
     if (isClick) {
       const n = hitNode(mx, my)
@@ -602,7 +601,6 @@ export default function GraphView() {
   // 터치 이벤트 (모바일 한 손가락)
   function onTouchStart(e: React.TouchEvent) {
     if (e.touches.length !== 1) return
-    isTouchActiveRef.current = true
     const { mx, my } = touchXY(e)
     dragStartRef.current = { x: mx, y: my }
     isDraggingRef.current = false
@@ -671,8 +669,6 @@ export default function GraphView() {
     canvasDragRef.current = null
     isDraggingRef.current = false
     draw()
-    // 마우스 이벤트 자동 발화 방지 (300ms 후 플래그 해제)
-    setTimeout(() => { isTouchActiveRef.current = false }, 300)
   }
 
   function onWheel(e: React.WheelEvent) {
