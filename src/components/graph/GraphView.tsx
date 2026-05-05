@@ -460,6 +460,9 @@ export default function GraphView() {
   // 시각 전용 변경 → 재그리기만
   useEffect(() => { draw() }, [settings.nodeSize, settings.linkWidth, draw])
 
+  // 노드 선택 변경 시 흐림 효과 즉시 그리기 (위키는 페이지 이동/패널 없어 자동 draw 필요)
+  useEffect(() => { drawRef.current() }, [selectedNodeId])
+
   // highlight
   useEffect(() => {
     if (!highlightId || !simRef.current) return
@@ -540,7 +543,9 @@ export default function GraphView() {
     for (const n of simRef.current?.nodes() ?? []) {
       if (n.x == null) continue
       const visualR = nodeRadius(n, settings.nodeSize, mob)
-      const hitR = Math.max(visualR + visualPad, minHitWorld)
+      // 허브 노드(위키/태그)는 force 영향 커서 위치 변동 큼 → 모바일에서 추가 패딩
+      const extraPad = (n.type === 'wiki' || n.type === 'tag') && mob ? 6 : 0
+      const hitR = Math.max(visualR + visualPad + extraPad, minHitWorld)
       if ((wx - n.x) ** 2 + (wy - n.y!) ** 2 < hitR ** 2) return n
     }
     return null
