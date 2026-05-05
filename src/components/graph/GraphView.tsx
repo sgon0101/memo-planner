@@ -72,6 +72,7 @@ export default function GraphView() {
     startTransformX: number
     startTransformY: number
   } | null>(null)
+  const lastPinchEndAtRef = useRef(0)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -667,17 +668,39 @@ export default function GraphView() {
   }
 
   function onTouchEnd(e: React.TouchEvent) {
+    // 핀치 중이었다가 손가락 하나라도 떼면 핀치 종료
     if (pinchRef.current && e.touches.length < 2) {
       pinchRef.current = null
+      lastPinchEndAtRef.current = Date.now()
       if (e.touches.length === 1) {
-        const r = canvasRef.current!.getBoundingClientRect()
-        const t = e.touches[0]
-        dragStartRef.current = { x: t.clientX - r.left, y: t.clientY - r.top }
-        isDraggingRef.current = false
+        // 한 손가락 남음 → 클릭 의도 없음으로 처리
+        isDraggingRef.current = true
         return
       }
+      // 두 손가락 모두 뗐으면 정리만 (onMouseUp 호출 안 함)
+      isDraggingRef.current = false
+      return
     }
+
     if (e.touches.length > 0) return
+
+    // 최근 핀치 직후 200ms 이내면 클릭 차단
+    if (Date.now() - lastPinchEndAtRef.current < 200) {
+      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      canvasDragRef.current = null
+      isDraggingRef.current = false
+      return
+    }
+
+    // 패닝 중이었으면 (isDragging true) 클릭 차단 — 정리만
+    if (isDraggingRef.current) {
+      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      canvasDragRef.current = null
+      isDraggingRef.current = false
+      draw()
+      return
+    }
+
     const t = e.changedTouches[0]
     if (!t) return
     onMouseUp({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
