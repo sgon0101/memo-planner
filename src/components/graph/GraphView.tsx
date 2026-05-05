@@ -347,9 +347,9 @@ export default function GraphView() {
           n.x = cx + (Math.random() - 0.5) * actualW * 0.9
           n.y = cy + (Math.random() - 0.5) * actualH * 0.9
         } else {
-          // 토글 켜기: 균등 원형 분산 (sqrt → 면적 균등), 반경 40%
+          // 토글 켜기: 균등 원형 분산 (sqrt → 면적 균등), 반경 60%
           const angle  = Math.random() * 2 * Math.PI
-          const radius = Math.sqrt(Math.random()) * Math.min(actualW, actualH) * 0.4
+          const radius = Math.sqrt(Math.random()) * Math.min(actualW, actualH) * 0.6
           n.x = cx + Math.cos(angle) * radius
           n.y = cy + Math.sin(angle) * radius
         }
@@ -373,12 +373,12 @@ export default function GraphView() {
         cf?.strength(toCenterStrength(settingsRef.current.centerTension))
       }, 800)
     } else if (hasNewNodes) {
-      centerForce?.strength(normalCenterStrength * 0.3)
-      sim.alpha(0.5).restart()
+      centerForce?.strength(normalCenterStrength * 0.1)
+      sim.alpha(0.8).restart()
       setTimeout(() => {
         const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
         cf?.strength(toCenterStrength(settingsRef.current.centerTension))
-      }, 500)
+      }, 1200)
     } else {
       sim.alpha(0.1).restart()
     }
