@@ -309,8 +309,12 @@ export default function GraphView() {
     if (!sim) return
     if (nodes.length === 0) return  // 빈 데이터 스킵
 
-    // 기존 노드의 위치·속도·고정 정보를 새 노드 객체에 복사 (위치 보존)
+    // 기존 노드 위치 복사 + 새 노드는 화면 중앙 부근 랜덤 배치
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
+    const cx = size.w / 2
+    const cy = size.h / 2
+    let hasNewNodes = false
+
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
       if (old) {
@@ -320,18 +324,26 @@ export default function GraphView() {
         n.vy = old.vy
         n.fx = old.fx
         n.fy = old.fy
+      } else {
+        // 새 노드: 화면 중앙 ±100px 랜덤 (D3 기본 0,0보다 자연스러움)
+        n.x = cx + (Math.random() - 0.5) * 200
+        n.y = cy + (Math.random() - 0.5) * 200
+        hasNewNodes = true
       }
     }
 
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
 
-    // 첫 데이터 로드: alpha 1로 force layout 충분히 적용
-    // 이후 토글/추가: alpha 0.1로 약하게 (위치 유지)
     if (isFirstNodesUpdateRef.current) {
+      // 첫 진입: 모든 노드가 새 노드 — 강하게
       sim.alpha(1).restart()
       isFirstNodesUpdateRef.current = false
+    } else if (hasNewNodes) {
+      // 토글 켜기 등 새 노드 추가: 중간 강도로 자리 잡기
+      sim.alpha(0.5).restart()
     } else {
+      // 노드 추가 없음 (토글 끄기, 링크만 변경): 약하게
       sim.alpha(0.1).restart()
     }
 
@@ -340,7 +352,7 @@ export default function GraphView() {
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
-  }, [nodes, links])
+  }, [nodes, links, size.w, size.h])
 
   // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
   useEffect(() => {
