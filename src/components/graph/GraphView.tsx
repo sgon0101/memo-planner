@@ -328,11 +328,29 @@ export default function GraphView() {
     const cy = actualH / 2
 
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
-    let hasNewNodes = false
 
     // 시뮬레이션이 비어있으면 (size 변경 등으로 재생성) 첫 진입과 동일하게 처리
     const isVirtuallyFirst = oldNodesById.size === 0
     const isFirst = isFirstNodesUpdateRef.current || isVirtuallyFirst
+
+    // 기존 노드들의 영역 계산 (토글 켜기 시 새 노드 배치용)
+    let oldMinX = Infinity, oldMaxX = -Infinity
+    let oldMinY = Infinity, oldMaxY = -Infinity
+    let validOldCount = 0
+    for (const old of oldNodesById.values()) {
+      if (old.x != null && old.y != null) {
+        oldMinX = Math.min(oldMinX, old.x)
+        oldMaxX = Math.max(oldMaxX, old.x)
+        oldMinY = Math.min(oldMinY, old.y)
+        oldMaxY = Math.max(oldMaxY, old.y)
+        validOldCount++
+      }
+    }
+    const oldWidth  = oldMaxX - oldMinX
+    const oldHeight = oldMaxY - oldMinY
+    const hasValidOldArea = validOldCount > 10 && oldWidth > 100 && oldHeight > 100
+
+    let hasNewNodes = false
 
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
@@ -348,12 +366,14 @@ export default function GraphView() {
           // 첫 진입 또는 시뮬레이션 빈 상태: 화면 가득 직사각형 분산
           n.x = cx + (Math.random() - 0.5) * actualW * 0.9
           n.y = cy + (Math.random() - 0.5) * actualH * 0.9
+        } else if (hasValidOldArea) {
+          // 토글 켜기: 기존 노드 영역 안에 균등 분산 (자연스러운 등장)
+          n.x = oldMinX + oldWidth  * 0.05 + Math.random() * oldWidth  * 0.9
+          n.y = oldMinY + oldHeight * 0.05 + Math.random() * oldHeight * 0.9
         } else {
-          // 토글 켜기 (기존 노드 있는 상태): 균등 원형 분산, 반경 60%
-          const angle  = Math.random() * 2 * Math.PI
-          const radius = Math.sqrt(Math.random()) * Math.min(actualW, actualH) * 0.6
-          n.x = cx + Math.cos(angle) * radius
-          n.y = cy + Math.sin(angle) * radius
+          // fallback: 기존 영역 부족 시 화면 가득 분산
+          n.x = cx + (Math.random() - 0.5) * actualW * 0.85
+          n.y = cy + (Math.random() - 0.5) * actualH * 0.85
         }
         hasNewNodes = true
       }
@@ -432,6 +452,8 @@ export default function GraphView() {
         <div>isFirst: ${isFirstNodesUpdateRef.current}</div>
         <div>vFirst: ${isVirtuallyFirst}</div>
         <div>oldSize: ${oldNodesById.size}</div>
+        <div>oldArea: ${Math.round(oldWidth)}×${Math.round(oldHeight)}</div>
+        <div>validOld: ${validOldCount}</div>
         <div>newNodes: ${hasNewNodes}</div>
         <div>updates: ${count}</div>
       `
