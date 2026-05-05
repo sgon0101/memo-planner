@@ -514,11 +514,14 @@ export default function GraphView() {
     const { x, y, k } = transformRef.current
     const wx = (mx - x) / k, wy = (my - y) / k
     const mob = isMobileRef.current
-    const hitPadding = mob ? 14 : 4
+    // 화면 기준 최소 클릭 반지름 (줌 보정으로 항상 일정 크기 보장)
+    const minHitWorld = (mob ? 22 : 14) / k
+    const visualPad = mob ? 8 : 6
     for (const n of simRef.current?.nodes() ?? []) {
       if (n.x == null) continue
-      const r = nodeRadius(n, settings.nodeSize, mob) + hitPadding
-      if ((wx - n.x) ** 2 + (wy - n.y!) ** 2 < r ** 2) return n
+      const visualR = nodeRadius(n, settings.nodeSize, mob)
+      const hitR = Math.max(visualR + visualPad, minHitWorld)
+      if ((wx - n.x) ** 2 + (wy - n.y!) ** 2 < hitR ** 2) return n
     }
     return null
   }
@@ -568,7 +571,8 @@ export default function GraphView() {
       : (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 25
 
     if (isClick) {
-      const n = hitNode(mx, my)
+      // 노드 위에서 시작했으면 그 노드 우선 (시뮬레이션 이동으로 hitNode 재쿼리 실패 방지)
+      const n = dragNodeRef.current ?? hitNode(mx, my)
       if (n) {
         setSelectedNode(n.id === selectedNodeId ? null : n.id)
         if (n.type === 'memo') {
@@ -642,7 +646,7 @@ export default function GraphView() {
     const isClick = !isDraggingRef.current &&
       (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 144
     if (isClick) {
-      const n = hitNode(mx, my)
+      const n = dragNodeRef.current ?? hitNode(mx, my)
       if (n) {
         setSelectedNode(n.id === selectedNodeId ? null : n.id)
         if (n.type === 'memo') {
