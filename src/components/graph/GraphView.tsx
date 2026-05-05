@@ -29,10 +29,11 @@ function nodeColor(n: GraphNode): string {
   return '#534AB7'
 }
 
-function nodeRadius(n: GraphNode, nodeSize: number): number {
-  const base = 3 + nodeSize * 1.5  // 1-10 → 4.5-18px
+function nodeRadius(n: GraphNode, nodeSize: number, isMobile = false): number {
+  const mobileScale = isMobile ? 0.7 : 1
+  const base = (3 + nodeSize * 1.5) * mobileScale  // 1-10 → 4.5-18px
   if (n.type === 'wiki' || n.type === 'tag') {
-    return base * 0.7 + Math.min(n.linkCount, 10) * 0.8
+    return base * 0.7 + Math.min(n.linkCount, 10) * 0.8 * mobileScale
   }
   const c = n.linkCount
   if (c === 0) return base * 0.6
@@ -129,9 +130,9 @@ export default function GraphView() {
 
     const simNodes = simRef.current?.nodes() ?? []
     const simLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
-    const mobileScale = isMobileRef.current ? 0.6 : 1
-    const base = settings.nodeSize * mobileScale
-    const lw = settings.linkWidth * 0.5  // 1-10 → 0.5-5px
+    const isMobile = isMobileRef.current
+    const base = settings.nodeSize  // nodeRadius 내부에서 0.7배 적용
+    const lw = settings.linkWidth * 0.5 * (isMobile ? 0.7 : 1)  // 1-10 → 0.5-5px
 
     // 태그 필터 하이라이트 집합
     let tagMatchIds: Set<string> | null = null
@@ -203,7 +204,7 @@ export default function GraphView() {
     // 노드
     for (const n of simNodes) {
       if (n.x == null) continue
-      const r = nodeRadius(n, base)
+      const r = nodeRadius(n, base, isMobile)
       const isSelected = n.id === selectedNodeId
       const tagNodeDim = tagMatchIds !== null && !tagMatchIds.has(n.id)
       const opac = tagNodeDim ? 0.1 : selectedNodeId ? (isSelected || connectedSet.has(n.id) ? 1 : 0.18) : 1
@@ -236,7 +237,7 @@ export default function GraphView() {
           const isDark = document.documentElement.classList.contains('dark')
           ctx.fillStyle = isDark ? '#D3D1C7' : '#2C2C2A'
           const fontWeight = isHub ? '500' : '400'
-          const fontSize = Math.max(isMobileRef.current ? 8 : 10, 11 + (k - 1) * 2) * mobileScale
+          const fontSize = Math.max(isMobile ? 8 : 10, (isMobile ? 9 : 11) + (k - 1) * 2)
           ctx.font = `${fontWeight} ${fontSize}px sans-serif`
           ctx.textAlign = 'center'
           const lbl = n.label.length > 12 ? n.label.slice(0, 12) + '…' : n.label
@@ -506,9 +507,11 @@ export default function GraphView() {
   function hitNode(mx: number, my: number): GraphNode | null {
     const { x, y, k } = transformRef.current
     const wx = (mx - x) / k, wy = (my - y) / k
+    const mob = isMobileRef.current
+    const hitPadding = mob ? 8 : 4
     for (const n of simRef.current?.nodes() ?? []) {
       if (n.x == null) continue
-      const r = nodeRadius(n, settings.nodeSize) + 4
+      const r = nodeRadius(n, settings.nodeSize, mob) + hitPadding
       if ((wx - n.x) ** 2 + (wy - n.y!) ** 2 < r ** 2) return n
     }
     return null
