@@ -360,15 +360,26 @@ export default function GraphView() {
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
 
+    // forceCenter 일시 약화 (분산 배치된 노드를 중앙으로 끌어당기지 않도록)
+    const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
+    const normalCenterStrength = toCenterStrength(settingsRef.current.centerTension)
+
     if (isFirstNodesUpdateRef.current) {
-      // 첫 진입: 모든 노드가 새 노드 — 강하게
+      centerForce?.strength(0.001)
       sim.alpha(1).restart()
       isFirstNodesUpdateRef.current = false
+      setTimeout(() => {
+        const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
+        cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+      }, 800)
     } else if (hasNewNodes) {
-      // 토글 켜기 등 새 노드 추가: 중간 강도로 자리 잡기
+      centerForce?.strength(normalCenterStrength * 0.3)
       sim.alpha(0.5).restart()
+      setTimeout(() => {
+        const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
+        cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+      }, 500)
     } else {
-      // 노드 추가 없음 (토글 끄기, 링크만 변경): 약하게
       sim.alpha(0.1).restart()
     }
 
@@ -391,6 +402,43 @@ export default function GraphView() {
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
+
+    // 디버그 박스 — actualW/H vs size 측정값 표시 (노란색)
+    if (typeof document !== 'undefined') {
+      let debugBox = document.getElementById('actual-debug')
+      if (!debugBox) {
+        debugBox = document.createElement('div')
+        debugBox.id = 'actual-debug'
+        debugBox.style.cssText = 'position:fixed;top:300px;right:10px;background:rgba(0,0,0,0.8);color:yellow;padding:8px;font-family:monospace;font-size:11px;z-index:9999;border-radius:4px;line-height:1.4;'
+        document.body.appendChild(debugBox)
+      }
+      const widthDiff = actualW - size.w
+      const widthStatus = Math.abs(widthDiff) < 10 ? '✓ match' : '⚠ diff:' + widthDiff
+      const count = parseInt(debugBox.dataset.count ?? '0') + 1
+      debugBox.dataset.count = String(count)
+      debugBox.innerHTML = `
+        <div>=== 캔버스 측정 ===</div>
+        <div>actualW: ${actualW}px</div>
+        <div>actualH: ${actualH}px</div>
+        <div>size.w: ${size.w}px</div>
+        <div>size.h: ${size.h}px</div>
+        <div>${widthStatus}</div>
+        <div>spread: ${Math.round(actualW * 0.9)}×${Math.round(actualH * 0.9)}</div>
+        <div>isFirst: ${isFirst}</div>
+        <div>newNodes: ${hasNewNodes}</div>
+        <div>updates: ${count}</div>
+      `
+    }
+
+    console.log('🟡 [GraphView]', {
+      actualW, actualH,
+      sizeW: size.w, sizeH: size.h,
+      isFirst,
+      hasNewNodes,
+      nodeCount: nodes.length,
+      centerStrength: isFirst ? 0.001 : (hasNewNodes ? normalCenterStrength * 0.3 : normalCenterStrength),
+      alpha: isFirst ? 1 : (hasNewNodes ? 0.5 : 0.1),
+    })
   }, [nodes, links, size.w, size.h])
 
   // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
