@@ -62,6 +62,7 @@ export default function GraphView() {
   const transformRef = useRef({ x: 0, y: 0, k: 1 })
   const labelOpacityRef = useRef(1) // 초기 zoom=1 → opacity=1
   const isFirstNodesUpdateRef = useRef(true)
+  const isMobileRef = useRef(false)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -93,7 +94,7 @@ export default function GraphView() {
   // 모바일 감지
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)')
-    const check = () => setIsMobile(mq.matches)
+    const check = () => { setIsMobile(mq.matches); isMobileRef.current = mq.matches }
     check()
     mq.addEventListener('change', check)
     return () => mq.removeEventListener('change', check)
@@ -128,7 +129,8 @@ export default function GraphView() {
 
     const simNodes = simRef.current?.nodes() ?? []
     const simLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
-    const base = settings.nodeSize
+    const mobileScale = isMobileRef.current ? 0.6 : 1
+    const base = settings.nodeSize * mobileScale
     const lw = settings.linkWidth * 0.5  // 1-10 → 0.5-5px
 
     // 태그 필터 하이라이트 집합
@@ -234,7 +236,7 @@ export default function GraphView() {
           const isDark = document.documentElement.classList.contains('dark')
           ctx.fillStyle = isDark ? '#D3D1C7' : '#2C2C2A'
           const fontWeight = isHub ? '500' : '400'
-          const fontSize = Math.max(10, 11 + (k - 1) * 2)
+          const fontSize = Math.max(isMobileRef.current ? 8 : 10, 11 + (k - 1) * 2) * mobileScale
           ctx.font = `${fontWeight} ${fontSize}px sans-serif`
           ctx.textAlign = 'center'
           const lbl = n.label.length > 12 ? n.label.slice(0, 12) + '…' : n.label
