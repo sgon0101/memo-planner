@@ -663,8 +663,33 @@ export default function GraphView() {
     }
     if (e.touches.length !== 1) return
     e.preventDefault()
+    const r2 = canvasRef.current!.getBoundingClientRect()
     const t = e.touches[0]
-    onMouseMove({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
+    const mx = t.clientX - r2.left
+    const my = t.clientY - r2.top
+    const dx = mx - dragStartRef.current.x
+    const dy = my - dragStartRef.current.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+
+    if (dragNodeRef.current) {
+      // 노드 드래그: 5px 임계값 (정밀한 이동 필요)
+      if (dist > 5) isDraggingRef.current = true
+      if (isDraggingRef.current) {
+        const { x, y, k } = transformRef.current
+        dragNodeRef.current.fx = (mx - x) / k
+        dragNodeRef.current.fy = (my - y) / k
+        wake(0.08)
+      }
+    } else if (canvasDragRef.current) {
+      // 캔버스 패닝: 15px 임계값 (탭 중 손가락 지터 방지)
+      if (dist > 15) isDraggingRef.current = true
+      if (isDraggingRef.current) {
+        const { sx, sy, px, py } = canvasDragRef.current
+        transformRef.current.x = px + (mx - sx)
+        transformRef.current.y = py + (my - sy)
+        draw()
+      }
+    }
   }
 
   function onTouchEnd(e: React.TouchEvent) {
