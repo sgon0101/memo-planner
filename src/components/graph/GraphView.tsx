@@ -515,8 +515,8 @@ export default function GraphView() {
     const wx = (mx - x) / k, wy = (my - y) / k
     const mob = isMobileRef.current
     // 화면 기준 최소 클릭 반지름 (줌 보정으로 항상 일정 크기 보장)
-    const minHitWorld = (mob ? 22 : 14) / k
-    const visualPad = mob ? 8 : 6
+    const minHitWorld = (mob ? 26 : 14) / k
+    const visualPad = mob ? 10 : 6
     for (const n of simRef.current?.nodes() ?? []) {
       if (n.x == null) continue
       const visualR = nodeRadius(n, settings.nodeSize, mob)
@@ -602,77 +602,26 @@ export default function GraphView() {
     draw()
   }
 
-  // 터치 이벤트 (모바일 한 손가락)
+  // 터치 이벤트 — 마우스 핸들러로 위임 (로직 통합)
   function onTouchStart(e: React.TouchEvent) {
     if (e.touches.length !== 1) return
-    const { mx, my } = touchXY(e)
-    dragStartRef.current = { x: mx, y: my }
-    isDraggingRef.current = false
-    const n = hitNode(mx, my)
-    if (n) {
-      dragNodeRef.current = n
-      wake(0.3)
-    } else {
-      canvasDragRef.current = { sx: mx, sy: my, px: transformRef.current.x, py: transformRef.current.y }
-    }
+    e.preventDefault()
+    const t = e.touches[0]
+    onMouseDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} } as unknown as React.MouseEvent)
   }
 
   function onTouchMove(e: React.TouchEvent) {
     if (e.touches.length !== 1) return
-    const { mx, my } = touchXY(e)
-    const dx = mx - dragStartRef.current.x
-    const dy = my - dragStartRef.current.y
-    // 모바일 손가락 떨림 허용 — 임계값 10px
-    if (Math.sqrt(dx * dx + dy * dy) > 10) isDraggingRef.current = true
-    if (dragNodeRef.current) {
-      const { x, y, k } = transformRef.current
-      dragNodeRef.current.fx = (mx - x) / k
-      dragNodeRef.current.fy = (my - y) / k
-      wake(0.08)
-      e.preventDefault()
-    } else if (canvasDragRef.current) {
-      const { sx, sy, px, py } = canvasDragRef.current
-      transformRef.current.x = px + (mx - sx)
-      transformRef.current.y = py + (my - sy)
-      draw()
-      e.preventDefault()
-    }
+    e.preventDefault()
+    const t = e.touches[0]
+    onMouseMove({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
   }
 
   function onTouchEnd(e: React.TouchEvent) {
     if (e.touches.length > 0) return
-    const { mx, my } = touchXY(e)
-    // 클릭 임계값 12px (모바일 손가락 떨림 허용)
-    const isClick = !isDraggingRef.current &&
-      (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 144
-    if (isClick) {
-      const n = dragNodeRef.current ?? hitNode(mx, my)
-      if (n) {
-        setSelectedNode(n.id === selectedNodeId ? null : n.id)
-        if (n.type === 'memo') {
-          setSelectedTagPanel(null)
-          router.push(`/memo/${n.id}?from=graph`)
-        } else if (n.type === 'tag') {
-          const tagNodeId = n.id
-          const sNodes = simRef.current?.nodes() ?? []
-          const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
-          const tagMemos = sNodes.filter((node) =>
-            node.type === 'memo' &&
-            sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
-          )
-          setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
-        } else {
-          setSelectedTagPanel(null)
-        }
-      } else {
-        setSelectedNode(null)
-        setSelectedTagPanel(null)
-      }
-    }
-    if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
-    canvasDragRef.current = null
-    isDraggingRef.current = false
-    draw()
+    const t = e.changedTouches[0]
+    if (!t) return
+    onMouseUp({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
   }
 
   function onWheel(e: React.WheelEvent) {
