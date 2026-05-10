@@ -54,20 +54,20 @@ export default function GapAnalysis() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">생각 — 행동 갭 분석</h3>
           <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {result?.cached && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">캐시됨 (24h)</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 hidden sm:inline">캐시됨 (24h)</span>
           )}
           <button
             onClick={() => load(true)}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {result ? '재분석' : '분석하기'}
@@ -105,7 +105,7 @@ export default function GapAnalysis() {
           {/* 갭 목록 */}
           <div className="space-y-3">
             {result.gaps?.map((g, i) => (
-              <div key={i} className="p-4 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <div key={i} className="p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{g.topic}</span>
                   <span className={cn('text-xs font-bold', scoreColor(g.score))}>{g.score}점</span>

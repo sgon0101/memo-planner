@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Loader2, RefreshCw, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,7 +31,15 @@ export default function BubbleChart() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -72,7 +80,7 @@ export default function BubbleChart() {
   const categoryColorIndex = Object.fromEntries(categories.map((c, i) => [c, i]))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6">
       {/* 헤더 */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -82,7 +90,7 @@ export default function BubbleChart() {
         <button
           onClick={load}
           disabled={loading}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           분석하기
@@ -150,7 +158,10 @@ export default function BubbleChart() {
 
             <div className="flex flex-wrap gap-3 items-end">
               {interests.map((item, i) => {
-                const size = 40 + (item.count / maxCount) * 80
+                // 모바일: 28~80px / 데스크톱: 40~120px
+                const size = isMobile
+                  ? 28 + (item.count / maxCount) * 52
+                  : 40 + (item.count / maxCount) * 80
                 const color = colorFor(item.category, categoryColorIndex[item.category])
                 const isSelected = selectedCategory === item.category
                 const isDimmed = selectedCategory !== null && !isSelected
@@ -170,7 +181,7 @@ export default function BubbleChart() {
                       backgroundColor: color + '22',
                       border: `2px solid ${color}`,
                       color,
-                      fontSize: Math.max(10, size / 6),
+                      fontSize: Math.max(10, size / 5),
                       fontWeight: 600,
                       ringColor: color,
                     } as React.CSSProperties}
@@ -182,17 +193,17 @@ export default function BubbleChart() {
             </div>
 
             {/* 범례 */}
-            <div className="flex flex-wrap gap-2 pt-3 mt-3 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex flex-wrap gap-x-3 gap-y-2 pt-3 mt-3 border-t border-gray-100 dark:border-gray-800">
               {categories.map((cat, i) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
                   className={cn(
-                    'flex items-center gap-1 text-xs transition-opacity',
+                    'flex items-center gap-1.5 text-xs py-1 transition-opacity',
                     selectedCategory !== null && selectedCategory !== cat ? 'opacity-30' : 'text-gray-500'
                   )}
                 >
-                  <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: colorFor(cat, i) }} />
+                  <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: colorFor(cat, i) }} />
                   {cat}
                 </button>
               ))}
@@ -217,7 +228,7 @@ export default function BubbleChart() {
                     ref={(el) => { cardRefs.current[cat] = el }}
                     onClick={() => setSelectedCategory(isSelected ? null : cat)}
                     className={cn(
-                      'rounded-xl border-2 p-4 space-y-2 cursor-pointer transition-all duration-200',
+                      'rounded-xl border-2 p-3 sm:p-4 space-y-2 cursor-pointer transition-all duration-200',
                       isSelected ? 'scale-[1.02] shadow-md' : isDimmed ? 'opacity-40' : 'hover:shadow-sm'
                     )}
                     style={{ borderColor: isSelected ? color : color + '44' }}
