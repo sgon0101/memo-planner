@@ -73,6 +73,7 @@ export default function GraphView() {
     startTransformY: number
   } | null>(null)
   const lastPinchEndAtRef = useRef(0)
+  const lastTouchEndAtRef = useRef(0)   // synthetic mouse event 차단용 (touchend 후 ~300ms)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
@@ -565,6 +566,8 @@ export default function GraphView() {
   }
 
   function onMouseDown(e: React.MouseEvent) {
+    // touchend 후 발화되는 synthetic mousedown 차단 (이중 토글 → dim 즉시 해제 방지)
+    if (e.type === 'mousedown' && Date.now() - lastTouchEndAtRef.current < 600) return
     const { mx, my } = canvasXY(e)
     dragStartRef.current = { x: mx, y: my }
     isDraggingRef.current = false
@@ -602,6 +605,8 @@ export default function GraphView() {
   }
 
   function onMouseUp(e: React.MouseEvent) {
+    // touchend 후 발화되는 synthetic mouseup 차단 (delegated 터치 호출은 e.type 없음)
+    if (e.type === 'mouseup' && Date.now() - lastTouchEndAtRef.current < 600) return
     const { mx, my } = canvasXY(e)
     const wasOnNode = dragNodeRef.current !== null
     const isClick = wasOnNode
@@ -711,6 +716,7 @@ export default function GraphView() {
   }
 
   function onTouchEnd(e: React.TouchEvent) {
+    lastTouchEndAtRef.current = Date.now()  // synthetic mouse event 차단 타이머 리셋
     // 핀치 중이었다가 손가락 하나라도 떼면 핀치 종료
     if (pinchRef.current && e.touches.length < 2) {
       pinchRef.current = null
