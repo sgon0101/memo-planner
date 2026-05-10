@@ -61,7 +61,7 @@ ${memoTexts.slice(0, 10).map((t, i) => `${i + 1}. ${t}`).join('\n')}
 }
 
 export function chatSystemPrompt(memoTexts: string[], planTitles: string[]) {
-  return `당신은 사용자의 개인 메모 플래너 AI 어시스턴트입니다. 항상 한국어로 답변하세요.
+  return `당신은 사용자의 개인 Weave AI 어시스턴트입니다. 항상 한국어로 답변하세요.
 
 ## 사용자 데이터 컨텍스트
 최근 메모 (${memoTexts.length}개):
