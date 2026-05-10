@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
     // ─── combined 모드: 단일 .md 파일 ────────────────────────
     if (mode === 'combined') {
       const lines: string[] = [
-        `# 메모 플래너 전체 백업`,
+        `# Weave 전체 백업`,
         `> 백업 일시: ${dateStr} ${timeStr.replace(/-/g, ':')}\n`,
         '---',
       ]

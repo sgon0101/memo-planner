@@ -2,12 +2,19 @@
   "name": "Weave",
   "short_name": "Weave",
   "description": "경험을 모으고 엮어 더 나은 나로",
-  "start_url": "/memo",
-  "display": "standalone",
-  "background_color": "#ffffff",
   "theme_color": "#7F77DD",
-  "orientation": "portrait-primary",
+  "background_color": "#7F77DD",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "orientation": "portrait",
   "icons": [
+    {
+      "src": "/weave-logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
@@ -21,8 +28,20 @@
       "purpose": "any"
     },
     {
+      "src": "/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "src": "/icon-512-maskable.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-1024-maskable.png",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "maskable"
     }
