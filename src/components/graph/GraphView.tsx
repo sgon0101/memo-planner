@@ -316,6 +316,12 @@ export default function GraphView() {
       if (sim.alpha() > sim.alphaMin()) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
+        for (const n of sim.nodes()) {
+          if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
+            n.fx = n.x
+            n.fy = n.y
+          }
+        }
         setSimStatus('sleeping')
         rafRef.current = null
       }
@@ -432,6 +438,12 @@ export default function GraphView() {
         if (sim.alpha() > sim.alphaMin()) {
           rafRef.current = requestAnimationFrame(tick)
         } else {
+          for (const n of sim.nodes()) {
+            if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
+              n.fx = n.x
+              n.fy = n.y
+            }
+          }
           setSimStatus('sleeping')
           rafRef.current = null
         }
@@ -839,6 +851,12 @@ export default function GraphView() {
         if (sim.alpha() > sim.alphaMin()) {
           rafRef.current = requestAnimationFrame(tick)
         } else {
+          for (const n of sim.nodes()) {
+            if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
+              n.fx = n.x
+              n.fy = n.y
+            }
+          }
           setSimStatus('sleeping')
           rafRef.current = null
         }
