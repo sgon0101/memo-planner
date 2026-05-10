@@ -331,6 +331,7 @@ export default function GraphView() {
     return () => {
       sim.stop()
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null  // 재생성 시 새 시뮬레이션의 RAF 루프가 정상 시작되도록 초기화
       if (labelAnimRafRef.current) cancelAnimationFrame(labelAnimRafRef.current)
     }
   }, [size.w, size.h])
