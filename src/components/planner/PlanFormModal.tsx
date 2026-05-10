@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
@@ -45,12 +45,61 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [repeatType, setRepeatType]   = useState<'daily' | 'weekly' | 'monthly' | null>(plan?.repeatType ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
+  const [memoSearch, setMemoSearch] = useState('')
   const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
 
   const activeMemos = memos.filter((m) => !m.isDeleted && !m.isLocked)
+
+  // 검색어 기반 필터링 + 연결된 메모 상단 고정
+  const filteredMemos = useMemo(() => {
+    const q = memoSearch.trim().toLowerCase()
+    let list = activeMemos
+
+    if (q) {
+      if (q.startsWith('#')) {
+        const tagQ = q.slice(1)
+        list = activeMemos.filter((m) => m.tags.some((t) => t.toLowerCase().includes(tagQ)))
+      } else if (q.startsWith('[[')) {
+        const wikiQ = q.slice(2)
+        list = activeMemos.filter((m) => m.wikiLinks.some((w) => w.toLowerCase().includes(wikiQ)))
+      } else {
+        list = activeMemos.filter((m) =>
+          m.title.toLowerCase().includes(q) ||
+          m.contentText.toLowerCase().includes(q) ||
+          m.tags.some((t) => t.toLowerCase().includes(q)) ||
+          m.wikiLinks.some((w) => w.toLowerCase().includes(q))
+        )
+      }
+    }
+
+    return [...list].sort((a, b) => {
+      const aL = linkedMemoIds.includes(a.id)
+      const bL = linkedMemoIds.includes(b.id)
+      return aL === bL ? 0 : aL ? -1 : 1
+    })
+  }, [activeMemos, memoSearch, linkedMemoIds])
+
+  // 검색 결과 행에 표시할 매칭 힌트 (태그 / 위키)
+  function getMemoHint(m: typeof activeMemos[0], q: string) {
+    if (!q) return null
+    const isTagMode  = q.startsWith('#')
+    const isWikiMode = q.startsWith('[[')
+    const tagQ  = isTagMode  ? q.slice(1)  : q
+    const wikiQ = isWikiMode ? q.slice(2)  : q
+
+    if (!isWikiMode) {
+      const tag = m.tags.find((t) => t.toLowerCase().includes(tagQ))
+      if (tag) return { type: 'tag' as const, value: tag }
+    }
+    if (!isTagMode) {
+      const wiki = m.wikiLinks.find((w) => w.toLowerCase().includes(wikiQ))
+      if (wiki) return { type: 'wiki' as const, value: wiki }
+    }
+    return null
+  }
 
   useEffect(() => {
     supabase
@@ -333,7 +382,11 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">메모 연결</p>
                   <button
                     type="button"
-                    onClick={() => setShowMemoPopup((v) => !v)}
+                    onClick={() => {
+                      const next = !showMemoPopup
+                      setShowMemoPopup(next)
+                      if (!next) setMemoSearch('')
+                    }}
                     className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline"
                   >
                     <Link2 size={11} />
@@ -342,30 +395,66 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                 </div>
 
                 {showMemoPopup && (
-                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg max-h-40 overflow-y-auto">
-                    {activeMemos.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-4">연결할 메모가 없습니다</p>
-                    ) : (
-                      activeMemos.map((m) => {
-                        const linked = linkedMemoIds.includes(m.id)
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => toggleMemo(m.id)}
-                            className={cn(
-                              'w-full flex items-center gap-2 px-3 py-2 text-xs text-left border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors',
-                              linked
-                                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300'
-                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                            )}
-                          >
-                            {linked ? <BookmarkCheck size={11} className="text-violet-500 flex-shrink-0" /> : <Bookmark size={11} className="text-gray-400 flex-shrink-0" />}
-                            <span className="truncate">{m.title || '제목 없음'}</span>
-                          </button>
-                        )
-                      })
-                    )}
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                    {/* 검색 입력 */}
+                    <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                      <Search size={12} className="text-gray-400 flex-shrink-0" />
+                      <input
+                        type="text"
+                        value={memoSearch}
+                        onChange={(e) => setMemoSearch(e.target.value)}
+                        placeholder="제목 · 내용 · #태그 · [[위키"
+                        className="flex-1 text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                        autoComplete="off"
+                      />
+                      {memoSearch && (
+                        <button type="button" onClick={() => setMemoSearch('')} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0">
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 메모 목록 */}
+                    <div className="max-h-48 overflow-y-auto">
+                      {filteredMemos.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-4">
+                          {memoSearch ? '검색 결과가 없습니다' : '연결할 메모가 없습니다'}
+                        </p>
+                      ) : (
+                        filteredMemos.map((m) => {
+                          const linked = linkedMemoIds.includes(m.id)
+                          const hint = getMemoHint(m, memoSearch.trim().toLowerCase())
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => toggleMemo(m.id)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-3 py-2 text-xs text-left border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors',
+                                linked
+                                  ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300'
+                                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                              )}
+                            >
+                              {linked
+                                ? <BookmarkCheck size={11} className="text-violet-500 flex-shrink-0" />
+                                : <Bookmark size={11} className="text-gray-400 flex-shrink-0" />}
+                              <span className="truncate flex-1">{m.title || '제목 없음'}</span>
+                              {hint && (
+                                <span className={cn(
+                                  'flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded',
+                                  hint.type === 'tag'
+                                    ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-500 dark:text-blue-400'
+                                    : 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400'
+                                )}>
+                                  {hint.type === 'tag' ? `#${hint.value}` : `[[${hint.value}]]`}
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                 )}
 
