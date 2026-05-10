@@ -53,6 +53,7 @@ export default function AIChatLayout() {
   const [loading, setLoading] = useState(false)
   const [loadingRooms, setLoadingRooms] = useState(true)
   const [suggestion, setSuggestion] = useState<ProfileSuggestion | null>(null)
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -74,6 +75,7 @@ export default function AIChatLayout() {
     setSelectedId(id)
     setSuggestion(null)
     setMessages([])
+    setMobileView('chat')
     const res = await fetch(`/api/ai/chat-rooms/${id}`)
     if (!res.ok) return
     const data = await res.json()
@@ -93,7 +95,7 @@ export default function AIChatLayout() {
     if (!confirm('이 대화를 삭제할까요?')) return
     await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
     setRooms((prev) => prev.filter((r) => r.id !== id))
-    if (selectedId === id) { setSelectedId(null); setMessages([]) }
+    if (selectedId === id) { setSelectedId(null); setMessages([]); setMobileView('list') }
   }
 
   async function send() {
@@ -177,8 +179,15 @@ export default function AIChatLayout() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* 좌측: 대화 목록 */}
-      <div className="w-56 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-900">
+
+      {/* ── 대화 목록 패널 ──────────────────────────────────────────
+          모바일: mobileView==='list' 일 때만 전체 화면으로 표시
+          데스크톱: 항상 좌측 사이드바(w-56)로 표시              */}
+      <div className={cn(
+        'flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900',
+        'md:flex md:w-56 md:flex-shrink-0',
+        mobileView === 'list' ? 'flex w-full' : 'hidden',
+      )}>
         <button
           onClick={createRoom}
           className="flex items-center gap-2 m-3 px-3 py-2.5 rounded-xl border border-dashed border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-400 text-xs hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors"
@@ -196,41 +205,48 @@ export default function AIChatLayout() {
             <div className="flex flex-col items-center justify-center h-32 text-gray-400 text-xs gap-1">
               <MessageCircle size={24} className="opacity-30" />
               <p>대화가 없어요</p>
+              <p className="text-[11px]">위 버튼으로 새 대화를 시작하세요</p>
             </div>
           ) : rooms.map((room) => (
             <div
               key={room.id}
               onClick={() => selectRoom(room.id)}
               className={cn(
-                'group relative flex flex-col gap-0.5 px-3 py-2.5 cursor-pointer border-l-2 transition-colors',
+                'group relative flex flex-col gap-0.5 px-3 py-3 md:py-2.5 cursor-pointer border-l-2 transition-colors',
                 selectedId === room.id
                   ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/20'
                   : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
               )}
             >
-              <span className={cn('text-xs truncate', selectedId === room.id ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-gray-700 dark:text-gray-300')}>
+              <span className={cn('text-xs truncate pr-6', selectedId === room.id ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-gray-700 dark:text-gray-300')}>
                 {room.title}
               </span>
               <span className="text-[10px] text-gray-400">{relativeTime(room.last_message_at)}</span>
               <button
                 onClick={(e) => deleteRoom(room.id, e)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-red-500 transition-all"
+                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded text-gray-400 hover:text-red-500 transition-all"
               >
-                <Trash2 size={11} />
+                <Trash2 size={13} />
               </button>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 우측: 대화 내용 */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* ── 채팅 패널 ────────────────────────────────────────────────
+          모바일: mobileView==='chat' 일 때만 전체 화면으로 표시
+          데스크톱: 항상 우측 flex-1로 표시                      */}
+      <div className={cn(
+        'flex-col min-w-0',
+        'md:flex md:flex-1',
+        mobileView === 'chat' ? 'flex flex-1' : 'hidden',
+      )}>
         {!selectedId ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 gap-3">
             <Bot size={40} className="opacity-20" />
             <div>
               <p className="text-sm font-medium">AI 어시스턴트</p>
-              <p className="text-xs mt-1">왼쪽에서 대화를 선택하거나 새 대화를 시작하세요.</p>
+              <p className="text-xs mt-1 hidden md:block">왼쪽에서 대화를 선택하거나 새 대화를 시작하세요.</p>
             </div>
             <button onClick={createRoom} className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs rounded-lg transition-colors">
               새 대화 시작
@@ -239,22 +255,34 @@ export default function AIChatLayout() {
         ) : (
           <>
             {/* 대화방 헤더 */}
-            <div className="flex-shrink-0 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{selectedRoom?.title ?? '대화'}</p>
-              {selectedRoom?.summary && (
-                <p className="text-[10px] text-gray-400 truncate mt-0.5">요약 보관 중</p>
-              )}
+            <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+              {/* 모바일 뒤로가기 버튼 */}
+              <button
+                onClick={() => setMobileView('list')}
+                className="md:hidden flex-shrink-0 p-1.5 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="대화 목록으로"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{selectedRoom?.title ?? '대화'}</p>
+                {selectedRoom?.summary && (
+                  <p className="text-[10px] text-gray-400 truncate mt-0.5">요약 보관 중</p>
+                )}
+              </div>
             </div>
 
             {/* 메시지 영역 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-gray-950">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 bg-gray-50 dark:bg-gray-950">
               {messages.length === 0 && !loading && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
                   <Bot size={32} className="opacity-20" />
                   <p className="text-xs">무엇이든 물어보세요.</p>
-                  <div className="flex flex-col gap-1.5 mt-2">
+                  <div className="flex flex-col gap-1.5 mt-2 w-full max-w-xs">
                     {['이번 주 플랜 달성률이 어때?', '내 메모에서 관심사를 찾아줘', '오늘 뭘 하면 좋을까?'].map((q) => (
-                      <button key={q} onClick={() => setInput(q)} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors">
+                      <button key={q} onClick={() => setInput(q)} className="text-xs px-3 py-2.5 md:py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors text-left">
                         {q}
                       </button>
                     ))}
@@ -267,7 +295,7 @@ export default function AIChatLayout() {
                   <div className={cn('flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center', msg.role === 'user' ? 'bg-violet-600' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700')}>
                     {msg.role === 'user' ? <User size={12} className="text-white" /> : <Bot size={12} className="text-gray-500" />}
                   </div>
-                  <div className={cn('max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed', msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-100 dark:border-gray-700')}>
+                  <div className={cn('max-w-[85%] md:max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed', msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-100 dark:border-gray-700')}>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                   </div>
                 </div>
@@ -294,8 +322,8 @@ export default function AIChatLayout() {
                     <strong>{FIELD_LABELS[suggestion.field] ?? suggestion.field}</strong>에 추가: &ldquo;{suggestion.insight}&rdquo;
                   </p>
                   <div className="flex gap-2">
-                    <button onClick={acceptSuggestion} className="px-3 py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 transition-colors">추가하기</button>
-                    <button onClick={() => setSuggestion(null)} className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-500 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">무시</button>
+                    <button onClick={acceptSuggestion} className="px-3 py-2 md:py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 transition-colors">추가하기</button>
+                    <button onClick={() => setSuggestion(null)} className="px-3 py-2 md:py-1.5 border border-gray-300 dark:border-gray-600 text-gray-500 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">무시</button>
                   </div>
                 </div>
               )}
@@ -313,12 +341,12 @@ export default function AIChatLayout() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                   placeholder="메시지를 입력하세요..."
                   disabled={loading}
-                  className="flex-1 px-3.5 py-2 text-sm rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+                  className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
                 />
                 <button
                   onClick={send}
                   disabled={loading || !input.trim()}
-                  className="p-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition-colors"
+                  className="p-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition-colors"
                 >
                   <Send size={15} />
                 </button>
