@@ -70,4 +70,8 @@ export interface PlanTemplate {
   userId: string
   title: string
   color: string
+  startTime: string | null
+  endTime: string | null
+  isAllDay: boolean
+  linkedMemoIds: string[]
 }
