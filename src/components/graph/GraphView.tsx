@@ -614,28 +614,34 @@ export default function GraphView() {
       : (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 25
 
     if (isClick) {
-      // 노드 위에서 시작했으면 그 노드 우선 (시뮬레이션 이동으로 hitNode 재쿼리 실패 방지)
-      const n = dragNodeRef.current ?? hitNode(mx, my)
-      if (n) {
-        setSelectedNode(n.id === selectedNodeId ? null : n.id)
-        if (n.type === 'memo') {
-          setSelectedTagPanel(null)
-          router.push(`/memo/${n.id}?from=graph`)
-        } else if (n.type === 'tag') {
-          const tagNodeId = n.id
-          const sNodes = simRef.current?.nodes() ?? []
-          const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
-          const tagMemos = sNodes.filter((node) =>
-            node.type === 'memo' &&
-            sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
-          )
-          setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
-        } else {
-          setSelectedTagPanel(null)
-        }
-      } else {
+      if (selectedNodeId) {
+        // 선택 중일 때 첫 탭은 무조건 해제 (메모 이동·새 노드 활성화 없음)
         setSelectedNode(null)
         setSelectedTagPanel(null)
+      } else {
+        // 선택 없는 상태에서 노드 탭 → 활성화
+        const n = dragNodeRef.current ?? hitNode(mx, my)
+        if (n) {
+          setSelectedNode(n.id)
+          if (n.type === 'memo') {
+            setSelectedTagPanel(null)
+            router.push(`/memo/${n.id}?from=graph`)
+          } else if (n.type === 'tag') {
+            const tagNodeId = n.id
+            const sNodes = simRef.current?.nodes() ?? []
+            const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
+            const tagMemos = sNodes.filter((node) =>
+              node.type === 'memo' &&
+              sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
+            )
+            setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
+          } else {
+            setSelectedTagPanel(null)
+          }
+        } else {
+          setSelectedNode(null)
+          setSelectedTagPanel(null)
+        }
       }
     }
 
