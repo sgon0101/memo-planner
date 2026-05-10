@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
@@ -8,14 +8,27 @@ import { useMemos } from '@/hooks/useMemos'
 import HomeClient from '@/components/home/HomeClient'
 
 const HOME_STALE = 5 * 60 * 1000
+const LS_COUNT_KEY = 'home-memo-count'
 
 export default function HomePageClient() {
   const { memos, isLoading, isFetching } = useMemos(undefined)
-  // 데이터가 실제로 준비됐는지 확인 — 로딩 중 0/빈값 표시 방지
   const memosReady = !isLoading && !(isFetching && memos.length === 0)
 
-  // 메모 캐시에서 즉각 계산 — 서버 왕복 없음
-  const totalMemos = memosReady ? memos.length : undefined
+  // localStorage에서 이전 세션의 메모 수 즉시 읽기
+  // → 새로고침·새 탭에서도 스켈레톤 없이 바로 숫자 표시
+  const [cachedCount] = useState<number | undefined>(() => {
+    if (typeof window === 'undefined') return undefined
+    const v = localStorage.getItem(LS_COUNT_KEY)
+    return v !== null ? Number(v) : undefined
+  })
+
+  // 최신 데이터 로드 완료 시 localStorage 갱신
+  useEffect(() => {
+    if (memosReady) localStorage.setItem(LS_COUNT_KEY, String(memos.length))
+  }, [memosReady, memos.length])
+
+  // 실제 데이터 준비되면 실제값, 아직이면 localStorage 캐시값 (없으면 undefined → 스켈레톤)
+  const totalMemos = memosReady ? memos.length : cachedCount
   const recentMemos = useMemo(() => {
     if (!memosReady) return undefined
     return [...memos]
