@@ -12,37 +12,38 @@ export { toMemo, LIST_COLS } from '@/lib/memos/shared'
 
 export const TRASH_ID = '__trash__'
 
-const SS_KEY = 'memos-all-cache'
-const SS_TS_KEY = 'memos-all-cache-ts'
+// localStorage 사용 — sessionStorage는 탭 종료 시 소멸해 모바일 재진입마다 로딩 발생
+// localStorage는 브라우저를 닫아도 유지 → 모바일 첫 진입 시에도 즉시 목록 표시
+const LS_KEY = 'memos-all-cache'
+const LS_TS_KEY = 'memos-all-cache-ts'
 
-function readSessionCache(): Memo[] | undefined {
+function readLocalCache(): Memo[] | undefined {
   if (typeof window === 'undefined') return undefined
   try {
-    const raw = sessionStorage.getItem(SS_KEY)
+    const raw = localStorage.getItem(LS_KEY)
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as Memo[]
-    // 빈 배열은 캐시 미스로 처리 — isLoading = true → 스켈레톤 표시
     return parsed.length > 0 ? parsed : undefined
   } catch {
     return undefined
   }
 }
 
-function readSessionCacheTs(): number {
+function readLocalCacheTs(): number {
   if (typeof window === 'undefined') return 0
   try {
-    const ts = sessionStorage.getItem(SS_TS_KEY)
+    const ts = localStorage.getItem(LS_TS_KEY)
     return ts ? parseInt(ts, 10) : 0
   } catch {
     return 0
   }
 }
 
-function writeSessionCache(memos: Memo[]) {
-  if (memos.length === 0) return // 빈 배열 저장 방지
+function writeLocalCache(memos: Memo[]) {
+  if (memos.length === 0) return
   try {
-    sessionStorage.setItem(SS_KEY, JSON.stringify(memos))
-    sessionStorage.setItem(SS_TS_KEY, String(Date.now()))
+    localStorage.setItem(LS_KEY, JSON.stringify(memos))
+    localStorage.setItem(LS_TS_KEY, String(Date.now()))
   } catch {
     // 용량 초과 시 무시 — 기능에는 영향 없음
   }
@@ -92,14 +93,14 @@ export function useMemos(folderId: string | null | undefined) {
     // 새로고침 시 sessionStorage에서 즉시 복원 → 화면 바로 표시
     // initialDataUpdatedAt 기준으로 staleTime 계산 → 백그라운드 refetch 여부 결정
     ...(isTrash ? {} : {
-      initialData: readSessionCache,
-      initialDataUpdatedAt: readSessionCacheTs,
+      initialData: readLocalCache,
+      initialDataUpdatedAt: readLocalCacheTs,
     }),
   })
 
-  // fetch 완료(또는 갱신) 시 sessionStorage에 저장
+  // fetch 완료(또는 갱신) 시 localStorage에 저장
   useEffect(() => {
-    if (allData && !isTrash) writeSessionCache(allData)
+    if (allData && !isTrash) writeLocalCache(allData)
   }, [allData, isTrash])
 
   // folderId로 클라이언트 필터링 — 추가 fetch 없이 즉각 반응
