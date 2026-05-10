@@ -18,13 +18,17 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: '나만의 메모 플래너',
-  description: '메모장 + 플래너 통합 AI 시스템',
+  title: 'Weave',
+  description: '경험을 모으고 엮어 더 나은 나로',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '메모 플래너',
+    title: 'Weave',
   },
 }
 

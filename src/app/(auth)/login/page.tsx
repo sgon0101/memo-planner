@@ -86,7 +86,7 @@ function LoginForm() {
   return (
     <div className="w-full max-w-sm">
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">나만의 메모 플래너</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weave</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">로그인하여 시작하세요</p>
       </div>
 

@@ -565,7 +565,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* 버전 */}
-      <p className="text-xs text-center text-gray-400">나만의 메모 플래너 v0.1.0</p>
+      <p className="text-xs text-center text-gray-400">Weave v0.1.0</p>
     </div>
   )
 }

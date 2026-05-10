@@ -113,7 +113,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
               !sidebarOpen && 'md:hidden',
             )}
           >
-            메모 플래너
+            Weave
           </span>
           {/* X 버튼 — 모바일 전용 */}
           <button
