@@ -158,11 +158,11 @@ export default function UserProfile() {
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditField(null) }}
-                      className="flex-1 text-xs px-2 py-1 rounded border border-violet-400 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                      className="flex-1 text-xs px-2 py-2 md:py-1 rounded border border-violet-400 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
                       placeholder="쉼표로 구분"
                     />
-                    <button onClick={saveEdit} className="text-green-500 hover:text-green-700"><Check size={14} /></button>
-                    <button onClick={() => setEditField(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                    <button onClick={saveEdit} className="p-1.5 text-green-500 hover:text-green-700"><Check size={14} /></button>
+                    <button onClick={() => setEditField(null)} className="p-1.5 text-gray-400 hover:text-gray-600"><X size={14} /></button>
                   </div>
                 ) : (
                   <p className="text-xs text-gray-700 dark:text-gray-300">
@@ -171,8 +171,8 @@ export default function UserProfile() {
                 )}
               </div>
               {!isEditing && (
-                <button onClick={() => startEdit(key)} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5">
-                  <Edit2 size={12} className="text-gray-400 hover:text-violet-500" />
+                <button onClick={() => startEdit(key)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5 p-1 -mr-1">
+                  <Edit2 size={13} className="text-gray-400 hover:text-violet-500" />
                 </button>
               )}
             </div>
@@ -205,8 +205,8 @@ export default function UserProfile() {
             )}
           </div>
           {editField !== 'raw_notes' && (
-            <button onClick={() => startEdit('raw_notes')} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5">
-              <Edit2 size={12} className="text-gray-400 hover:text-violet-500" />
+            <button onClick={() => startEdit('raw_notes')} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5 p-1 -mr-1">
+              <Edit2 size={13} className="text-gray-400 hover:text-violet-500" />
             </button>
           )}
         </div>

@@ -42,8 +42,8 @@ export default function RetroReport() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">회고 리포트</h3>
           <p className="text-xs text-gray-500 mt-0.5">기간별 메모·플랜 데이터를 AI가 분석합니다</p>
@@ -51,21 +51,21 @@ export default function RetroReport() {
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           생성하기
         </button>
       </div>
 
-      {/* 기간 선택 */}
-      <div className="flex gap-1.5">
+      {/* 기간 선택 — 모바일에서 가로 스크롤 */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-none">
         {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
             className={cn(
-              'px-3 py-1.5 text-xs rounded-lg border transition-colors',
+              'flex-shrink-0 px-4 py-2 md:py-1.5 text-xs rounded-lg border transition-colors',
               period === p
                 ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600'
                 : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300'
