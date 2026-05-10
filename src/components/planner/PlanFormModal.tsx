@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
@@ -46,12 +46,21 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
+  const titleInputRef = useRef<HTMLInputElement>(null)
   const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
 
   const activeMemos = memos.filter((m) => !m.isDeleted && !m.isLocked)
+
+  // 제목 입력 시 자동완성 드롭다운용 (제목 포함 매칭)
+  const matchingTemplates = useMemo(() => {
+    const q = title.trim().toLowerCase()
+    if (!q) return []
+    return templates.filter((t) => t.title.toLowerCase().includes(q))
+  }, [templates, title])
 
   // 검색어 기반 필터링 + 연결된 메모 상단 고정
   const filteredMemos = useMemo(() => {
@@ -107,7 +116,16 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
       .select('*')
       .order('created_at', { ascending: false })
       .then(({ data }) => {
-        if (data) setTemplates(data.map((r) => ({ id: r.id, userId: r.user_id, title: r.title, color: r.color })))
+        if (data) setTemplates(data.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          title: r.title,
+          color: r.color,
+          startTime: r.start_time ?? null,
+          endTime: r.end_time ?? null,
+          isAllDay: r.is_all_day ?? true,
+          linkedMemoIds: r.linked_memo_ids ?? [],
+        })))
       })
   }, [])
 
@@ -116,9 +134,26 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     const { data: { user } } = await supabase.auth.getUser()
     const { data } = await supabase
       .from('plan_templates')
-      .insert({ user_id: user?.id, title: title.trim(), color })
+      .insert({
+        user_id: user?.id,
+        title: title.trim(),
+        color,
+        start_time: isAllDay ? null : (startTime || null),
+        end_time: isAllDay ? null : (endTime || null),
+        is_all_day: isAllDay,
+        linked_memo_ids: linkedMemoIds,
+      })
       .select().single()
-    if (data) setTemplates((prev) => [{ id: data.id, userId: data.user_id, title: data.title, color: data.color }, ...prev])
+    if (data) setTemplates((prev) => [{
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      color: data.color,
+      startTime: data.start_time ?? null,
+      endTime: data.end_time ?? null,
+      isAllDay: data.is_all_day ?? true,
+      linkedMemoIds: data.linked_memo_ids ?? [],
+    }, ...prev])
   }
 
   async function handleDeleteTemplate(id: string) {
@@ -129,6 +164,17 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   function applyTemplate(t: PlanTemplate) {
     setTitle(t.title)
     setColor(t.color)
+    setIsAllDay(t.isAllDay)
+    if (!t.isAllDay) {
+      if (t.startTime) setStartTime(t.startTime.slice(0, 5))
+      if (t.endTime)   setEndTime(t.endTime.slice(0, 5))
+    }
+    if (t.linkedMemoIds.length > 0) {
+      setLinkedMemoIds(t.linkedMemoIds)
+      setShowAdvanced(true)
+    }
+    setShowTemplateDropdown(false)
+    titleInputRef.current?.blur()
   }
 
   function toggleMemo(id: string) {
@@ -204,12 +250,12 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          {/* 즐겨찾기 템플릿 */}
+          {/* 즐겨찾기 템플릿 (최대 3개 칩 표시) */}
           {templates.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">즐겨찾기</p>
-              <div className="flex gap-1.5 flex-wrap">
-                {templates.map((t) => (
+              <div className="flex gap-1.5 flex-wrap items-center">
+                {templates.slice(0, 3).map((t) => (
                   <div key={t.id} className="group relative flex items-center">
                     <button
                       type="button"
@@ -217,7 +263,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                       className="flex items-center gap-1 pl-2 pr-1 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-400 text-gray-600 dark:text-gray-300 transition-colors"
                       style={{ borderLeftColor: t.color, borderLeftWidth: 3 }}
                     >
-                      {t.title}
+                      <span>{t.title}</span>
+                      {!t.isAllDay && t.startTime && (
+                        <span className="text-gray-400 ml-0.5">{t.startTime.slice(0,5)}</span>
+                      )}
                     </button>
                     <button
                       type="button"
@@ -226,16 +275,24 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     >×</button>
                   </div>
                 ))}
+                {templates.length > 3 && (
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                    +{templates.length - 3}개 · 제목 입력 시 자동완성
+                  </span>
+                )}
               </div>
             </div>
           )}
 
-          {/* 제목 + 즐겨찾기 저장 */}
+          {/* 제목 + 즐겨찾기 저장 + 자동완성 드롭다운 */}
           <div className="relative">
             <input
+              ref={titleInputRef}
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onFocus={() => setShowTemplateDropdown(true)}
+              onBlur={() => setTimeout(() => setShowTemplateDropdown(false), 150)}
               placeholder="플랜 제목"
               autoFocus
               className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
@@ -248,6 +305,41 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
             >
               <Bookmark size={14} />
             </button>
+
+            {/* 자동완성 드롭다운 */}
+            {showTemplateDropdown && matchingTemplates.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                {matchingTemplates.slice(0, 5).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); applyTemplate(t) }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-violet-50 dark:hover:bg-violet-950/20 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {!t.isAllDay && t.startTime ? (
+                          <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                            <Clock size={10} />
+                            {t.startTime.slice(0,5)}{t.endTime ? `~${t.endTime.slice(0,5)}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">종일</span>
+                        )}
+                        {t.linkedMemoIds.length > 0 && (
+                          <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                            <Paperclip size={10} />
+                            메모 {t.linkedMemoIds.length}개
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 색상 */}
