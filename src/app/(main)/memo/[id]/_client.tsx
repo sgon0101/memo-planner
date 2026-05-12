@@ -20,7 +20,10 @@ export default function MemoEditorClient() {
   const [memo, setMemo] = useState<Memo | null>(() => {
     if (id === 'new') return null
     const cached = queryClient.getQueryData<Memo[]>(memoKeys.all()) ?? []
-    return cached.find((m) => m.id === id && !m.isDeleted) ?? null
+    const found = cached.find((m) => m.id === id && !m.isDeleted)
+    // content가 실제로 있는 경우만 캐시 사용 — 목록 캐시는 content를 포함하지 않음
+    if (found && found.content && Object.keys(found.content).length > 0) return found
+    return null
   })
   const [loading, setLoading] = useState(id !== 'new' && memo === null)
   const fetchedRef = useRef(false)
