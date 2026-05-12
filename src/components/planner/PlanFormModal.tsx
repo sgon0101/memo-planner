@@ -37,6 +37,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [description, setDescription] = useState(plan?.description ?? '')
   const [color, setColor]             = useState(plan?.color ?? '#7C3AED')
   const [isRange, setIsRange]         = useState(!!(plan?.startDate))
+  const [singleDate, setSingleDate]   = useState(plan?.date ?? date)
   const [startDate, setStartDate]     = useState(plan?.startDate ?? date)
   const [endDate, setEndDate]         = useState(plan?.endDate ?? date)
   const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '09:00')
@@ -212,7 +213,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         description: description.trim(),
         color,
         isAllDay,
-        date: isRange ? null : date,
+        date: isRange ? null : singleDate,
         startDate: isRange ? startDate : null,
         endDate: isRange ? endDate : null,
         startTime: isAllDay ? null : (startTime || null),
@@ -404,8 +405,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
           ) : (
             <div>
               <p className="text-xs text-gray-500 mb-1">날짜</p>
-              <input type="date" value={date} readOnly
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-500 outline-none" />
+              <input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
             </div>
           )}
 
