@@ -45,7 +45,7 @@ export default function MemoList() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchOrigin = useRef<{ x: number; y: number } | null>(null)
   const {
-    memos, isLoading, isTrash,
+    memos, isLoading, isFetching, isTrash,
     togglePin, toggleStar, softDelete,
     lockMemo, unlockMemo,
     restoreMemo, bulkRestore, permanentDelete, emptyTrash,
@@ -785,7 +785,7 @@ export default function MemoList() {
 
       {/* 메모 목록 */}
       <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
+        {isFetching && memos.length === 0 ? (
           <MemoListSkeleton />
         ) : memos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">

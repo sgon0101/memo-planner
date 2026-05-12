@@ -218,6 +218,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             <img
               src={thumbnail}
               alt=""
+              loading="lazy"
               className="w-full h-full object-cover"
               onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }}
             />
