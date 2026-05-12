@@ -1,12 +1,6 @@
-import { Suspense } from 'react'
-import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
-import { createClient } from '@/lib/supabase/server'
-import { LIST_COLS, toMemo } from '@/lib/memos/shared'
 import FolderPanel from '@/components/memo/FolderPanel'
 import MemoList from '@/components/memo/MemoList'
-import { MemoListSkeleton } from '@/components/ui/Skeleton'
 
-// 레이아웃은 즉시 렌더 — 데이터 로딩은 Suspense 안에서 스트리밍
 export default function MemoPage() {
   return (
     <div className="flex h-full">
@@ -14,34 +8,8 @@ export default function MemoPage() {
         <FolderPanel />
       </aside>
       <div className="flex-1 min-w-0">
-        <Suspense fallback={<MemoListSkeleton />}>
-          <MemoListPrefetched />
-        </Suspense>
+        <MemoList />
       </div>
     </div>
-  )
-}
-
-async function MemoListPrefetched() {
-  const queryClient = new QueryClient()
-  const supabase = await createClient()
-
-  await queryClient.prefetchQuery({
-    queryKey: ['memos', 'all', false],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('memos')
-        .select(LIST_COLS)
-        .eq('is_deleted', false)
-        .order('is_pinned', { ascending: false })
-        .order('updated_at', { ascending: false })
-      return (data ?? []).map(toMemo)
-    },
-  })
-
-  return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <MemoList />
-    </HydrationBoundary>
   )
 }
