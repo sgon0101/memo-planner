@@ -42,7 +42,9 @@ function readLocalCacheTs(): number {
 function writeLocalCache(memos: Memo[]) {
   if (memos.length === 0) return
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(memos))
+    // content(Tiptap JSON)는 저장 제외 — 에디터는 직접 DB fetch, 목록에는 불필요
+    const stripped = memos.map((m) => ({ ...m, content: {} as Record<string, unknown> }))
+    localStorage.setItem(LS_KEY, JSON.stringify(stripped))
     localStorage.setItem(LS_TS_KEY, String(Date.now()))
   } catch {
     // 용량 초과 시 무시 — 기능에는 영향 없음

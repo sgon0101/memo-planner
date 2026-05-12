@@ -22,23 +22,6 @@ function getMemeTags(memo: Memo): string[] {
   return extractTagsFromText(memo.contentText ?? '')
 }
 
-function extractFirstImage(content: Record<string, unknown>): string | null {
-  function traverse(node: Record<string, unknown>): string | null {
-    if (node.type === 'image' && typeof node.attrs === 'object') {
-      const src = (node.attrs as Record<string, unknown>)?.src
-      if (typeof src === 'string' && src) return src
-    }
-    const children = node.content as Record<string, unknown>[] | undefined
-    if (children) {
-      for (const child of children) {
-        const found = traverse(child)
-        if (found) return found
-      }
-    }
-    return null
-  }
-  return traverse(content)
-}
 
 interface MemoCardProps {
   memo: Memo
@@ -198,7 +181,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
     )
   }
 
-  const thumbnail = !memo.isLocked ? extractFirstImage(memo.content) : null
+  const thumbnail = !memo.isLocked ? (memo.thumbnailUrl ?? null) : null
 
   return (
     <>

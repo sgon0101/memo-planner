@@ -27,6 +27,7 @@ export interface Memo {
   tags: string[]
   wikiLinks: string[]
   linkedPlanIds: string[]
+  thumbnailUrl: string | null
   createdAt: string
   updatedAt: string
 }

@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useFolders } from '@/hooks/useFolders'
+import { extractFirstImage } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -68,6 +69,7 @@ function toMemo(row: Record<string, unknown>): Memo {
     tags: (row.tags as string[]) ?? [],
     wikiLinks: (row.wiki_links as string[]) ?? [],
     linkedPlanIds: (row.linked_plan_ids as string[]) ?? [],
+    thumbnailUrl: (row.thumbnail_url as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -176,6 +178,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const wikiLinks = extractWikiLinks(text)
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
+        const thumbnailUrl = extractFirstImage(content)
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
@@ -183,11 +186,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           wiki_links: wikiLinks,
           tags,
           updated_at: updatedAt,
+          thumbnail_url: thumbnailUrl,
         }).eq('id', id)
 
-        const patch = { title: titleRef.current, content, contentText: text, updatedAt }
+        // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
+        const patch = { title: titleRef.current, contentText: text, updatedAt, thumbnailUrl, tags, wikiLinks }
         updateMemo(id, patch)
-        // 단일 전체 캐시 업데이트
         queryClient.setQueryData<Memo[]>(
           memoKeys.all(),
           (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
@@ -220,10 +224,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         setCurrentMemo(newMemo)
         addMemo(newMemo)
 
-        // 신규 메모를 단일 전체 캐시에 즉시 추가 → 목록 복귀 시 바로 표시
+        // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
+        const newMemoForCache = { ...newMemo, content: {} as Record<string, unknown> }
         queryClient.setQueryData<Memo[]>(
           memoKeys.all(),
-          (old) => old ? [newMemo, ...old] : [newMemo]
+          (old) => old ? [newMemoForCache, ...old] : [newMemoForCache]
         )
         // 폴더 카운트 즉시 반영
         const targetFolderId = folderIdRef.current
