@@ -226,7 +226,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             <img
               src={thumbnail}
               alt=""
-              loading="lazy"
               className={cn(
                 'w-full h-full object-cover transition-opacity duration-300',
                 imgLoaded ? 'opacity-100' : 'opacity-0'
