@@ -9,11 +9,13 @@ import QueryProvider from '@/components/providers/QueryProvider'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // proxy.ts 미들웨어가 이미 getUser()로 검증하므로 여기서는 getSession()으로 충분
+  // getSession()은 쿠키의 JWT를 로컬 파싱만 해서 네트워크 요청 없이 즉각 반환
+  const { data: { session } } = await supabase.auth.getSession()
 
-  if (!user) redirect('/login')
+  if (!session) redirect('/login')
 
-  const userEmail = user.email ?? ''
+  const userEmail = session.user.email ?? ''
 
   return (
     <QueryProvider>

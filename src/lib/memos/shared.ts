@@ -27,6 +27,7 @@ export function toMemo(row: Record<string, unknown>): Memo {
 }
 
 // 원본 R2 URL → thumb_ 소형 버전 URL 변환
+// compressThumbnail은 항상 webp로 생성하므로 확장자를 .webp로 강제
 // 기존 이미지처럼 thumb_가 없으면 MemoCard onError에서 원본으로 fallback
 export function toThumbnailUrl(originalUrl: string | null): string | null {
   if (!originalUrl) return null
@@ -36,7 +37,9 @@ export function toThumbnailUrl(originalUrl: string | null): string | null {
   const segments = path.split('/')
   const filename = segments[segments.length - 1]
   if (filename.startsWith('thumb_')) return originalUrl
-  segments[segments.length - 1] = `thumb_${filename}`
+  // 확장자를 .webp로 강제 (compressThumbnail 출력 포맷과 일치)
+  const filenameWithoutExt = filename.replace(/\.[^.]+$/, '')
+  segments[segments.length - 1] = `thumb_${filenameWithoutExt}.webp`
   return `${base}/${segments.join('/')}`
 }
 
