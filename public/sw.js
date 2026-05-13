@@ -1,4 +1,4 @@
-const CACHE_NAME = 'memo-planner-v1'
+const CACHE_NAME = 'memo-planner-v2'
 const STATIC_ASSETS = ['/', '/memo', '/planner', '/insights', '/settings']
 
 self.addEventListener('install', (event) => {
@@ -18,8 +18,13 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
+  const url = event.request.url
+
+  // same-origin 요청만 처리 — cross-origin(R2, Supabase 등)은 SW 미개입
+  if (!url.startsWith(self.location.origin)) return
+
   // API 요청은 캐시하지 않음
-  if (event.request.url.includes('/api/')) return
+  if (url.includes('/api/')) return
 
   event.respondWith(
     fetch(event.request)
