@@ -32,7 +32,7 @@ interface WeekPlan {
 interface HomeClientProps {
   userEmail: string
   totalMemos: number | undefined   // undefined = 로딩 중
-  completedPlans: number
+  completedPlans: number | undefined
   recentMemos: RecentMemo[] | undefined  // undefined = 로딩 중
   weekPlans: WeekPlan[]
 }
