@@ -178,7 +178,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const wikiLinks = extractWikiLinks(text)
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
-        const thumbnailUrl = toThumbnailUrl(extractFirstImage(content))
+        const firstImageUrl = extractFirstImage(content)
+        // toThumbnailUrl이 null(환경변수 미설정 등)이면 원본 URL로 fallback
+        // 이미지가 없는 경우에만 null 저장 — 환경변수 문제로 null이 덮어씌워지는 버그 방지
+        const thumbnailUrl = firstImageUrl
+          ? (toThumbnailUrl(firstImageUrl) ?? firstImageUrl)
+          : null
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
