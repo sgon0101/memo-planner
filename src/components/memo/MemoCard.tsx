@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw, FolderInput, Folder, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -48,6 +48,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [showFolderPicker, setShowFolderPicker] = useState(false)
   const [imgSrc, setImgSrc] = useState(memo.thumbnailUrl ?? null)
   const [imgLoaded, setImgLoaded] = useState(false)
+
+  // React Query가 새 데이터를 가져오면 imgSrc 동기화 (마이그레이션·수정 반영)
+  useEffect(() => {
+    setImgSrc(memo.thumbnailUrl ?? null)
+    setImgLoaded(false)
+  }, [memo.thumbnailUrl])
   const cardRef = useRef<HTMLDivElement>(null)
 
   function handleDragStart(e: React.DragEvent) {
