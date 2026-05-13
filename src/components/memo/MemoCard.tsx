@@ -234,6 +234,11 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 'w-full h-full object-cover',
                 imgVisible ? 'opacity-100' : 'opacity-0'
               )}
+              ref={(el) => {
+                // iOS Safari: 캐시된 이미지는 onLoad가 발생하지 않을 수 있음
+                // ref callback으로 complete 상태를 직접 확인해서 즉시 표시
+                if (el?.complete && el.naturalWidth > 0) setImgVisible(true)
+              }}
               onLoad={() => setImgVisible(true)}
               onError={() => {
                 // thumb_ 소형 버전 없으면 원본 URL로 fallback
