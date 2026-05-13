@@ -47,12 +47,12 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
   const [showFolderPicker, setShowFolderPicker] = useState(false)
   const [imgSrc, setImgSrc] = useState(memo.thumbnailUrl ?? null)
-  const [imgLoaded, setImgLoaded] = useState(false)
+  const [imgVisible, setImgVisible] = useState(false)
 
   // React Query가 새 데이터를 가져오면 imgSrc 동기화 (마이그레이션·수정 반영)
   useEffect(() => {
     setImgSrc(memo.thumbnailUrl ?? null)
-    setImgLoaded(false)
+    setImgVisible(false)
   }, [memo.thumbnailUrl])
   const cardRef = useRef<HTMLDivElement>(null)
 
@@ -221,21 +221,26 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
         )}
         {/* 이미지 썸네일 */}
         {thumbnail && (
-          <div className="w-full aspect-video overflow-hidden bg-gray-100 dark:bg-gray-700">
+          <div className="w-full aspect-video overflow-hidden bg-gray-200 dark:bg-gray-700 relative">
+            {/* skeleton: 이미지 로드 전 placeholder */}
+            {!imgVisible && (
+              <div className="absolute inset-0 bg-gray-200 dark:bg-gray-700 animate-pulse" />
+            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={thumbnail}
               alt=""
               className={cn(
-                'w-full h-full object-cover transition-opacity duration-300',
-                imgLoaded ? 'opacity-100' : 'opacity-0'
+                'w-full h-full object-cover',
+                imgVisible ? 'opacity-100' : 'opacity-0'
               )}
-              onLoad={() => setImgLoaded(true)}
+              onLoad={() => setImgVisible(true)}
               onError={() => {
                 // thumb_ 소형 버전 없으면 원본 URL로 fallback
                 if (imgSrc?.includes('/thumb_')) {
-                  setImgSrc(imgSrc.replace('/thumb_', '/'))
-                  setImgLoaded(false)
+                  const original = imgSrc.replace(/\/thumb_([^/]+)\.webp$/, '/$1')
+                  setImgSrc(original !== imgSrc ? original : imgSrc.replace('/thumb_', '/'))
+                  setImgVisible(false)
                 } else {
                   setImgSrc(null)
                 }
