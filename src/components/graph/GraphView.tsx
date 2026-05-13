@@ -680,7 +680,7 @@ export default function GraphView() {
       e.preventDefault()
       const { dist, cx, cy } = pinchInfo(e)
       const p = pinchRef.current
-      const newK = Math.max(0.3, Math.min(3, p.startK * (dist / p.startDist)))
+      const newK = Math.max(0.08, Math.min(3, p.startK * (dist / p.startDist)))
       const worldX = (p.centerX - p.startTransformX) / p.startK
       const worldY = (p.centerY - p.startTransformY) / p.startK
       transformRef.current.k = newK

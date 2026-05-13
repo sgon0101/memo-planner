@@ -387,7 +387,7 @@ export default function GraphCanvas({ width, height }: Props) {
     const { mx, my } = getCanvasXY(e)
     const { x, y, k } = transformRef.current
     const delta = e.deltaY > 0 ? 0.85 : 1.18
-    const newK = Math.max(0.3, Math.min(3, k * delta))
+    const newK = Math.max(0.08, Math.min(3, k * delta))
     transformRef.current.x = mx - (mx - x) * (newK / k)
     transformRef.current.y = my - (my - y) * (newK / k)
     transformRef.current.k = newK
