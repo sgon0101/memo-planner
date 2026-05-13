@@ -46,6 +46,8 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [menuOpen, setMenuOpen] = useState(false)
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
   const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [imgSrc, setImgSrc] = useState(memo.thumbnailUrl ?? null)
+  const [imgLoaded, setImgLoaded] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
   function handleDragStart(e: React.DragEvent) {
@@ -181,7 +183,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
     )
   }
 
-  const thumbnail = !memo.isLocked ? (memo.thumbnailUrl ?? null) : null
+  const thumbnail = !memo.isLocked ? imgSrc : null
 
   return (
     <>
@@ -219,8 +221,20 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               src={thumbnail}
               alt=""
               loading="lazy"
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }}
+              className={cn(
+                'w-full h-full object-cover transition-opacity duration-300',
+                imgLoaded ? 'opacity-100' : 'opacity-0'
+              )}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => {
+                // thumb_ 소형 버전 없으면 원본 URL로 fallback
+                if (imgSrc?.includes('/thumb_')) {
+                  setImgSrc(imgSrc.replace('/thumb_', '/'))
+                  setImgLoaded(false)
+                } else {
+                  setImgSrc(null)
+                }
+              }}
             />
           </div>
         )}

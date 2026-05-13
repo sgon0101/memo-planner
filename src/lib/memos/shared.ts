@@ -26,6 +26,20 @@ export function toMemo(row: Record<string, unknown>): Memo {
   }
 }
 
+// 원본 R2 URL → thumb_ 소형 버전 URL 변환
+// 기존 이미지처럼 thumb_가 없으면 MemoCard onError에서 원본으로 fallback
+export function toThumbnailUrl(originalUrl: string | null): string | null {
+  if (!originalUrl) return null
+  const base = process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
+  if (!base || !originalUrl.startsWith(base)) return null
+  const path = originalUrl.slice(base.length + 1)
+  const segments = path.split('/')
+  const filename = segments[segments.length - 1]
+  if (filename.startsWith('thumb_')) return originalUrl
+  segments[segments.length - 1] = `thumb_${filename}`
+  return `${base}/${segments.join('/')}`
+}
+
 export function extractFirstImage(content: Record<string, unknown>): string | null {
   function traverse(node: Record<string, unknown>): string | null {
     if (node.type === 'image' && typeof node.attrs === 'object') {

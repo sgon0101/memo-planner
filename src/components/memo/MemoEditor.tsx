@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useFolders } from '@/hooks/useFolders'
-import { extractFirstImage } from '@/lib/memos/shared'
+import { extractFirstImage, toThumbnailUrl } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -178,7 +178,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const wikiLinks = extractWikiLinks(text)
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
-        const thumbnailUrl = extractFirstImage(content)
+        const thumbnailUrl = toThumbnailUrl(extractFirstImage(content))
         await supabase.from('memos').update({
           title: titleRef.current,
           content,
