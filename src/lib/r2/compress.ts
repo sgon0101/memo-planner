@@ -30,3 +30,10 @@ export async function compressImage(buffer: Buffer, mimeType: string): Promise<C
     compressedSize: compressed.length,
   }
 }
+
+export async function compressThumbnail(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer)
+    .resize(400, 225, { fit: 'cover', position: 'centre' })
+    .webp({ quality: 70, effort: 2 })
+    .toBuffer()
+}
