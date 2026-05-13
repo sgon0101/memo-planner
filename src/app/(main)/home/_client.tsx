@@ -9,6 +9,24 @@ import HomeClient from '@/components/home/HomeClient'
 
 const HOME_STALE = 5 * 60 * 1000
 const LS_COUNT_KEY = 'home-memo-count'
+const LS_STATS_KEY = 'home-stats-cache'
+const LS_STATS_TS_KEY = 'home-stats-cache-ts'
+
+function readStatsCache() {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const v = localStorage.getItem(LS_STATS_KEY)
+    return v ? JSON.parse(v) : undefined
+  } catch { return undefined }
+}
+
+function readStatsCacheTs(): number {
+  if (typeof window === 'undefined') return 0
+  try {
+    const v = localStorage.getItem(LS_STATS_TS_KEY)
+    return v ? parseInt(v, 10) : 0
+  } catch { return 0 }
+}
 
 export default function HomePageClient() {
   const { memos, isLoading, isFetching } = useMemos(undefined)
@@ -54,7 +72,7 @@ export default function HomePageClient() {
     staleTime: Infinity,
   })
 
-  // 플랜 통계 — 클라이언트 fetch + 5분 캐시
+  // 플랜 통계 — localStorage 즉시 표시 + 백그라운드 갱신
   const { data: stats } = useQuery({
     queryKey: ['home-stats'],
     queryFn: async () => {
@@ -103,13 +121,23 @@ export default function HomePageClient() {
       return { completedPlans: completedPlans ?? 0, weekPlans }
     },
     staleTime: HOME_STALE,
+    initialData: readStatsCache,
+    initialDataUpdatedAt: readStatsCacheTs,
   })
+
+  // stats 갱신 시 localStorage 저장
+  useEffect(() => {
+    if (stats) {
+      localStorage.setItem(LS_STATS_KEY, JSON.stringify(stats))
+      localStorage.setItem(LS_STATS_TS_KEY, String(Date.now()))
+    }
+  }, [stats])
 
   return (
     <HomeClient
       userEmail={userEmail}
       totalMemos={totalMemos}
-      completedPlans={stats?.completedPlans ?? 0}
+      completedPlans={stats?.completedPlans}
       recentMemos={recentMemos}
       weekPlans={stats?.weekPlans ?? []}
     />
