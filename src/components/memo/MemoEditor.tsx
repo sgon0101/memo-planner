@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useFolders } from '@/hooks/useFolders'
-import { extractFirstImage, toThumbnailUrl } from '@/lib/memos/shared'
+import { extractFirstImage, toThumbnailUrl, toMediumUrl } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -179,10 +179,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
         const firstImageUrl = extractFirstImage(content)
-        // toThumbnailUrl이 null(환경변수 미설정 등)이면 원본 URL로 fallback
-        // 이미지가 없는 경우에만 null 저장 — 환경변수 문제로 null이 덮어씌워지는 버그 방지
+        // md_(960w) → thumb_(480w) → 원본 순으로 fallback
+        // 카드 그리드 2열(~700px)에서도 업스케일 없이 선명하게 표시
         const thumbnailUrl = firstImageUrl
-          ? (toThumbnailUrl(firstImageUrl) ?? firstImageUrl)
+          ? (toMediumUrl(firstImageUrl) ?? toThumbnailUrl(firstImageUrl) ?? firstImageUrl)
           : null
         await supabase.from('memos').update({
           title: titleRef.current,
