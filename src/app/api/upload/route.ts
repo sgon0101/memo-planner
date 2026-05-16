@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     url: result.url,
     thumbnailUrl: result.thumbnailUrl,
+    mediumUrl: result.mediumUrl,
     key: result.key,
     originalSize: result.originalSize,
     compressedSize: result.compressedSize,

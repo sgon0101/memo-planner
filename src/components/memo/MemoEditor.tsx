@@ -281,6 +281,16 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               renderHTML: (attrs) => (attrs.width ? { width: attrs.width } : {}),
               parseHTML: (el) => el.getAttribute('width'),
             },
+            srcMd: {
+              default: null,
+              renderHTML: (attrs) => (attrs.srcMd ? { 'data-src-md': attrs.srcMd } : {}),
+              parseHTML: (el) => el.getAttribute('data-src-md'),
+            },
+            srcSm: {
+              default: null,
+              renderHTML: (attrs) => (attrs.srcSm ? { 'data-src-sm': attrs.srcSm } : {}),
+              parseHTML: (el) => el.getAttribute('data-src-sm'),
+            },
           }
         },
         addNodeView() {
@@ -419,8 +429,16 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       if (!res.ok) throw new Error('업로드 실패')
-      const { url, savedPercent, originalSize, compressedSize } = await res.json()
-      editor.chain().focus().insertContent({ type: 'image', attrs: { src: url, width: '50%' } }).run()
+      const { url, thumbnailUrl, mediumUrl, savedPercent, originalSize, compressedSize } = await res.json()
+      editor.chain().focus().insertContent({
+        type: 'image',
+        attrs: {
+          src: url,
+          srcMd: mediumUrl ?? null,
+          srcSm: thumbnailUrl ?? null,
+          width: '50%',
+        },
+      }).run()
       const orig = (originalSize / 1024 / 1024).toFixed(1)
       const comp = (compressedSize / 1024 / 1024).toFixed(1)
       if (savedPercent > 0) {
