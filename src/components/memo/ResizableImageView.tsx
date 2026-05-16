@@ -1,7 +1,7 @@
 'use client'
 
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const PRESETS = [
   { label: '소', value: '25%' },
@@ -10,14 +10,48 @@ const PRESETS = [
   { label: '원본', value: '100%' },
 ]
 
+// 표시 너비(px) × DPR 기준으로 최적 해상도 URL 반환
+// srcSm: 480w / srcMd: 960w / src: 1920w
+function pickSrc(
+  displayWidth: number,
+  srcFull: string,
+  srcMd: string | null,
+  srcSm: string | null,
+): string {
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
+  const effective = displayWidth * dpr
+  if (srcSm && effective <= 500) return srcSm
+  if (srcMd && effective <= 1000) return srcMd
+  return srcFull
+}
+
 export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
   const [selected, setSelected] = useState(false)
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
+  const [activeSrc, setActiveSrc] = useState(node.attrs.src as string)
   const imgRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const startRef = useRef({ x: 0, initW: 0 })
 
   const widthAttr = node.attrs.width as string | null
+  const srcFull = node.attrs.src as string
+  const srcMd = (node.attrs.srcMd as string | null) ?? null
+  const srcSm = (node.attrs.srcSm as string | null) ?? null
+
+  // 실제 렌더 크기를 감시해 최적 해상도 URL을 동적으로 선택
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(([entry]) => {
+      setActiveSrc(pickSrc(entry.contentRect.width, srcFull, srcMd, srcSm))
+    })
+    observer.observe(el)
+    // 마운트 직후 초기값 즉시 반영
+    setActiveSrc(pickSrc(el.offsetWidth, srcFull, srcMd, srcSm))
+
+    return () => observer.disconnect()
+  }, [srcFull, srcMd, srcSm])
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault()
@@ -58,7 +92,7 @@ export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={imgRef}
-        src={node.attrs.src as string}
+        src={activeSrc}
         alt={(node.attrs.alt as string) || ''}
         style={{ width: '100%', display: 'block', outline: selected ? '2px solid #7C3AED' : 'none', borderRadius: 2 }}
         onLoad={() => {

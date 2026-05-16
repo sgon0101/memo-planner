@@ -26,21 +26,28 @@ export function toMemo(row: Record<string, unknown>): Memo {
   }
 }
 
-// 원본 R2 URL → thumb_ 소형 버전 URL 변환
-// compressThumbnail은 항상 webp로 생성하므로 확장자를 .webp로 강제
-// 기존 이미지처럼 thumb_가 없으면 MemoCard onError에서 원본으로 fallback
-export function toThumbnailUrl(originalUrl: string | null): string | null {
-  if (!originalUrl) return null
+function buildVariantUrl(originalUrl: string, prefix: string): string | null {
   const base = process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
   if (!base || !originalUrl.startsWith(base)) return null
   const path = originalUrl.slice(base.length + 1)
   const segments = path.split('/')
   const filename = segments[segments.length - 1]
-  if (filename.startsWith('thumb_')) return originalUrl
-  // 확장자를 .webp로 강제 (compressThumbnail 출력 포맷과 일치)
+  if (filename.startsWith(prefix)) return originalUrl
   const filenameWithoutExt = filename.replace(/\.[^.]+$/, '')
-  segments[segments.length - 1] = `thumb_${filenameWithoutExt}.webp`
+  segments[segments.length - 1] = `${prefix}${filenameWithoutExt}.webp`
   return `${base}/${segments.join('/')}`
+}
+
+// 원본 R2 URL → thumb_ 480px 소형 버전 URL 변환
+export function toThumbnailUrl(originalUrl: string | null): string | null {
+  if (!originalUrl) return null
+  return buildVariantUrl(originalUrl, 'thumb_')
+}
+
+// 원본 R2 URL → md_ 960px 중간 버전 URL 변환
+export function toMediumUrl(originalUrl: string | null): string | null {
+  if (!originalUrl) return null
+  return buildVariantUrl(originalUrl, 'md_')
 }
 
 export function extractFirstImage(content: Record<string, unknown>): string | null {
