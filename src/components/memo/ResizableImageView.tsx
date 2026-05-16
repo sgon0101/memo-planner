@@ -88,7 +88,7 @@ export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
       ref={containerRef}
       as="div"
       className="relative inline-block max-w-full my-1"
-      style={{ width: widthAttr ?? '100%' }}
+      style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
       onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelected((v) => !v) }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
