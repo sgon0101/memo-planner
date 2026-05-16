@@ -11,6 +11,14 @@ import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
+// thumbnail_url이 md_(960w)일 때만 srcset 생성 — 3개 변형이 모두 R2에 존재함을 보장
+function toSrcSet(url: string | null): string | undefined {
+  if (!url?.includes('/md_')) return undefined
+  const sm   = url.replace('/md_', '/thumb_')
+  const full = url.replace(/\/md_([^/]+\.webp)$/, '/$1')
+  return `${sm} 480w, ${url} 960w, ${full} 1920w`
+}
+
 function extractTagsFromText(text: string): string[] {
   if (!text) return []
   const matches = text.match(/#[\w가-힣]+/g) ?? []
@@ -190,6 +198,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   }
 
   const thumbnail = !memo.isLocked ? imgSrc : null
+  const thumbSrcSet = toSrcSet(imgSrc)
 
   return (
     <>
@@ -229,6 +238,10 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={thumbnail}
+              srcSet={thumbSrcSet}
+              sizes={thumbSrcSet
+                ? '(max-width: 640px) 100vw, (max-width: 1024px) calc(50vw - 10rem), calc(33vw - 6rem)'
+                : undefined}
               alt=""
               className={cn(
                 'w-full h-full object-cover',
