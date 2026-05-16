@@ -160,12 +160,23 @@ aside {
 .tiptap {
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.6;
   color: #1E293B;
 }
 
 .dark .tiptap {
   color: #F1F5F9;
+}
+
+/* prose-sm 기본 단락 여백 제거: 줄바꿈(hardBreak)과 구분 없어지는 것 방지 */
+.tiptap p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* 문단 분리(Enter×2) 시에만 단락 간 여백 부여 */
+.tiptap p + p {
+  margin-top: 1em !important;
 }
 
 /* 다크모드 인라인 텍스트 색상 처리

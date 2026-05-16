@@ -31,6 +31,7 @@ import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
 import WikiSuggest from './WikiSuggest'
 import TagSuggest from './TagSuggest'
+import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
 
 const lowlight = createLowlight(common)
@@ -267,6 +268,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
+      CustomEnterExtension,
       Underline,
       TextStyle,
       Color,
