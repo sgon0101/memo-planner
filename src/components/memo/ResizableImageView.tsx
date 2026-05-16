@@ -11,6 +11,7 @@ const PRESETS = [
 ]
 
 // 표시 너비(px) × DPR 기준으로 최적 해상도 URL 반환
+// 항상 이미지 해상도 > 표시 픽셀 수 를 보장 (업스케일 방지)
 // srcSm: 480w / srcMd: 960w / src: 1920w
 function pickSrc(
   displayWidth: number,
@@ -20,9 +21,10 @@ function pickSrc(
 ): string {
   const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
   const effective = displayWidth * dpr
-  if (srcSm && effective <= 500) return srcSm
-  if (srcMd && effective <= 1000) return srcMd
-  return srcFull
+  // 임계값을 이미지 해상도보다 낮게 설정 → 항상 다운스케일 보장
+  if (srcSm && effective <= 400) return srcSm   // 480w 이미지, 최대 400 effective px
+  if (srcMd && effective <= 800) return srcMd   // 960w 이미지, 최대 800 effective px
+  return srcFull                                // 1920w
 }
 
 export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {

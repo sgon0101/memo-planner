@@ -241,10 +241,14 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               }}
               onLoad={() => setImgVisible(true)}
               onError={() => {
-                // thumb_ 소형 버전 없으면 원본 URL로 fallback
-                if (imgSrc?.includes('/thumb_')) {
-                  const original = imgSrc.replace(/\/thumb_([^/]+)\.webp$/, '/$1')
-                  setImgSrc(original !== imgSrc ? original : imgSrc.replace('/thumb_', '/'))
+                // md_(960w) → thumb_(480w) → 원본(.webp) 순으로 fallback
+                if (imgSrc?.includes('/md_')) {
+                  setImgSrc(imgSrc.replace('/md_', '/thumb_'))
+                  setImgVisible(false)
+                } else if (imgSrc?.includes('/thumb_')) {
+                  // /thumb_uuid.webp → /uuid.webp (확장자 유지)
+                  const original = imgSrc.replace(/\/thumb_([^/]+\.webp)$/, '/$1')
+                  setImgSrc(original !== imgSrc ? original : null)
                   setImgVisible(false)
                 } else {
                   setImgSrc(null)
