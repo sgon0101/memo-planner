@@ -224,12 +224,17 @@ export default function GraphCanvas({ width, height }: Props) {
       )
       .force('charge', d3.forceManyBody().strength(-(settings.repulsion * 80)))
       .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settings.nodeSize) + 4))
+      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settings.nodeSize) + 4).iterations(2))
       .alphaDecay(0.04)
       .velocityDecay(0.55)
       .alphaMin(0.001)
+      .stop() // 자동 타이머 즉시 중단 — 수동 선계산 후 재시작
+
+    // 렌더링 없이 120틱 선계산 → 노드가 이미 퍼진 상태로 첫 화면에 노출
+    for (let i = 0; i < 120; i++) sim.tick()
 
     simRef.current = sim
+    draw() // 선계산 결과를 즉시 그리기
 
     const tick = () => {
       draw()
@@ -241,13 +246,19 @@ export default function GraphCanvas({ width, height }: Props) {
       }
     }
 
+    // 선계산 후 남은 미세 조정 에너지로 계속 시뮬레이션
     sim.on('tick', () => {
       if (!rafRef.current) {
         rafRef.current = requestAnimationFrame(tick)
       }
     })
 
-    setSimStatus('active')
+    if (sim.alpha() > sim.alphaMin()) {
+      sim.restart()
+      setSimStatus('active')
+    } else {
+      setSimStatus('sleeping')
+    }
   }, [nodes, links, settings, width, height, draw])
 
   useEffect(() => {
