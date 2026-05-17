@@ -17,7 +17,7 @@ export const TRASH_ID = '__trash__'
 const LS_KEY = 'memos-all-cache'
 const LS_TS_KEY = 'memos-all-cache-ts'
 
-function readLocalCache(): Memo[] | undefined {
+export function readLocalCache(): Memo[] | undefined {
   if (typeof window === 'undefined') return undefined
   try {
     const raw = localStorage.getItem(LS_KEY)
@@ -29,7 +29,7 @@ function readLocalCache(): Memo[] | undefined {
   }
 }
 
-function readLocalCacheTs(): number {
+export function readLocalCacheTs(): number {
   if (typeof window === 'undefined') return 0
   try {
     const ts = localStorage.getItem(LS_TS_KEY)
@@ -39,7 +39,7 @@ function readLocalCacheTs(): number {
   }
 }
 
-function writeLocalCache(memos: Memo[]) {
+export function writeLocalCache(memos: Memo[]) {
   if (memos.length === 0) return
   try {
     // content(Tiptap JSON)는 저장 제외 — 에디터는 직접 DB fetch, 목록에는 불필요
