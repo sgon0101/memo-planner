@@ -1,22 +1,22 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
-import { memoKeys, LIST_COLS, toMemo } from '@/hooks/useMemos'
+import { memoKeys, readLocalCache, readLocalCacheTs } from '@/hooks/useMemos'
+import type { Memo } from '@/types'
 import HomeClient from '@/components/home/HomeClient'
 
 const HOME_STALE = 5 * 60 * 1000
 
-// 홈 전용 메모 캐시 (count + 최근 5개) — 전체 memo fetch 없이 경량 쿼리
+// 홈 전용 메모 캐시 (최근 5개) — count 쿼리 없음
 const LS_HOME_MEMOS_KEY = 'home-memos-cache'
 const LS_HOME_MEMOS_TS_KEY = 'home-memos-cache-ts'
 const LS_STATS_KEY = 'home-stats-cache'
 const LS_STATS_TS_KEY = 'home-stats-cache-ts'
 
 interface HomeMemos {
-  totalMemos: number
   recentMemos: Array<{
     id: string
     title: string
@@ -60,46 +60,30 @@ function readStatsCacheTs(): number {
 }
 
 export default function HomePageClient() {
-  const queryClient = useQueryClient()
+  // 전체 메모 캐시 구독 (MemoListPrefetch가 레이아웃에서 채움)
+  // enabled: false → 직접 fetch 없이 캐시 변경 시에만 반응
+  // initialData: localStorage에서 즉시 복원 → 이전 세션 값 즉각 표시
+  const { data: allMemos } = useQuery<Memo[]>({
+    queryKey: memoKeys.all(),
+    queryFn: () => Promise.resolve([] as Memo[]),
+    enabled: false,
+    initialData: readLocalCache,
+    initialDataUpdatedAt: readLocalCacheTs,
+  })
+  const totalMemos = allMemos?.length
 
-  // 메모 탭 캐시 백그라운드 사전 로딩 — 홈 렌더 후 실행되므로 display 차단 없음
-  // staleTime 이내 데이터가 있으면 자동으로 건너뜀
-  useEffect(() => {
-    queryClient.prefetchQuery({
-      queryKey: memoKeys.all(),
-      queryFn: async () => {
-        const supabase = createClient()
-        const { data } = await supabase
-          .from('memos')
-          .select(LIST_COLS)
-          .eq('is_deleted', false)
-          .order('is_pinned', { ascending: false })
-          .order('updated_at', { ascending: false })
-        return (data ?? []).map(toMemo)
-      },
-      staleTime: 5 * 60 * 1000,
-    })
-  }, [queryClient])
-
-  // 홈 전용 경량 쿼리 — 전체 메모 fetch 없이 count + 최근 5개만 병렬 요청
+  // 홈 전용 경량 쿼리 — 최근 5개만 (count 없음, 단일 요청)
   const { data: homeMemos } = useQuery<HomeMemos>({
     queryKey: ['home-memos'],
     queryFn: async (): Promise<HomeMemos> => {
       const supabase = createClient()
-      const [{ count }, { data: recent }] = await Promise.all([
-        supabase
-          .from('memos')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_deleted', false),
-        supabase
-          .from('memos')
-          .select('id, title, content_text, updated_at, is_starred, is_pinned')
-          .eq('is_deleted', false)
-          .order('updated_at', { ascending: false })
-          .limit(5),
-      ])
+      const { data: recent } = await supabase
+        .from('memos')
+        .select('id, title, content_text, updated_at, is_starred, is_pinned')
+        .eq('is_deleted', false)
+        .order('updated_at', { ascending: false })
+        .limit(5)
       return {
-        totalMemos: count ?? 0,
         recentMemos: (recent ?? []).map((m) => ({
           id: m.id as string,
           title: (m.title as string | null) ?? '',
@@ -195,7 +179,7 @@ export default function HomePageClient() {
   return (
     <HomeClient
       userEmail={userEmail}
-      totalMemos={homeMemos?.totalMemos}
+      totalMemos={totalMemos}
       completedPlans={stats?.completedPlans}
       recentMemos={homeMemos?.recentMemos}
       weekPlans={stats?.weekPlans ?? []}

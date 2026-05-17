@@ -6,6 +6,7 @@ import MobileNav from '@/components/layout/MobileNav'
 import DarkModeProvider from '@/components/layout/DarkModeProvider'
 import SidebarSpacer from '@/components/layout/SidebarSpacer'
 import QueryProvider from '@/components/providers/QueryProvider'
+import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -19,6 +20,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   return (
     <QueryProvider>
+    <MemoListPrefetch />
     <DarkModeProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
         <Sidebar userEmail={userEmail} />
