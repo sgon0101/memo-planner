@@ -64,11 +64,17 @@ export default function HomePageClient() {
   // enabled: false → 직접 fetch 없이 캐시 변경 시에만 반응
   // initialData: localStorage에서 즉시 복원 → 이전 세션 값 즉각 표시
   // 이전 방문 시 저장된 개수를 즉시 읽어 표시 (prefetch 완료 전에도 표시)
+  // 1순위: memos-total-count (직접 저장된 카운트, 최신 배포 이후)
+  // 2순위: memos-all-cache length (메모 목록 방문 시 저장, 기기 간 호환)
   const [prevCount] = useState<number | undefined>(() => {
     if (typeof window === 'undefined') return undefined
     try {
-      const v = localStorage.getItem('memos-total-count')
-      return v !== null ? Number(v) : undefined
+      const countStr = localStorage.getItem('memos-total-count')
+      if (countStr !== null) return Number(countStr)
+      const raw = localStorage.getItem('memos-all-cache')
+      if (!raw) return undefined
+      const arr = JSON.parse(raw) as unknown[]
+      return Array.isArray(arr) && arr.length > 0 ? arr.length : undefined
     } catch { return undefined }
   })
 
