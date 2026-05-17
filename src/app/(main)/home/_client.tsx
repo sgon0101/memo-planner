@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
@@ -63,6 +63,16 @@ export default function HomePageClient() {
   // 전체 메모 캐시 구독 (MemoListPrefetch가 레이아웃에서 채움)
   // enabled: false → 직접 fetch 없이 캐시 변경 시에만 반응
   // initialData: localStorage에서 즉시 복원 → 이전 세션 값 즉각 표시
+  // 이전 방문 시 저장된 개수를 즉시 읽어 표시 (prefetch 완료 전에도 표시)
+  const [prevCount] = useState<number | undefined>(() => {
+    if (typeof window === 'undefined') return undefined
+    try {
+      const v = localStorage.getItem('memos-total-count')
+      return v !== null ? Number(v) : undefined
+    } catch { return undefined }
+  })
+
+  // 전체 메모 캐시 구독 (MemoListPrefetch·SSR이 채우면 자동 반영)
   const { data: allMemos } = useQuery<Memo[]>({
     queryKey: memoKeys.all(),
     queryFn: () => Promise.resolve([] as Memo[]),
@@ -70,7 +80,8 @@ export default function HomePageClient() {
     initialData: readLocalCache,
     initialDataUpdatedAt: readLocalCacheTs,
   })
-  const totalMemos = allMemos?.length
+  // allMemos 로드 전에는 prevCount(이전 방문 저장값)로 즉각 표시
+  const totalMemos = allMemos?.length ?? prevCount
 
   // 홈 전용 경량 쿼리 — 최근 5개만 (count 없음, 단일 요청)
   const { data: homeMemos } = useQuery<HomeMemos>({
