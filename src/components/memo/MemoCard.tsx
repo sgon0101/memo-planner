@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw, FolderInput, Folder, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -54,14 +54,15 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [menuOpen, setMenuOpen] = useState(false)
   const [lockModal, setLockModal] = useState<'lock' | 'unlock' | null>(null)
   const [showFolderPicker, setShowFolderPicker] = useState(false)
-  const [imgSrc, setImgSrc] = useState(memo.thumbnailUrl ?? null)
+  const [imgSrc, setImgSrc] = useState<string | null>(memo.thumbnailUrl ?? null)
   const [imgVisible, setImgVisible] = useState(false)
-
-  // React Query가 새 데이터를 가져오면 imgSrc 동기화 (마이그레이션·수정 반영)
-  useEffect(() => {
+  const prevThumbRef = useRef(memo.thumbnailUrl)
+  // thumbnailUrl 변경 시 render-time에 즉시 동기화 — useEffect(2사이클)보다 1사이클 절약
+  if (prevThumbRef.current !== memo.thumbnailUrl) {
+    prevThumbRef.current = memo.thumbnailUrl
     setImgSrc(memo.thumbnailUrl ?? null)
     setImgVisible(false)
-  }, [memo.thumbnailUrl])
+  }
   const cardRef = useRef<HTMLDivElement>(null)
 
   function handleDragStart(e: React.DragEvent) {

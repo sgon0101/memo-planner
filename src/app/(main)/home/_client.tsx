@@ -1,16 +1,46 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
-import { useMemos } from '@/hooks/useMemos'
 import HomeClient from '@/components/home/HomeClient'
 
 const HOME_STALE = 5 * 60 * 1000
-const LS_COUNT_KEY = 'home-memo-count'
+
+// 홈 전용 메모 캐시 (count + 최근 5개) — 전체 memo fetch 없이 경량 쿼리
+const LS_HOME_MEMOS_KEY = 'home-memos-cache'
+const LS_HOME_MEMOS_TS_KEY = 'home-memos-cache-ts'
 const LS_STATS_KEY = 'home-stats-cache'
 const LS_STATS_TS_KEY = 'home-stats-cache-ts'
+
+interface HomeMemos {
+  totalMemos: number
+  recentMemos: Array<{
+    id: string
+    title: string
+    contentText: string
+    updatedAt: string
+    isStarred: boolean
+    isPinned: boolean
+  }>
+}
+
+function readHomeMemoCache(): HomeMemos | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const v = localStorage.getItem(LS_HOME_MEMOS_KEY)
+    return v ? (JSON.parse(v) as HomeMemos) : undefined
+  } catch { return undefined }
+}
+
+function readHomeMemoTs(): number {
+  if (typeof window === 'undefined') return 0
+  try {
+    const v = localStorage.getItem(LS_HOME_MEMOS_TS_KEY)
+    return v ? parseInt(v, 10) : 0
+  } catch { return 0 }
+}
 
 function readStatsCache() {
   if (typeof window === 'undefined') return undefined
@@ -29,38 +59,46 @@ function readStatsCacheTs(): number {
 }
 
 export default function HomePageClient() {
-  const { memos, isLoading, isFetching } = useMemos(undefined)
-  const memosReady = !isLoading && !(isFetching && memos.length === 0)
-
-  // localStorage에서 이전 세션의 메모 수 즉시 읽기
-  // → 새로고침·새 탭에서도 스켈레톤 없이 바로 숫자 표시
-  const [cachedCount] = useState<number | undefined>(() => {
-    if (typeof window === 'undefined') return undefined
-    const v = localStorage.getItem(LS_COUNT_KEY)
-    return v !== null ? Number(v) : undefined
+  // 홈 전용 경량 쿼리 — 전체 메모 fetch 없이 count + 최근 5개만 병렬 요청
+  const { data: homeMemos } = useQuery<HomeMemos>({
+    queryKey: ['home-memos'],
+    queryFn: async (): Promise<HomeMemos> => {
+      const supabase = createClient()
+      const [{ count }, { data: recent }] = await Promise.all([
+        supabase
+          .from('memos')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_deleted', false),
+        supabase
+          .from('memos')
+          .select('id, title, content_text, updated_at, is_starred, is_pinned')
+          .eq('is_deleted', false)
+          .order('updated_at', { ascending: false })
+          .limit(5),
+      ])
+      return {
+        totalMemos: count ?? 0,
+        recentMemos: (recent ?? []).map((m) => ({
+          id: m.id as string,
+          title: (m.title as string | null) ?? '',
+          contentText: (m.content_text as string | null) ?? '',
+          updatedAt: m.updated_at as string,
+          isStarred: (m.is_starred as boolean | null) ?? false,
+          isPinned: (m.is_pinned as boolean | null) ?? false,
+        })),
+      }
+    },
+    staleTime: 2 * 60 * 1000,
+    initialData: readHomeMemoCache,
+    initialDataUpdatedAt: readHomeMemoTs,
   })
 
-  // 최신 데이터 로드 완료 시 localStorage 갱신
   useEffect(() => {
-    if (memosReady) localStorage.setItem(LS_COUNT_KEY, String(memos.length))
-  }, [memosReady, memos.length])
-
-  // 실제 데이터 준비되면 실제값, 아직이면 localStorage 캐시값 (없으면 undefined → 스켈레톤)
-  const totalMemos = memosReady ? memos.length : cachedCount
-  const recentMemos = useMemo(() => {
-    if (!memosReady) return undefined
-    return [...memos]
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 5)
-      .map((m) => ({
-        id: m.id,
-        title: m.title,
-        contentText: m.contentText,
-        updatedAt: m.updatedAt,
-        isStarred: m.isStarred,
-        isPinned: m.isPinned,
-      }))
-  }, [memos, memosReady])
+    if (homeMemos) {
+      localStorage.setItem(LS_HOME_MEMOS_KEY, JSON.stringify(homeMemos))
+      localStorage.setItem(LS_HOME_MEMOS_TS_KEY, String(Date.now()))
+    }
+  }, [homeMemos])
 
   // 사용자 이메일 — Supabase 클라이언트 세션에서 즉각 (로컬 토큰)
   const { data: userEmail = '' } = useQuery({
@@ -125,7 +163,6 @@ export default function HomePageClient() {
     initialDataUpdatedAt: readStatsCacheTs,
   })
 
-  // stats 갱신 시 localStorage 저장
   useEffect(() => {
     if (stats) {
       localStorage.setItem(LS_STATS_KEY, JSON.stringify(stats))
@@ -136,9 +173,9 @@ export default function HomePageClient() {
   return (
     <HomeClient
       userEmail={userEmail}
-      totalMemos={totalMemos}
+      totalMemos={homeMemos?.totalMemos}
       completedPlans={stats?.completedPlans}
-      recentMemos={recentMemos}
+      recentMemos={homeMemos?.recentMemos}
       weekPlans={stats?.weekPlans ?? []}
     />
   )
