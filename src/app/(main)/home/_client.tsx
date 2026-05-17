@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
+import { memoKeys, LIST_COLS, toMemo } from '@/hooks/useMemos'
 import HomeClient from '@/components/home/HomeClient'
 
 const HOME_STALE = 5 * 60 * 1000
@@ -59,6 +60,27 @@ function readStatsCacheTs(): number {
 }
 
 export default function HomePageClient() {
+  const queryClient = useQueryClient()
+
+  // 메모 탭 캐시 백그라운드 사전 로딩 — 홈 렌더 후 실행되므로 display 차단 없음
+  // staleTime 이내 데이터가 있으면 자동으로 건너뜀
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: memoKeys.all(),
+      queryFn: async () => {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('memos')
+          .select(LIST_COLS)
+          .eq('is_deleted', false)
+          .order('is_pinned', { ascending: false })
+          .order('updated_at', { ascending: false })
+        return (data ?? []).map(toMemo)
+      },
+      staleTime: 5 * 60 * 1000,
+    })
+  }, [queryClient])
+
   // 홈 전용 경량 쿼리 — 전체 메모 fetch 없이 count + 최근 5개만 병렬 요청
   const { data: homeMemos } = useQuery<HomeMemos>({
     queryKey: ['home-memos'],

@@ -1,5 +1,10 @@
+import dynamic from 'next/dynamic'
 import FolderPanel from '@/components/memo/FolderPanel'
-import MemoList from '@/components/memo/MemoList'
+import { MemoListSkeleton } from '@/components/ui/Skeleton'
+
+const MemoList = dynamic(() => import('@/components/memo/MemoList'), {
+  loading: () => <MemoListSkeleton />,
+})
 
 export default function MemoPage() {
   return (
