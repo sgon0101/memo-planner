@@ -26,7 +26,11 @@ export function MemoListPrefetch() {
         },
         staleTime: 5 * 60 * 1000,
       })
-      .then(writeLocalCache)
+      .then((memos) => {
+        writeLocalCache(memos)
+        // 홈 총메모수 즉각 표시용 — 별도 키에 개수만 저장
+        try { if (memos.length > 0) localStorage.setItem('memos-total-count', String(memos.length)) } catch {}
+      })
       .catch(() => {})
   }, [queryClient])
 
