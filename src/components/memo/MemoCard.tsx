@@ -243,8 +243,18 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               }}
               onLoad={() => setImgVisible(true)}
               onError={() => {
-                // 로드 실패 시 이미지 숨김
-                setImgSrc(null)
+                // 기존 DB에 md_/thumb_ URL이 저장된 메모를 위한 fallback
+                // md_ 실패 → thumb_ 시도 → 원본 시도 → 숨김
+                if (imgSrc?.includes('/md_')) {
+                  setImgSrc(imgSrc.replace('/md_', '/thumb_'))
+                  setImgVisible(false)
+                } else if (imgSrc?.includes('/thumb_')) {
+                  const original = imgSrc.replace(/\/thumb_([^/]+\.webp)$/, '/$1')
+                  setImgSrc(original !== imgSrc ? original : null)
+                  setImgVisible(false)
+                } else {
+                  setImgSrc(null)
+                }
               }}
             />
           </div>
