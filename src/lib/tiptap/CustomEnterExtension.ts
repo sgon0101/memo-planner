@@ -21,6 +21,17 @@ export const CustomEnterExtension = Extension.create({
         // 선택 영역이 있거나 paragraph 외 노드면 기본 핸들러에 위임
         if (!empty || $from.parent.type !== state.schema.nodes.paragraph) return false
 
+        // listItem / taskItem 내부 paragraph → 기본 핸들러에 위임
+        // (Tiptap 기본 동작: 새 목록 항목 생성)
+        // 구조: bulletList > listItem > paragraph  ($from.node(-1) = listItem)
+        if ($from.depth >= 2) {
+          const parentNode = $from.node($from.depth - 1)
+          if (
+            parentNode.type.name === 'listItem' ||
+            parentNode.type.name === 'taskItem'
+          ) return false
+        }
+
         // 빈 paragraph에서 Enter → 기본 핸들러(새 문단 생성)에 위임
         if ($from.parent.content.size === 0) return false
 
