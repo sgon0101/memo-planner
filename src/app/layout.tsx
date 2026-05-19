@@ -51,6 +51,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={`${notoSansKR.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+      <head>
+        {/* Supabase API 서버에 대한 TCP+TLS 연결을 HTML 파싱 시점부터 미리 시작 */}
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+      </head>
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
         {children}
