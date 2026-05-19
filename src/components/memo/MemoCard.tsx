@@ -11,12 +11,13 @@ import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
-// thumbnail_url이 md_(960w)일 때만 srcset 생성 — 3개 변형이 모두 R2에 존재함을 보장
+// thumb_(480w)를 srcset에서 제거 — PC에서 저화질 이미지가 선택되는 경로 차단
+// 1x DPR(PC/태블릿): sizes=960px → 960w(md_) 선택
+// 2x DPR(Retina): sizes=960px×2=1920px → 1920w(원본) 선택
 function toSrcSet(url: string | null): string | undefined {
   if (!url?.includes('/md_')) return undefined
-  const sm   = url.replace('/md_', '/thumb_')
   const full = url.replace(/\/md_([^/]+\.webp)$/, '/$1')
-  return `${sm} 480w, ${url} 960w, ${full} 1920w`
+  return `${url} 960w, ${full} 1920w`
 }
 
 function extractTagsFromText(text: string): string[] {

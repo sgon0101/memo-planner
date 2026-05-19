@@ -67,3 +67,23 @@ export function extractFirstImage(content: Record<string, unknown>): string | nu
   }
   return traverse(content)
 }
+
+// 업로드 시 저장된 srcMd(960px) 속성을 직접 추출
+// toMediumUrl보다 우선 — NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL 환경변수 불필요
+export function extractFirstImageMedium(content: Record<string, unknown>): string | null {
+  function traverse(node: Record<string, unknown>): string | null {
+    if (node.type === 'image' && typeof node.attrs === 'object') {
+      const srcMd = (node.attrs as Record<string, unknown>)?.srcMd
+      if (typeof srcMd === 'string' && srcMd.includes('/md_')) return srcMd
+    }
+    const children = node.content as Record<string, unknown>[] | undefined
+    if (children) {
+      for (const child of children) {
+        const found = traverse(child)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  return traverse(content)
+}

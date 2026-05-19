@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useFolders } from '@/hooks/useFolders'
-import { extractFirstImage, toThumbnailUrl, toMediumUrl } from '@/lib/memos/shared'
+import { extractFirstImage, extractFirstImageMedium, toThumbnailUrl, toMediumUrl } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -180,10 +180,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
         const firstImageUrl = extractFirstImage(content)
-        // md_(960w) → thumb_(480w) → 원본 순으로 fallback
-        // 카드 그리드 2열(~700px)에서도 업스케일 없이 선명하게 표시
+        // 1순위: Tiptap에 저장된 srcMd 속성(업로드 시 설정, 환경변수 불필요)
+        // 2순위: toMediumUrl(NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL 필요)
+        // 3순위: 원본 URL 그대로
         const thumbnailUrl = firstImageUrl
-          ? (toMediumUrl(firstImageUrl) ?? toThumbnailUrl(firstImageUrl) ?? firstImageUrl)
+          ? (extractFirstImageMedium(content) ?? toMediumUrl(firstImageUrl) ?? firstImageUrl)
           : null
         await supabase.from('memos').update({
           title: titleRef.current,
