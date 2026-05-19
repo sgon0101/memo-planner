@@ -241,7 +241,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               src={thumbnail}
               srcSet={thumbSrcSet}
               sizes={thumbSrcSet
-                ? '(max-width: 640px) 100vw, (max-width: 1024px) calc(50vw - 10rem), calc(33vw - 6rem)'
+                ? '(max-width: 640px) 50vw, 960px'
                 : undefined}
               alt=""
               className={cn(
