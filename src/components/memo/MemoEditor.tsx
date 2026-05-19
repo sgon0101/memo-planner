@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { useFolders } from '@/hooks/useFolders'
-import { extractFirstImage, extractFirstImageMedium, toThumbnailUrl, toMediumUrl } from '@/lib/memos/shared'
+import { extractFirstImage } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
 import VersionHistory from './VersionHistory'
@@ -180,11 +180,10 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const tags = extractTags(text)
         const updatedAt = new Date().toISOString()
         const firstImageUrl = extractFirstImage(content)
-        // 1순위: Tiptap에 저장된 srcMd 속성(업로드 시 설정, 환경변수 불필요)
-        // 2순위: toMediumUrl(NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL 필요)
-        // 3순위: 원본 URL 그대로
-        const thumbnailUrl = firstImageUrl
-          ? (extractFirstImageMedium(content) ?? toMediumUrl(firstImageUrl) ?? firstImageUrl)
+        // 원본 R2 URL을 그대로 저장 — 변환 없이 최고 화질 보장
+        // base64 fallback(업로드 실패 시)은 DB에 저장하지 않음
+        const thumbnailUrl = (firstImageUrl && !firstImageUrl.startsWith('data:'))
+          ? firstImageUrl
           : null
         await supabase.from('memos').update({
           title: titleRef.current,
