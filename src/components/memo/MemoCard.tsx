@@ -11,14 +11,6 @@ import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
 import type { Memo } from '@/types'
 
-// thumb_(480w)를 srcset에서 제거 — PC에서 저화질 이미지가 선택되는 경로 차단
-// 1x DPR(PC/태블릿): sizes=960px → 960w(md_) 선택
-// 2x DPR(Retina): sizes=960px×2=1920px → 1920w(원본) 선택
-function toSrcSet(url: string | null): string | undefined {
-  if (!url?.includes('/md_')) return undefined
-  const full = url.replace(/\/md_([^/]+\.webp)$/, '/$1')
-  return `${url} 960w, ${full} 1920w`
-}
 
 function extractTagsFromText(text: string): string[] {
   if (!text) return []
@@ -200,7 +192,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   }
 
   const thumbnail = !memo.isLocked ? imgSrc : null
-  const thumbSrcSet = toSrcSet(imgSrc)
 
   return (
     <>
@@ -240,10 +231,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={thumbnail}
-              srcSet={thumbSrcSet}
-              sizes={thumbSrcSet
-                ? '(max-width: 640px) 50vw, 960px'
-                : undefined}
               alt=""
               className={cn(
                 'w-full h-full object-cover',
