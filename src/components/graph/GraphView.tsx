@@ -614,27 +614,38 @@ export default function GraphView() {
       : (mx - dragStartRef.current.x) ** 2 + (my - dragStartRef.current.y) ** 2 < 25
 
     if (isClick) {
-      if (selectedNodeId) {
-        // 선택 중일 때 첫 탭은 무조건 해제 (메모 이동·새 노드 활성화 없음)
+      const clickedNode = dragNodeRef.current ?? hitNode(mx, my)
+
+      if (search.trim()) {
+        // 검색 중: 노드 클릭 → 해당 메모로 즉시 이동 (검색 상태 유지)
+        //           빈 공간 클릭 → 검색 초기화
+        if (clickedNode?.type === 'memo') {
+          router.push(`/memo/${clickedNode.id}?from=graph`)
+        } else if (!clickedNode) {
+          handleSearch('')
+          setSelectedNode(null)
+          setSelectedTagPanel(null)
+        }
+      } else if (selectedNodeId) {
+        // 검색 없음 + 선택 중: 첫 탭은 선택 해제
         setSelectedNode(null)
         setSelectedTagPanel(null)
       } else {
-        // 선택 없는 상태에서 노드 탭 → 활성화
-        const n = dragNodeRef.current ?? hitNode(mx, my)
-        if (n) {
-          setSelectedNode(n.id)
-          if (n.type === 'memo') {
+        // 검색 없음 + 선택 없음: 노드 활성화
+        if (clickedNode) {
+          setSelectedNode(clickedNode.id)
+          if (clickedNode.type === 'memo') {
             setSelectedTagPanel(null)
-            router.push(`/memo/${n.id}?from=graph`)
-          } else if (n.type === 'tag') {
-            const tagNodeId = n.id
+            router.push(`/memo/${clickedNode.id}?from=graph`)
+          } else if (clickedNode.type === 'tag') {
+            const tagNodeId = clickedNode.id
             const sNodes = simRef.current?.nodes() ?? []
             const sLinks = (simRef.current?.force('link') as d3.ForceLink<GraphNode, GraphLink>)?.links() ?? []
             const tagMemos = sNodes.filter((node) =>
               node.type === 'memo' &&
               sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
             )
-            setSelectedTagPanel({ tag: n.label.replace(/^#/, ''), memos: tagMemos })
+            setSelectedTagPanel({ tag: clickedNode.label.replace(/^#/, ''), memos: tagMemos })
           } else {
             setSelectedTagPanel(null)
           }
@@ -902,6 +913,7 @@ export default function GraphView() {
                 if (e.key === 'Escape') handleSearch('')
               }}
               placeholder="제목·본문 검색..."
+              autoComplete="off"
               className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
             />
           </div>
