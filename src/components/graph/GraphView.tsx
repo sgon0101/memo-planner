@@ -497,15 +497,21 @@ export default function GraphView() {
   function animateTo(n: GraphNode) {
     if (n.x == null) return
     setSelectedNode(n.id)
-    const targetX = size.w / 2 - n.x * transformRef.current.k
-    const targetY = size.h / 2 - n.y! * transformRef.current.k
+    // 실제 렌더 크기로 중심 계산 (size state의 stale closure 방지)
+    const w = containerRef.current?.clientWidth ?? size.w
+    const h = containerRef.current?.clientHeight ?? size.h
+    const targetX = w / 2 - n.x * transformRef.current.k
+    const targetY = h / 2 - n.y! * transformRef.current.k
+    const startX = transformRef.current.x
+    const startY = transformRef.current.y
     let frame = 0
+    const FRAMES = 30
     const go = () => {
       frame++
-      const t = Math.min(frame / 25, 1)
-      const ease = 1 - (1 - t) ** 3
-      transformRef.current.x += (targetX - transformRef.current.x) * ease * 0.25
-      transformRef.current.y += (targetY - transformRef.current.y) * ease * 0.25
+      const t = Math.min(frame / FRAMES, 1)
+      const ease = 1 - (1 - t) ** 3  // cubic ease-out: t=1이면 ease=1 → 목표 지점 정확히 도달
+      transformRef.current.x = startX + (targetX - startX) * ease
+      transformRef.current.y = startY + (targetY - startY) * ease
       draw()
       if (t < 1) requestAnimationFrame(go)
     }
@@ -914,6 +920,9 @@ export default function GraphView() {
               }}
               placeholder="제목·본문 검색..."
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
             />
           </div>
