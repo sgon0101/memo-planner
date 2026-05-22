@@ -512,7 +512,7 @@ export default function GraphView() {
       const ease = 1 - (1 - t) ** 3  // cubic ease-out: t=1이면 ease=1 → 목표 지점 정확히 도달
       transformRef.current.x = startX + (targetX - startX) * ease
       transformRef.current.y = startY + (targetY - startY) * ease
-      draw()
+      drawRef.current()  // draw() 직접 호출 시 selectedNodeId 반영 전 OLD 클로저 사용 → drawRef로 교체
       if (t < 1) requestAnimationFrame(go)
     }
     requestAnimationFrame(go)
