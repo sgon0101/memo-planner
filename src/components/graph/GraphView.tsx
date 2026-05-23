@@ -51,6 +51,30 @@ function getLabelOpacity(zoom: number): number {
   return (zoom - FADE_START) / (FADE_END - FADE_START)
 }
 
+// 레이아웃 캐시 — 옵시디언 방식: 수렴 후 위치 저장, 재방문 시 즉시 복원
+const LAYOUT_CACHE_KEY        = 'graph-layout-v1'
+const LAYOUT_CACHE_FILTER_KEY = 'graph-layout-filter-v1'
+
+function saveLayout(nodes: GraphNode[], folderFilter: string | null) {
+  try {
+    const positions = nodes
+      .filter(n => n.x != null && n.y != null)
+      .map(n => ({ id: n.id, x: Math.round(n.x!), y: Math.round(n.y!) }))
+    sessionStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify(positions))
+    sessionStorage.setItem(LAYOUT_CACHE_FILTER_KEY, folderFilter ?? '')
+  } catch { /* 저장 실패 무시 */ }
+}
+
+function loadLayout(folderFilter: string | null): Map<string, { x: number; y: number }> | null {
+  try {
+    const cached       = sessionStorage.getItem(LAYOUT_CACHE_KEY)
+    const cachedFilter = sessionStorage.getItem(LAYOUT_CACHE_FILTER_KEY)
+    if (!cached || cachedFilter !== (folderFilter ?? '')) return null
+    const positions = JSON.parse(cached) as { id: string; x: number; y: number }[]
+    return new Map(positions.map(p => [p.id, { x: p.x, y: p.y }]))
+  } catch { return null }
+}
+
 export default function GraphView() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -317,12 +341,14 @@ export default function GraphView() {
       if (sim.alpha() > sim.alphaMin()) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
-        for (const n of sim.nodes()) {
+        const finalNodes = sim.nodes()
+        for (const n of finalNodes) {
           if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
             n.fx = n.x
             n.fy = n.y
           }
         }
+        saveLayout(finalNodes, settingsRef.current.folderFilter)
         setSimStatus('sleeping')
         rafRef.current = null
       }
@@ -372,7 +398,12 @@ export default function GraphView() {
     const oldHeight = oldMaxY - oldMinY
     const hasValidOldArea = validOldCount > 10 && oldWidth > 100 && oldHeight > 100
 
+    // 1순위: 레이아웃 캐시 로드 (첫 진입 시만)
+    const layoutCache = isFirst ? loadLayout(settingsRef.current.folderFilter) : null
+    const maxLC = nodes.reduce((m, n) => Math.max(m, n.linkCount), 0) || 1
     let hasNewNodes = false
+    let newNodeCount = 0
+    let cacheHitCount = 0
 
     for (const n of nodes) {
       const old = oldNodesById.get(n.id)
@@ -384,39 +415,53 @@ export default function GraphView() {
         n.fx = old.fx
         n.fy = old.fy
       } else {
-        if (isFirst) {
-          // 첫 진입 또는 시뮬레이션 빈 상태: 화면 가득 직사각형 분산
-          n.x = cx + (Math.random() - 0.5) * actualW * 0.9
-          n.y = cy + (Math.random() - 0.5) * actualH * 0.9
-        } else if (hasValidOldArea) {
+        newNodeCount++
+        const cached = layoutCache?.get(n.id)
+        if (cached) {
+          // 1순위: 캐시에서 위치 복원
+          n.x = cached.x; n.y = cached.y; n.vx = 0; n.vy = 0; n.fx = null; n.fy = null
+          cacheHitCount++
+        } else if (!isFirst && hasValidOldArea) {
           // 토글 켜기: 기존 노드 영역 안에 균등 분산 (자연스러운 등장)
           n.x = oldMinX + oldWidth  * 0.05 + Math.random() * oldWidth  * 0.9
           n.y = oldMinY + oldHeight * 0.05 + Math.random() * oldHeight * 0.9
+          hasNewNodes = true
         } else {
-          // fallback: 기존 영역 부족 시 화면 가득 분산
-          n.x = cx + (Math.random() - 0.5) * actualW * 0.85
-          n.y = cy + (Math.random() - 0.5) * actualH * 0.85
+          // 2순위: linkCount 기반 스마트 초기 배치 (연결 많을수록 중앙 근처)
+          const ratio = n.linkCount / maxLC
+          const safeR  = Math.min(actualW, actualH) * 0.42
+          const r = safeR * (0.1 + (1 - ratio) * 0.9)
+          const angle = Math.random() * Math.PI * 2
+          n.x = cx + r * Math.cos(angle)
+          n.y = cy + r * Math.sin(angle)
+          hasNewNodes = true
         }
-        hasNewNodes = true
       }
     }
 
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
 
-    // forceCenter 일시 약화 (분산 배치된 노드를 중앙으로 끌어당기지 않도록)
     const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
     const normalCenterStrength = toCenterStrength(settingsRef.current.centerTension)
 
     if (isFirst) {
-      // 첫 진입 또는 시뮬레이션 빈 상태: 강하게
-      centerForce?.strength(0.001)
-      sim.alpha(1).restart()
       isFirstNodesUpdateRef.current = false
-      setTimeout(() => {
-        const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
-        cf?.strength(toCenterStrength(settingsRef.current.centerTension))
-      }, 800)
+      const allCached = newNodeCount > 0 && cacheHitCount === newNodeCount
+
+      if (allCached) {
+        // 1순위 완전 캐시 복원: 아주 약하게만 (미세 조정)
+        centerForce?.strength(normalCenterStrength)
+        sim.alpha(0.08).restart()
+      } else {
+        // 캐시 없음 또는 새 노드 혼합: 스마트 배치 후 시뮬레이션
+        centerForce?.strength(0.04)  // 화면 밖 이탈 방지
+        sim.alpha(1).restart()
+        setTimeout(() => {
+          const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
+          cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+        }, 600)
+      }
     } else if (hasNewNodes) {
       // 기존 노드 + 새 노드 추가 (진짜 토글 켜기)
       centerForce?.strength(normalCenterStrength * 0.1)
@@ -440,12 +485,14 @@ export default function GraphView() {
         if (sim.alpha() > sim.alphaMin()) {
           rafRef.current = requestAnimationFrame(tick)
         } else {
-          for (const n of sim.nodes()) {
+          const finalNodes = sim.nodes()
+          for (const n of finalNodes) {
             if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
               n.fx = n.x
               n.fy = n.y
             }
           }
+          saveLayout(finalNodes, settingsRef.current.folderFilter)
           setSimStatus('sleeping')
           rafRef.current = null
         }
@@ -847,6 +894,12 @@ export default function GraphView() {
 
     // 1. 슬라이더/토글/필터 모두 기본값으로
     resetSettings()
+
+    // 레이아웃 캐시 삭제 (리셋이므로 새로 배치)
+    try {
+      sessionStorage.removeItem(LAYOUT_CACHE_KEY)
+      sessionStorage.removeItem(LAYOUT_CACHE_FILTER_KEY)
+    } catch { /* 무시 */ }
 
     // 2. 줌/팬 리셋
     transformRef.current = { x: 0, y: 0, k: 1 }
