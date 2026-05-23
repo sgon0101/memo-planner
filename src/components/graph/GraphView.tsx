@@ -104,6 +104,7 @@ export default function GraphView() {
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
   const canvasDragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+  const prevPhysicsRef = useRef({ centerTension: 3, repulsion: 4, linkDistance: 5 })
   const [size, setSize] = useState({ w: 800, h: 600 })
 
   const { nodes, links, settings, selectedNodeId, setSelectedNode, setHighlightNode, resetSettings } = useGraphStore()
@@ -510,30 +511,45 @@ export default function GraphView() {
     const sim = simRef.current
     if (!sim) return
 
-    // 노드 무게중심을 forceCenter 목표 좌표에 맞춤 → 방향 편향 제거
-    // forceCenter는 매 tick마다 (무게중심 - 목표) * strength 만큼 전체를 이동시킨다.
-    // 무게중심 ≠ forceCenter일 때 이 벡터가 방향 편향을 만들므로, 미리 평행이동해 0으로 만든다.
-    const simNodes = sim.nodes()
-    if (simNodes.length > 0) {
-      let sumX = 0, sumY = 0, count = 0
-      for (const n of simNodes) {
-        if (n.x != null && n.y != null) { sumX += n.x; sumY += n.y; count++ }
-      }
-      if (count > 0) {
-        const cf = sim.force('center') as d3.ForceCenter<GraphNode> | undefined
-        const fcx = cf?.x() ?? size.w / 2
-        const fcy = cf?.y() ?? size.h / 2
-        const dx = fcx - sumX / count
-        const dy = fcy - sumY / count
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          const k = transformRef.current.k
-          for (const n of simNodes) {
-            if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
-            if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
+    // 슬라이더가 실제로 변경된 경우에만 무게중심 정렬 수행
+    // (초기 마운트·리사이즈로 인한 실행은 제외 → 초기 중앙 배치 방해 방지)
+    const prev = prevPhysicsRef.current
+    const sliderChanged =
+      prev.centerTension !== settings.centerTension ||
+      prev.repulsion     !== settings.repulsion     ||
+      prev.linkDistance  !== settings.linkDistance
+    prevPhysicsRef.current = {
+      centerTension: settings.centerTension,
+      repulsion:     settings.repulsion,
+      linkDistance:  settings.linkDistance,
+    }
+
+    if (sliderChanged) {
+      // forceCenter는 매 tick마다 (무게중심 - 목표) × strength 만큼 전체에 속도를 추가한다.
+      // 무게중심 ≠ forceCenter 위치이면 이 벡터가 방향 편향을 만들므로
+      // force 변경 전에 평행이동으로 무게중심을 forceCenter에 정렬한다.
+      const simNodes = sim.nodes()
+      if (simNodes.length > 0) {
+        let sumX = 0, sumY = 0, count = 0
+        for (const n of simNodes) {
+          if (n.x != null && n.y != null) { sumX += n.x; sumY += n.y; count++ }
+        }
+        if (count > 0) {
+          const cf = sim.force('center') as d3.ForceCenter<GraphNode> | undefined
+          const fcx = cf?.x() ?? size.w / 2
+          const fcy = cf?.y() ?? size.h / 2
+          const dx = fcx - sumX / count
+          const dy = fcy - sumY / count
+          if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+            const k = transformRef.current.k
+            for (const n of simNodes) {
+              if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
+              if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
+            }
+            // 캔버스 transform 역보정 → 화면에서 노드가 튀지 않도록 유지
+            transformRef.current.x -= dx * k
+            transformRef.current.y -= dy * k
           }
-          // 캔버스 transform 역보정 → 화면에서 노드가 튀지 않도록 유지
-          transformRef.current.x -= dx * k
-          transformRef.current.y -= dy * k
         }
       }
     }
