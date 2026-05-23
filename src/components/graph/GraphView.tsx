@@ -509,6 +509,29 @@ export default function GraphView() {
   useEffect(() => {
     const sim = simRef.current
     if (!sim) return
+
+    // 노드 무게중심을 뷰포트 중심으로 이동 → 반발력/링크거리 변경 시 방향 편향 제거
+    const simNodes = sim.nodes()
+    if (simNodes.length > 0) {
+      let sumX = 0, sumY = 0, count = 0
+      for (const n of simNodes) {
+        if (n.x != null && n.y != null) { sumX += n.x; sumY += n.y; count++ }
+      }
+      if (count > 0) {
+        const w = containerRef.current?.clientWidth  || size.w
+        const h = containerRef.current?.clientHeight || size.h
+        const { x: tx, y: ty, k } = transformRef.current
+        const vpCX = (w / 2 - tx) / k
+        const vpCY = (h / 2 - ty) / k
+        const dx = vpCX - sumX / count
+        const dy = vpCY - sumY / count
+        for (const n of simNodes) {
+          if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
+          if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
+        }
+      }
+    }
+
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
       ?.distance(toDistance(settings.linkDistance))
     ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
@@ -516,7 +539,7 @@ export default function GraphView() {
     ;(sim.force('center') as d3.ForceCenter<GraphNode>)
       ?.strength(toCenterStrength(settings.centerTension))
     wake(0.4)
-  }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake])
+  }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake, size.w, size.h])
 
   // nodeSize: forceCollide 반경 갱신 + 시뮬레이션 재활성화
   useEffect(() => {
