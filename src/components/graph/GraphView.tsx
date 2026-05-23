@@ -305,7 +305,7 @@ export default function GraphView() {
         .strength(0.3))
       .force('charge', d3.forceManyBody<GraphNode>().strength(toCharge(s.repulsion)))
       .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(toCenterStrength(s.centerTension)))
-      .force('collision', d3.forceCollide<GraphNode>(20))
+      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) + 4))
       .alphaDecay(0.1)       // 0.04 → 0.1 (약 1초 안정화)
       .velocityDecay(0.55)
       .alphaMin(0.001)
@@ -471,8 +471,19 @@ export default function GraphView() {
     wake(0.4)
   }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake])
 
-  // 시각 전용 변경 → 재그리기만
-  useEffect(() => { draw() }, [settings.nodeSize, settings.linkWidth, draw])
+  // nodeSize: forceCollide 반경 갱신 + 시뮬레이션 재활성화
+  useEffect(() => {
+    const sim = simRef.current
+    if (sim) {
+      ;(sim.force('collision') as d3.ForceCollide<GraphNode>)
+        ?.radius((n) => nodeRadius(n, settings.nodeSize, isMobileRef.current) + 4)
+      wake(0.3)
+    }
+    draw()
+  }, [settings.nodeSize, draw, wake])
+
+  // linkWidth: 시각 전용 → 재그리기만
+  useEffect(() => { draw() }, [settings.linkWidth, draw])
 
   // 노드 선택 변경 시 흐림 효과 즉시 그리기 (위키는 페이지 이동/패널 없어 자동 draw 필요)
   useEffect(() => { drawRef.current() }, [selectedNodeId])
