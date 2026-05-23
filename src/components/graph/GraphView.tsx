@@ -510,7 +510,9 @@ export default function GraphView() {
     const sim = simRef.current
     if (!sim) return
 
-    // 노드 무게중심을 뷰포트 중심으로 이동 → 반발력/링크거리 변경 시 방향 편향 제거
+    // 노드 무게중심을 forceCenter 목표 좌표에 맞춤 → 방향 편향 제거
+    // forceCenter는 매 tick마다 (무게중심 - 목표) * strength 만큼 전체를 이동시킨다.
+    // 무게중심 ≠ forceCenter일 때 이 벡터가 방향 편향을 만들므로, 미리 평행이동해 0으로 만든다.
     const simNodes = sim.nodes()
     if (simNodes.length > 0) {
       let sumX = 0, sumY = 0, count = 0
@@ -518,16 +520,20 @@ export default function GraphView() {
         if (n.x != null && n.y != null) { sumX += n.x; sumY += n.y; count++ }
       }
       if (count > 0) {
-        const w = containerRef.current?.clientWidth  || size.w
-        const h = containerRef.current?.clientHeight || size.h
-        const { x: tx, y: ty, k } = transformRef.current
-        const vpCX = (w / 2 - tx) / k
-        const vpCY = (h / 2 - ty) / k
-        const dx = vpCX - sumX / count
-        const dy = vpCY - sumY / count
-        for (const n of simNodes) {
-          if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
-          if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
+        const cf = sim.force('center') as d3.ForceCenter<GraphNode> | undefined
+        const fcx = cf?.x() ?? size.w / 2
+        const fcy = cf?.y() ?? size.h / 2
+        const dx = fcx - sumX / count
+        const dy = fcy - sumY / count
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          const k = transformRef.current.k
+          for (const n of simNodes) {
+            if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
+            if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
+          }
+          // 캔버스 transform 역보정 → 화면에서 노드가 튀지 않도록 유지
+          transformRef.current.x -= dx * k
+          transformRef.current.y -= dy * k
         }
       }
     }
