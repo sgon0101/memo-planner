@@ -232,6 +232,21 @@ export function describeRRule(rruleStr: string | null, baseDate: string | null):
   return label
 }
 
+/** 기존 RRULE 문자열에 UNTIL을 설정/교체. COUNT는 함께 제거됨 (서로 배타). */
+export function setUntilOnRRule(rruleStr: string, untilDate: string): string {
+  const u = untilDate.replace(/-/g, '')  // 20260730
+  // 기존 UNTIL/COUNT 제거 (앞 세미콜론까지 같이)
+  let cleaned = rruleStr
+    .replace(/;UNTIL=[^;]+/gi, '')
+    .replace(/;COUNT=[^;]+/gi, '')
+    .replace(/^UNTIL=[^;]+;?/i, '')
+    .replace(/^COUNT=[^;]+;?/i, '')
+  // 새 UNTIL 부착
+  if (cleaned.endsWith(';')) cleaned = cleaned.slice(0, -1)
+  cleaned += `;UNTIL=${u}T235959Z`
+  return cleaned
+}
+
 function weekdayKo(baseDate: string): string {
   const d = new Date(`${baseDate}T12:00:00Z`)
   return WEEKDAY_KO_SHORT[d.getUTCDay()]
