@@ -8,8 +8,13 @@ import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
   Download, Upload, FileText, FileJson, HardDrive,
-  CloudUpload,
+  CloudUpload, Bell, BellOff,
 } from 'lucide-react'
+import {
+  isNotifSupported, getNotifPermission, isNotifEnabled, setNotifEnabled,
+  getNotifLead, setNotifLead, requestPermissionIfNeeded,
+  refreshScheduled, showTestNotification, LEAD_OPTIONS,
+} from '@/lib/notifications/scheduler'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
 
@@ -43,6 +48,58 @@ export default function SettingsPage() {
   const [backupPeriod, setBackupPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
   const [nextBackupAt, setNextBackupAt] = useState<string | null>(null)
   const [autoBackupLoading, setAutoBackupLoading] = useState(false)
+
+  // 알림 상태
+  const [notifEnabled, setNotifEnabledState] = useState(false)
+  const [notifPerm, setNotifPerm] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default')
+  const [notifLead, setNotifLeadState] = useState(10)
+
+  useEffect(() => {
+    if (!isNotifSupported()) {
+      setNotifPerm('unsupported')
+      return
+    }
+    setNotifEnabledState(isNotifEnabled())
+    setNotifPerm(getNotifPermission() as 'default' | 'granted' | 'denied')
+    setNotifLeadState(getNotifLead())
+  }, [])
+
+  async function handleToggleNotif() {
+    const next = !notifEnabled
+    if (next) {
+      // 권한 요청
+      const perm = await requestPermissionIfNeeded()
+      setNotifPerm(perm as 'default' | 'granted' | 'denied' | 'unsupported')
+      if (perm !== 'granted') {
+        if (perm === 'denied') {
+          setToast({ type: 'error', message: '브라우저 설정에서 알림 권한을 허용해주세요.' })
+        }
+        return
+      }
+    }
+    setNotifEnabled(next)
+    setNotifEnabledState(next)
+    if (next) {
+      await refreshScheduled()
+      setToast({ type: 'success', message: '알림이 활성화되었어요. 다가오는 플랜을 알려드릴게요.' })
+    } else {
+      setToast({ type: 'success', message: '알림이 꺼졌습니다.' })
+    }
+  }
+
+  function handleChangeLead(min: number) {
+    setNotifLead(min)
+    setNotifLeadState(min)
+    if (notifEnabled) refreshScheduled().catch(() => {})
+  }
+
+  function handleTestNotif() {
+    if (showTestNotification()) {
+      setToast({ type: 'success', message: '테스트 알림을 보냈어요.' })
+    } else {
+      setToast({ type: 'error', message: '먼저 알림을 활성화해주세요.' })
+    }
+  }
 
   async function fetchBackupSettings() {
     try {
@@ -319,6 +376,69 @@ export default function SettingsPage() {
         >
           <Toggle enabled={darkMode} onChange={toggleDarkMode} />
         </SettingRow>
+      </Section>
+
+      {/* 알림 */}
+      <Section title="알림" icon={notifEnabled ? <Bell size={15} /> : <BellOff size={15} />}>
+        {notifPerm === 'unsupported' ? (
+          <div className="px-4 py-4 bg-white dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400">
+            이 브라우저는 알림 기능을 지원하지 않습니다.
+          </div>
+        ) : (
+          <>
+            <SettingRow
+              label="플랜 시작 알림"
+              description={
+                notifPerm === 'denied'
+                  ? '브라우저 알림이 차단되어 있어요. 주소창 자물쇠 아이콘에서 허용해주세요.'
+                  : notifPerm === 'granted'
+                    ? notifEnabled
+                      ? '다가오는 플랜의 시작 시간을 알려드려요 (탭이 열려있을 때만)'
+                      : '활성화하면 시간 지정 플랜의 시작 시간을 알려드려요'
+                    : '활성화하면 브라우저 알림 권한을 요청합니다'
+              }
+            >
+              <Toggle
+                enabled={notifEnabled}
+                onChange={handleToggleNotif}
+              />
+            </SettingRow>
+            {notifEnabled && notifPerm === 'granted' && (
+              <>
+                <div className="px-4 py-3.5 bg-white dark:bg-gray-900 space-y-3">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">알림 시점</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {LEAD_OPTIONS.map((min) => (
+                      <button
+                        key={min}
+                        onClick={() => handleChangeLead(min)}
+                        className={cn(
+                          'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                          notifLead === min
+                            ? 'bg-violet-600 text-white border-violet-600'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+                        )}
+                      >
+                        {min === 0 ? '정시' : `${min}분 전`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <SettingRow label="테스트 알림" description="알림이 정상적으로 표시되는지 확인합니다">
+                  <button
+                    onClick={handleTestNotif}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <Bell size={12} /> 보내기
+                  </button>
+                </SettingRow>
+              </>
+            )}
+            <div className="px-4 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/30">
+              ℹ️ 현재 단계는 브라우저 탭이 열려있을 때만 동작해요. 백그라운드 알림은 다음 업데이트에서 지원될 예정입니다.
+            </div>
+          </>
+        )}
       </Section>
 
       {/* Google Calendar */}

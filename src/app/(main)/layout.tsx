@@ -5,6 +5,8 @@ import Header from '@/components/layout/Header'
 import MobileNav from '@/components/layout/MobileNav'
 import DarkModeProvider from '@/components/layout/DarkModeProvider'
 import SidebarSpacer from '@/components/layout/SidebarSpacer'
+import KeyboardShortcuts from '@/components/layout/KeyboardShortcuts'
+import NotificationScheduler from '@/components/layout/NotificationScheduler'
 import QueryProvider from '@/components/providers/QueryProvider'
 import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
 
@@ -34,6 +36,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         </div>
 
         <MobileNav />
+        <KeyboardShortcuts />
+        <NotificationScheduler />
       </div>
     </DarkModeProvider>
     </QueryProvider>
