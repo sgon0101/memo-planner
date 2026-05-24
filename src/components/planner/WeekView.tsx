@@ -68,6 +68,20 @@ export default function WeekView({
     if (scrollRef.current) scrollRef.current.scrollTop = 8 * HOUR_H - 20
   }, [])
 
+  // drag 중 페이지/그리드 스크롤 잠금 (모바일에서 위·아래 움직임이 스크롤로 새는 것 차단)
+  useEffect(() => {
+    if (!drag) return
+    const scrollEl = scrollRef.current
+    const oldBodyOverflow = document.body.style.overflow
+    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
+    document.body.style.overflow = 'hidden'
+    if (scrollEl) scrollEl.style.overflowY = 'hidden'
+    return () => {
+      document.body.style.overflow = oldBodyOverflow
+      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
+    }
+  }, [drag])
+
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   function getTimedPlans(dayStr: string): Plan[] {
@@ -327,7 +341,10 @@ export default function WeekView({
                 {/* 플랜 블록 */}
                 {timedPlans.map((plan) => {
                   const draggable = isDraggable(plan)
-                  const isThisDragging = drag?.planId === plan.id && drag.moved
+                  // 시각 효과는 plan이 '원래 컬럼'에 그려질 때만 적용.
+                  // store에서 plan.date가 새 날짜로 바뀌면 plan이 다른 컬럼으로 이동 → isInOriginalColumn=false → translateX/displayTop 적용 X
+                  const isInOriginalColumn = drag?.originalDate === dayStr
+                  const isThisDragging = drag?.planId === plan.id && drag.moved && isInOriginalColumn
                   const top = planTop(plan.startTime!)
                   const height = planHeight(plan.startTime!, plan.endTime!)
                   let displayTop = top
