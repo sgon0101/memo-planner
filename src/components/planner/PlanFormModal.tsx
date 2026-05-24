@@ -78,6 +78,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     }
     return defaultRecurrence()
   })
+  // interval 입력은 문자열로 따로 관리 — 사용자가 지우고 재입력 가능하게
+  const [intervalStr, setIntervalStr] = useState(() => String(recurrence.custom?.interval ?? 1))
   const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
@@ -540,8 +542,21 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                         type="number"
                         min={1}
                         max={365}
-                        value={recurrence.custom.interval}
-                        onChange={(e) => setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: Math.max(1, parseInt(e.target.value, 10) || 1) } }))}
+                        value={intervalStr}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          setIntervalStr(raw)
+                          const n = parseInt(raw, 10)
+                          if (!isNaN(n) && n >= 1) {
+                            setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: Math.min(365, n) } }))
+                          }
+                        }}
+                        onBlur={() => {
+                          const n = parseInt(intervalStr, 10)
+                          const valid = isNaN(n) || n < 1 ? 1 : Math.min(365, n)
+                          setIntervalStr(String(valid))
+                          setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: valid } }))
+                        }}
                         className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center"
                       />
                       <span className="text-[11px] text-gray-500">
