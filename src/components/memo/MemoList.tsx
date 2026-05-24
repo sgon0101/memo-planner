@@ -831,6 +831,11 @@ export default function MemoList() {
             ref={searchInputRef}
             data-shortcut="search"
             type="text"
+            name="memo-search"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setSearchFocused(true)}
