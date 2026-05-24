@@ -41,6 +41,7 @@ interface PlanRow {
   repeat_type: 'daily' | 'weekly' | 'monthly' | null
   repeat_end_date: string | null
   rrule_str: string | null
+  notify_enabled: boolean | null
   dday_target: string | null
   google_event_id: string | null
   linked_memo_ids: string[]
@@ -65,6 +66,7 @@ function rowToPlan(r: PlanRow): Plan {
     repeatType: r.repeat_type ?? null,
     repeatEndDate: r.repeat_end_date ?? null,
     rruleStr: r.rrule_str ?? null,
+    notifyEnabled: r.notify_enabled ?? false,
     ddayTarget: r.dday_target ?? null,
     googleEventId: r.google_event_id ?? null,
     linkedMemoIds: r.linked_memo_ids ?? [],
@@ -98,12 +100,13 @@ export async function GET(request: NextRequest) {
   const dateBeforeStr = dayBefore.toISOString().slice(0, 10)
   const dateAfterStr = dayAfter.toISOString().slice(0, 10)
 
-  // 1) 시간 지정 + (단일일 또는 반복) 플랜 후보 조회
+  // 1) 시간 지정 + (단일일 또는 반복) 플랜 후보 조회 — notify_enabled=true만
   const { data: rows, error: rowsErr } = await supabase
     .from('plans')
     .select('*')
     .eq('is_all_day', false)
     .eq('is_completed', false)
+    .eq('notify_enabled', true)
     .not('start_time', 'is', null)
     .or(`and(date.gte.${dateBeforeStr},date.lte.${dateAfterStr}),repeat_type.not.is.null,rrule_str.not.is.null`)
     .returns<PlanRow[]>()

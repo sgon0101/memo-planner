@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Target } from 'lucide-react'
+import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Target, Bell, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
@@ -81,6 +81,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   // 숫자 입력은 문자열로 따로 관리 — 사용자가 지우고 재입력 가능하게
   const [intervalStr,  setIntervalStr]  = useState(() => String(recurrence.custom?.interval ?? 1))
   const [endCountStr,  setEndCountStr]  = useState(() => String(recurrence.endCount ?? 1))
+  // 기본 OFF (opt-in) — 알림 받고 싶은 플랜만 사용자가 명시적으로 켜기
+  const [notifyEnabled, setNotifyEnabled] = useState<boolean>(plan?.notifyEnabled ?? false)
   const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
@@ -262,6 +264,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         rruleStr,
         repeatType: null,
         repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
+        notifyEnabled,
         ddayTarget,
         linkedMemoIds,
       }
@@ -437,6 +440,30 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                 />
               </span>
               종일
+            </button>
+
+            {/* 알림 받기 토글 — 시간 지정 플랜에 의미 있음 (종일도 일단 토글 노출, 09:00 기본) */}
+            <button
+              type="button"
+              onClick={() => setNotifyEnabled((v) => !v)}
+              title="이 플랜의 알림을 받을지 설정"
+              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+            >
+              <span
+                className={cn(
+                  'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
+                  notifyEnabled ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute h-3 w-3 rounded-full bg-white shadow transition-transform',
+                    notifyEnabled ? 'translate-x-3.5' : 'translate-x-0.5',
+                  )}
+                />
+              </span>
+              {notifyEnabled ? <Bell size={11} className="text-violet-500" /> : <BellOff size={11} />}
+              알림
             </button>
           </div>
 
