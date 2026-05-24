@@ -7,6 +7,7 @@ import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
 
@@ -272,9 +273,13 @@ function PlanItem({
         )}
 
         {/* 반복 */}
-        {plan.repeatType && (
-          <p className="text-xs text-violet-400 mt-0.5 ml-3.5">
-            {repeatLabel[plan.repeatType]}
+        {(plan.rruleStr || plan.repeatType) && (
+          <p className="text-xs text-violet-400 mt-0.5 ml-3.5 truncate">
+            {plan.rruleStr
+              ? describeRRule(plan.rruleStr, plan.date ?? plan.startDate)
+              : plan.repeatType
+                ? repeatLabel[plan.repeatType]
+                : ''}
           </p>
         )}
       </div>

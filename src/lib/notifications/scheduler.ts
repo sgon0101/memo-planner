@@ -98,7 +98,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
   const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
     supabase.from('plans').select('*').eq('user_id', user.id).gte('date', todayStr).lte('date', tomorrowStr),
     supabase.from('plans').select('*').eq('user_id', user.id).not('start_date', 'is', null).lte('start_date', tomorrowStr).gte('end_date', todayStr),
-    supabase.from('plans').select('*').eq('user_id', user.id).not('repeat_type', 'is', null),
+    supabase.from('plans').select('*').eq('user_id', user.id).or('repeat_type.not.is.null,rrule_str.not.is.null'),
   ])
 
   const rows = [...(single ?? []), ...(range ?? []), ...(recurring ?? [])]
@@ -120,6 +120,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
     isCompleted: row.is_completed ?? false,
     repeatType: row.repeat_type ?? null,
     repeatEndDate: row.repeat_end_date ?? null,
+    rruleStr: row.rrule_str ?? null,
     ddayTarget: row.dday_target ?? null,
     googleEventId: row.google_event_id ?? null,
     linkedMemoIds: row.linked_memo_ids ?? [],
