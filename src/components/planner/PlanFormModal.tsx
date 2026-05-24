@@ -340,6 +340,11 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               onBlur={() => setTimeout(() => setShowTemplateDropdown(false), 150)}
               placeholder="플랜 제목"
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-lpignore="true"
               className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             />
             <button
@@ -487,6 +492,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="플랜에 대한 설명을 입력하세요..."
                   rows={3}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-lpignore="true"
                   className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-violet-500 resize-none"
                 />
               </div>
@@ -546,6 +555,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                         value={intervalStr}
                         autoComplete="off"
                         autoCorrect="off"
+                        inputMode="numeric"
                         onChange={(e) => {
                           const raw = e.target.value
                           setIntervalStr(raw)
@@ -635,6 +645,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           value={endCountStr}
                           autoComplete="off"
                           autoCorrect="off"
+                          inputMode="numeric"
                           onChange={(e) => {
                             const raw = e.target.value
                             setEndCountStr(raw)
