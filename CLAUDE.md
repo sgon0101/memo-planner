@@ -107,6 +107,9 @@ memo-planner/
 │   │   └── lock.ts                 # AES-256 암호화/복호화
 │   ├── notifications/
 │   │   └── scheduler.ts            # 브라우저 Notification + setTimeout 스케줄러
+│   ├── planner/
+│   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
+│   │   └── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기
@@ -329,7 +332,9 @@ export interface Plan {
   endTime: string | null;
   isAllDay: boolean;
   isCompleted: boolean;
-  repeatType: 'daily' | 'weekly' | 'monthly' | null;
+  repeatType: 'daily' | 'weekly' | 'monthly' | null;  // legacy
+  repeatEndDate: string | null;
+  rruleStr: string | null;                              // RFC 5545 RRULE (신규, 우선)
   ddayTarget: string | null;
   googleEventId: string | null;
   linkedMemoIds: string[];
@@ -535,6 +540,9 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-04-24 | 버그 수정 | 태그 드롭다운 overflow clip — TagDropdown을 overflow-x-auto 영역 밖으로 분리(CSS spec: overflow-x:auto → 양 축 clipping context 생성으로 absolute 패널 잘림) | 100% |
 | 2026-04-24 | AI 2트랙 구현 | Track1 대화 히스토리(chat_rooms/chat_messages, 자동 요약) + Track2 user_profile(분석/편집/제안카드/이력) + AIChatLayout + UserProfile 탭 + 5개 API 신규 | 100% |
 | 2026-04-24 | 버그 수정 | 폴더 삭제 시 메모 소프트 삭제(휴지통 이동) + 삭제 전 메모 수 경고 모달 + 메인 필터바 날짜 탭 제거(타임라인 뷰 전용) | 100% |
+| 2026-05-24 | UX 패키지 1차 | (#3 죽은 코드 정리, #4 검색 #태그/[[위키/공백 AND, #2 D-day 활성화, #5 모바일 캘린더 스와이프, #1 글로벌 단축키, #6-A 브라우저 알림) — dev push + main merge + Vercel 배포 완료 | 100% |
+| 2026-05-24 | UX 패키지 2차 | 모바일 PlanPanel swipe-down 닫기(그립 핸들 + 드래그 따라옴 + spring back) + 메모 검색 placeholder 반응형 + 도움 칩(#/[[ prefix 자동 입력) + 데스크탑 `/` 키 뱃지 | 100% |
+| 2026-05-24 | #8 RRULE 확장 | `rrule@^2.8.1` 도입 · `plans.rrule_str` 컬럼 추가 · `expandRecurringPlans`를 rrule 기반(UTC 정오 dtstart, DST 안전) + legacy `repeat_type` fallback로 교체 · `lib/planner/rrulePresets.ts`(preset 9개/parser/한국어 라벨러) · PlanFormModal 빠른 프리셋 9종(없음/매일/평일/매주/격주/매월같은날/매월같은요일/매년/맞춤) + 맞춤 빌더(단위·간격·요일 다중) + 종료조건(끝없음/N회/날짜) · PlanDetailPanel·PlanPanel 한국어 RRULE 라벨 표시 · usePlanner/notifications 쿼리도 `rrule_str.not.is.null` OR 추가 | 100% |
 
 ---
 
@@ -565,6 +573,10 @@ CREATE INDEX idx_uploaded_files_user ON uploaded_files(user_id);
 -- AI 2트랙 (supabase/chat_rooms_profile.sql 전체 실행)
 -- chat_rooms, chat_messages, user_profiles, profile_history 테이블
 -- 파일 위치: supabase/chat_rooms_profile.sql
+
+-- RFC 5545 RRULE 컬럼 (#8 반복 옵션 확장)
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS rrule_str text;
+-- 기존 repeat_type/repeat_end_date는 그대로 유지 (legacy fallback)
 ```
 
 ---
