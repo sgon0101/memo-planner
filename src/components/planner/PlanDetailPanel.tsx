@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText, Target } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemoStore } from '@/store/memoStore'
+import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import type { Plan } from '@/types'
@@ -30,6 +31,20 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
   const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [showDeleteMenu, setShowDeleteMenu] = useState(false)
 
+  // store 직접 구독 — props로 받은 plan은 stale일 수 있음
+  const recurringCompletions = usePlannerStore((s) => s.recurringCompletions)
+  const storedPlans = usePlannerStore((s) => s.plans)
+
+  // isCompleted는 store 기반으로 항상 최신값 사용
+  const isCompleted = useMemo(() => {
+    if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
+      const key = `${plan.originalPlanId}_${plan.date}`
+      return recurringCompletions[key] === true
+    }
+    const stored = storedPlans.find((p) => p.id === plan.id)
+    return stored ? stored.isCompleted : plan.isCompleted
+  }, [plan, storedPlans, recurringCompletions])
+
   const linkedMemos = (plan.linkedMemoIds ?? [])
     .map((id) => memos.find((m) => m.id === id))
     .filter(Boolean)
@@ -51,10 +66,11 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
   }
 
   function handleToggleComplete() {
+    // isCompleted (fresh) 기준으로 토글 — props plan.isCompleted는 stale 가능
     if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
-      toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
+      toggleRecurringComplete(plan.originalPlanId, plan.date, isCompleted).catch(console.error)
     } else {
-      toggleComplete(plan.id, plan.isCompleted).catch(console.error)
+      toggleComplete(plan.id, isCompleted).catch(console.error)
     }
   }
 
@@ -68,7 +84,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-2.5">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} />
-            <h2 className={cn('text-sm font-semibold text-gray-900 dark:text-white', plan.isCompleted && 'line-through text-gray-400')}>
+            <h2 className={cn('text-sm font-semibold text-gray-900 dark:text-white', isCompleted && 'line-through text-gray-400')}>
               {plan.title}
             </h2>
           </div>
@@ -83,13 +99,13 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
             onClick={handleToggleComplete}
             className={cn(
               'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 border',
-              plan.isCompleted
+              isCompleted
                 ? 'bg-emerald-500 dark:bg-emerald-600 border-emerald-500 dark:border-emerald-600 text-white shadow-sm hover:bg-emerald-600 dark:hover:bg-emerald-700'
                 : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             )}
           >
-            <Check size={13} className={plan.isCompleted ? 'text-white' : 'text-gray-400'} />
-            {plan.isCompleted ? '완료됨 (다시 누르면 해제)' : '완료 표시'}
+            <Check size={13} className={isCompleted ? 'text-white' : 'text-gray-400'} />
+            {isCompleted ? '완료됨 (다시 누르면 해제)' : '완료 표시'}
           </button>
         </div>
 
