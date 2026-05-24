@@ -22,6 +22,7 @@ export function toPlan(row: Record<string, unknown>): Plan {
     isCompleted: (row.is_completed as boolean) ?? false,
     repeatType: (row.repeat_type as 'daily' | 'weekly' | 'monthly' | null) ?? null,
     repeatEndDate: (row.repeat_end_date as string) ?? null,
+    rruleStr: (row.rrule_str as string) ?? null,
     ddayTarget: (row.dday_target as string) ?? null,
     googleEventId: (row.google_event_id as string) ?? null,
     linkedMemoIds: (row.linked_memo_ids as string[]) ?? [],
@@ -51,8 +52,8 @@ export function usePlanner() {
     const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
       supabase.from('plans').select('*').not('date', 'is', null).gte('date', calStart).lte('date', calEnd),
       supabase.from('plans').select('*').not('start_date', 'is', null).lte('start_date', calEnd).gte('end_date', calStart),
-      // 반복 플랜: repeat_type이 있는 것 (날짜 범위 제한 없이, repeat_end_date 고려)
-      supabase.from('plans').select('*').not('repeat_type', 'is', null),
+      // 반복 플랜: 신규 rrule_str 또는 legacy repeat_type 둘 중 하나라도 있는 것
+      supabase.from('plans').select('*').or('repeat_type.not.is.null,rrule_str.not.is.null'),
     ])
 
     const all = [...(single ?? []), ...(range ?? []), ...(recurring ?? [])]
@@ -97,6 +98,7 @@ export function usePlanner() {
         is_all_day: data.isAllDay ?? true,
         repeat_type: data.repeatType ?? null,
         repeat_end_date: data.repeatEndDate ?? null,
+        rrule_str: data.rruleStr ?? null,
         dday_target: data.ddayTarget ?? null,
         linked_memo_ids: data.linkedMemoIds ?? [],
       })
@@ -122,6 +124,7 @@ export function usePlanner() {
       is_completed: data.isCompleted,
       repeat_type: data.repeatType,
       repeat_end_date: data.repeatEndDate,
+      rrule_str: data.rruleStr,
       dday_target: data.ddayTarget,
     }
     if (data.linkedMemoIds !== undefined) patch.linked_memo_ids = data.linkedMemoIds

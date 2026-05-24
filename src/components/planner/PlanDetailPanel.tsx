@@ -8,6 +8,7 @@ import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemoStore } from '@/store/memoStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { describeRRule } from '@/lib/planner/rrulePresets'
 import type { Plan } from '@/types'
 
 interface PlanDetailPanelProps {
@@ -153,13 +154,21 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
           })()}
 
           {/* 반복 */}
-          {(plan.repeatType || plan.isRecurringInstance) && (
-            <div className="flex items-center gap-3">
-              <RepeatIcon size={15} className="text-violet-400 flex-shrink-0" />
-              <span className="text-sm text-violet-600 dark:text-violet-400">
-                {plan.repeatType ? REPEAT_LABEL[plan.repeatType] : '반복 일정'}
-                {plan.isRecurringInstance && <span className="ml-1.5 text-xs bg-violet-100 dark:bg-violet-950/30 text-violet-500 px-1.5 py-0.5 rounded">인스턴스</span>}
-              </span>
+          {(plan.rruleStr || plan.repeatType || plan.isRecurringInstance) && (
+            <div className="flex items-start gap-3">
+              <RepeatIcon size={15} className="text-violet-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-violet-600 dark:text-violet-400">
+                  {plan.rruleStr
+                    ? describeRRule(plan.rruleStr, plan.date ?? plan.startDate)
+                    : plan.repeatType
+                      ? REPEAT_LABEL[plan.repeatType]
+                      : '반복 일정'}
+                </span>
+                {plan.isRecurringInstance && (
+                  <span className="ml-1.5 text-xs bg-violet-100 dark:bg-violet-950/30 text-violet-500 px-1.5 py-0.5 rounded">인스턴스</span>
+                )}
+              </div>
             </div>
           )}
 

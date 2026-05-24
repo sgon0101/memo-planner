@@ -7,18 +7,33 @@ import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
 import { createClient } from '@/lib/supabase/client'
 import TimePicker from './TimePicker'
+import {
+  type RepeatPreset, type EndMode, type CustomFreq,
+  type RecurrenceSettings,
+  defaultRecurrence, buildRRule, parseRRule, ALL_BYDAY,
+} from '@/lib/planner/rrulePresets'
 import type { Plan, PlanTemplate } from '@/types'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
 ]
 
-const REPEAT_OPTIONS = [
-  { value: null,      label: '반복 없음' },
-  { value: 'daily',   label: '매일' },
-  { value: 'weekly',  label: '매주' },
-  { value: 'monthly', label: '매월' },
-] as const
+const PRESET_CHIPS: { value: RepeatPreset; label: string }[] = [
+  { value: 'none',          label: '반복 없음' },
+  { value: 'daily',         label: '매일' },
+  { value: 'weekdays',      label: '평일만' },
+  { value: 'weekly',        label: '매주 같은 요일' },
+  { value: 'biweekly',      label: '격주' },
+  { value: 'monthly-date',  label: '매월 같은 날' },
+  { value: 'monthly-day',   label: '매월 같은 요일' },
+  { value: 'yearly',        label: '매년' },
+  { value: 'custom',        label: '맞춤' },
+]
+
+const WEEKDAY_LABELS: { code: string; label: string }[] = [
+  { code: 'MO', label: '월' }, { code: 'TU', label: '화' }, { code: 'WE', label: '수' },
+  { code: 'TH', label: '목' }, { code: 'FR', label: '금' }, { code: 'SA', label: '토' }, { code: 'SU', label: '일' },
+]
 
 interface PlanFormModalProps {
   date: string
@@ -43,14 +58,33 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '09:00')
   const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? '10:00')
   const [isAllDay, setIsAllDay]       = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
-  const [repeatType, setRepeatType]   = useState<'daily' | 'weekly' | 'monthly' | null>(plan?.repeatType ?? null)
+  // 반복 설정 — RRULE 기반 (preset + 종료 조건 + 맞춤 옵션)
+  const [recurrence, setRecurrence] = useState<RecurrenceSettings>(() => {
+    const baseDate = plan?.date ?? plan?.startDate ?? date
+    if (plan?.rruleStr) {
+      return parseRRule(plan.rruleStr, baseDate)
+    }
+    // legacy repeat_type → preset 매핑
+    if (plan?.repeatType) {
+      const init = defaultRecurrence()
+      if (plan.repeatType === 'daily') init.preset = 'daily'
+      else if (plan.repeatType === 'weekly') init.preset = 'weekly'
+      else if (plan.repeatType === 'monthly') init.preset = 'monthly-date'
+      if (plan.repeatEndDate) {
+        init.endMode = 'until'
+        init.endUntil = plan.repeatEndDate
+      }
+      return init
+    }
+    return defaultRecurrence()
+  })
   const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.ddayTarget))
+  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.rruleStr || plan?.ddayTarget))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
@@ -209,6 +243,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     }
     setLoading(true)
     try {
+      const baseDate = isRange ? startDate : singleDate
+      const rruleStr = buildRRule(recurrence, baseDate)
       const data: Partial<Plan> = {
         title: title.trim(),
         description: description.trim(),
@@ -219,7 +255,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         endDate: isRange ? endDate : null,
         startTime: isAllDay ? null : (startTime || null),
         endTime: isAllDay ? null : (endTime || null),
-        repeatType,
+        // 새 데이터는 항상 RRULE 사용 — repeat_type은 null로 명시
+        rruleStr,
+        repeatType: null,
+        repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
         ddayTarget,
         linkedMemoIds,
       }
@@ -453,14 +492,14 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               <div>
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {REPEAT_OPTIONS.map((opt) => (
+                  {PRESET_CHIPS.map((opt) => (
                     <button
-                      key={String(opt.value)}
+                      key={opt.value}
                       type="button"
-                      onClick={() => setRepeatType(opt.value as typeof repeatType)}
+                      onClick={() => setRecurrence((r) => ({ ...r, preset: opt.value }))}
                       className={cn(
                         'px-2.5 py-1 text-xs rounded-lg border transition-colors',
-                        repeatType === opt.value
+                        recurrence.preset === opt.value
                           ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
                           : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
                       )}
@@ -469,6 +508,133 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     </button>
                   ))}
                 </div>
+
+                {/* 맞춤 빌더 — preset === 'custom'일 때만 */}
+                {recurrence.preset === 'custom' && (
+                  <div className="mt-3 p-3 rounded-lg border border-violet-200 dark:border-violet-900/50 bg-violet-50/30 dark:bg-violet-950/10 space-y-2.5">
+                    {/* 단위 */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">단위</span>
+                      <div className="flex gap-1">
+                        {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as CustomFreq[]).map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => setRecurrence((r) => ({ ...r, custom: { ...r.custom, freq: f } }))}
+                            className={cn(
+                              'px-2 py-0.5 text-[11px] rounded border transition-colors',
+                              recurrence.custom.freq === f
+                                ? 'border-violet-500 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500',
+                            )}
+                          >
+                            {({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[f]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* 간격 */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">간격</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={recurrence.custom.interval}
+                        onChange={(e) => setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: Math.max(1, parseInt(e.target.value, 10) || 1) } }))}
+                        className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center"
+                      />
+                      <span className="text-[11px] text-gray-500">
+                        {({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[recurrence.custom.freq]}마다
+                      </span>
+                    </div>
+                    {/* 요일 다중 — WEEKLY일 때만 */}
+                    {recurrence.custom.freq === 'WEEKLY' && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">요일</span>
+                        <div className="flex gap-1 flex-wrap">
+                          {WEEKDAY_LABELS.map((wd) => {
+                            const selected = recurrence.custom.byday.includes(wd.code)
+                            return (
+                              <button
+                                key={wd.code}
+                                type="button"
+                                onClick={() => setRecurrence((r) => ({
+                                  ...r,
+                                  custom: {
+                                    ...r.custom,
+                                    byday: selected
+                                      ? r.custom.byday.filter((b) => b !== wd.code)
+                                      : [...r.custom.byday, wd.code],
+                                  },
+                                }))}
+                                className={cn(
+                                  'w-6 h-6 text-[10px] rounded-full transition-colors',
+                                  selected
+                                    ? 'bg-violet-600 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700',
+                                )}
+                              >
+                                {wd.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 종료 조건 — 반복이 있는 경우만 */}
+                {recurrence.preset !== 'none' && (
+                  <div className="mt-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">종료</span>
+                      <div className="flex gap-1">
+                        {(['forever', 'count', 'until'] as EndMode[]).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setRecurrence((r) => ({ ...r, endMode: m }))}
+                            className={cn(
+                              'px-2 py-0.5 text-[11px] rounded border transition-colors',
+                              recurrence.endMode === m
+                                ? 'border-violet-500 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500',
+                            )}
+                          >
+                            {({ forever: '끝없음', count: '횟수', until: '날짜' } as const)[m]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {recurrence.endMode === 'count' && (
+                      <div className="flex items-center gap-2 pl-12">
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={recurrence.endCount}
+                          onChange={(e) => setRecurrence((r) => ({ ...r, endCount: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+                          className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center"
+                        />
+                        <span className="text-[11px] text-gray-500">회 반복 후 종료</span>
+                      </div>
+                    )}
+                    {recurrence.endMode === 'until' && (
+                      <div className="flex items-center gap-2 pl-12">
+                        <input
+                          type="date"
+                          value={recurrence.endUntil ?? ''}
+                          min={isRange ? startDate : singleDate}
+                          onChange={(e) => setRecurrence((r) => ({ ...r, endUntil: e.target.value || null }))}
+                          className="px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                        />
+                        <span className="text-[11px] text-gray-500">까지 반복</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* D-day */}

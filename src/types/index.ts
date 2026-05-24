@@ -47,6 +47,9 @@ export interface Plan {
   isCompleted: boolean
   repeatType: 'daily' | 'weekly' | 'monthly' | null
   repeatEndDate: string | null       // 반복 종료일
+  /** RFC 5545 RRULE 문자열 (예: "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2")
+   *  존재하면 repeatType보다 우선. legacy(repeatType) 호환을 위해 둘 다 유지. */
+  rruleStr: string | null
   ddayTarget: string | null
   googleEventId: string | null
   linkedMemoIds: string[]
