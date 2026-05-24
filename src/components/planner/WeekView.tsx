@@ -26,12 +26,10 @@ interface WeekViewProps {
 function planTop(startTime: string): number {
   return (timeToMinutes(startTime) / 60) * HOUR_H
 }
-
 function planHeight(startTime: string, endTime: string): number {
   const diff = timeToMinutes(endTime) - timeToMinutes(startTime)
   return Math.max((diff / 60) * HOUR_H, 20)
 }
-
 function isDraggable(p: Plan): boolean {
   return !p.isAllDay && !!p.startTime && !!p.endTime && !!p.date && !p.startDate && !p.isRecurringInstance
 }
@@ -57,30 +55,25 @@ export default function WeekView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const colsContainerRef = useRef<HTMLDivElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // long-press 시작점 (timer 취소 판단용) + drag 종료 직후 click 차단용
   const longPressStart = useRef<{ x: number; y: number } | null>(null)
   const justDragged = useRef(false)
+  // document listener 정리 + body/scroll overflow 복원을 한 번에 처리
+  const cleanupRef = useRef<(() => void) | null>(null)
+  // pointermove 핸들러가 항상 최신 drag state 접근 — ref로 우회 (closure stale 방지)
+  const dragRef = useRef<DragState | null>(null)
+  const plansRef = useRef<Plan[]>(plans)
   const { editPlan } = usePlanner()
 
   const [drag, setDrag] = useState<DragState | null>(null)
+  useEffect(() => { dragRef.current = drag }, [drag])
+  useEffect(() => { plansRef.current = plans }, [plans])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 8 * HOUR_H - 20
   }, [])
 
-  // drag 중 페이지/그리드 스크롤 잠금 (모바일에서 위·아래 움직임이 스크롤로 새는 것 차단)
-  useEffect(() => {
-    if (!drag) return
-    const scrollEl = scrollRef.current
-    const oldBodyOverflow = document.body.style.overflow
-    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
-    document.body.style.overflow = 'hidden'
-    if (scrollEl) scrollEl.style.overflowY = 'hidden'
-    return () => {
-      document.body.style.overflow = oldBodyOverflow
-      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
-    }
-  }, [drag])
+  // 언마운트 시 안전망 — drag 중에 컴포넌트 사라지면 cleanup
+  useEffect(() => () => { cleanupRef.current?.() }, [])
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
@@ -102,7 +95,64 @@ export default function WeekView({
     return (colsContainerRef.current.clientWidth - 56) / 7
   }
 
-  // startDrag — explicit params (e 비동기 사용 회피)
+  // ── document level drag handlers ─────────────────────
+  const onDocMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current
+    if (!d || d.pointerId !== e.pointerId) return
+    const dy = e.clientY - d.startClientY
+    const dx = e.clientX - d.startClientX
+    const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX || Math.abs(dx) > DRAG_THRESHOLD_PX
+    const deltaDays = Math.round(dx / d.colWidthPx)
+    setDrag({ ...d, deltaY: dy, deltaDays, moved })
+  }, [])
+
+  const onDocUp = useCallback(async (e: PointerEvent) => {
+    const d = dragRef.current
+    if (!d || d.pointerId !== e.pointerId) return
+    const plan = plansRef.current.find((p) => p.id === d.planId)
+
+    // listener + overflow 복원 (한 번만)
+    cleanupRef.current?.()
+    cleanupRef.current = null
+
+    if (!plan) { setDrag(null); return }
+
+    if (!d.moved) {
+      setDrag(null)
+      onEditPlan(plan)
+      return
+    }
+
+    // 새 시간/날짜 계산
+    justDragged.current = true
+    setTimeout(() => { justDragged.current = false }, 400)
+
+    const startMin = timeToMinutes(d.originalStartTime)
+    const endMin = timeToMinutes(d.originalEndTime)
+    const dur = endMin - startMin
+    const minutesDelta = snapMinutes(pxToMinutes(d.deltaY))
+    let newStart = startMin + minutesDelta
+    newStart = Math.max(0, Math.min(1440 - dur, newStart))
+    const newEnd = newStart + dur
+    const newStartTime = minutesToTime(newStart)
+    const newEndTime = minutesToTime(newEnd)
+    const newDate = d.deltaDays !== 0 ? addDaysToISO(d.originalDate, d.deltaDays) : d.originalDate
+
+    const changed = newStartTime !== d.originalStartTime
+        || newEndTime !== d.originalEndTime
+        || newDate !== d.originalDate
+
+    if (changed) {
+      try {
+        await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
+      } catch (err) {
+        console.error('drag editPlan 실패:', err)
+      }
+    }
+    setDrag(null)
+  }, [editPlan, onEditPlan])
+
+  // startDrag — explicit params, 즉시 document listener 부착
   const startDrag = useCallback((
     plan: Plan,
     pointerId: number,
@@ -110,9 +160,38 @@ export default function WeekView({
     clientY: number,
     target: HTMLElement,
   ) => {
-    // setPointerCapture + touchAction을 즉시 DOM에 적용 (React 렌더 대기하지 않음)
+    // setPointerCapture fallback (안 잡혀도 document listener가 잡음)
     try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
-    target.style.touchAction = 'none'  // 그 즉시 페이지 스크롤 차단
+    target.style.touchAction = 'none'
+
+    // body + 시간 그리드 스크롤 잠금
+    const oldBodyOverflow = document.body.style.overflow
+    const scrollEl = scrollRef.current
+    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
+    document.body.style.overflow = 'hidden'
+    if (scrollEl) scrollEl.style.overflowY = 'hidden'
+
+    // touch-action은 제스처 시작 시점에 확정되므로 나중에 변경해도 무효.
+    // non-passive touchmove에서 preventDefault()로 브라우저 스크롤을 강제 차단.
+    const preventTouchScroll = (e: TouchEvent) => { e.preventDefault() }
+    document.addEventListener('touchmove', preventTouchScroll, { passive: false })
+
+    // document level pointermove/up 리스너 — setPointerCapture 안 잡혀도 모든 이벤트 잡음
+    document.addEventListener('pointermove', onDocMove)
+    document.addEventListener('pointerup', onDocUp)
+    document.addEventListener('pointercancel', onDocUp)
+
+    cleanupRef.current = () => {
+      document.removeEventListener('touchmove', preventTouchScroll)
+      document.removeEventListener('pointermove', onDocMove)
+      document.removeEventListener('pointerup', onDocUp)
+      document.removeEventListener('pointercancel', onDocUp)
+      document.body.style.overflow = oldBodyOverflow
+      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
+      try { target.style.touchAction = '' } catch { /* ignore */ }
+      try { target.releasePointerCapture(pointerId) } catch { /* ignore */ }
+    }
+
     setDrag({
       planId: plan.id,
       pointerId,
@@ -126,7 +205,7 @@ export default function WeekView({
       moved: false,
       colWidthPx: measureColWidth(),
     })
-  }, [])
+  }, [onDocMove, onDocUp])
 
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
     if (!isDraggable(plan)) return
@@ -134,21 +213,20 @@ export default function WeekView({
     const { pointerId, clientX, clientY, pointerType } = e
     const target = e.currentTarget as HTMLElement
     if (pointerType === 'touch') {
-      // 모바일 — long-press 대기, 시작점 기억
       longPressStart.current = { x: clientX, y: clientY }
       longPressTimer.current = setTimeout(() => {
+        longPressTimer.current = null
         startDrag(plan, pointerId, clientX, clientY, target)
         longPressStart.current = null
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
     } else {
-      // 데스크탑 — 즉시 drag 준비
       startDrag(plan, pointerId, clientX, clientY, target)
     }
   }
 
-  function onPointerMove(e: React.PointerEvent) {
-    // long-press 대기 중 — 시작점에서 8px 이상 움직이면 취소 (스크롤 의도로 판단)
+  // long-press 대기 중에 손가락이 움직이면 timer 취소 (drag 시작 안 함)
+  function onPointerMoveBlock(e: React.PointerEvent) {
     if (longPressTimer.current && longPressStart.current && !drag) {
       const dx = e.clientX - longPressStart.current.x
       const dy = e.clientY - longPressStart.current.y
@@ -158,84 +236,18 @@ export default function WeekView({
         longPressStart.current = null
       }
     }
-    if (!drag || drag.pointerId !== e.pointerId) return
-
-    const dy = e.clientY - drag.startClientY
-    const dx = e.clientX - drag.startClientX
-    const moved = drag.moved || Math.abs(dy) > DRAG_THRESHOLD_PX || Math.abs(dx) > DRAG_THRESHOLD_PX
-    const deltaDays = Math.round(dx / drag.colWidthPx)
-    setDrag({ ...drag, deltaY: dy, deltaDays, moved })
   }
 
-  async function onPointerUp(e: React.PointerEvent, plan: Plan) {
+  // long-press 대기 중에 떼면 timer 취소 (drag 시작 안 됨, click도 별도)
+  function onPointerUpBlock() {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
       longPressStart.current = null
     }
-    if (!drag || drag.pointerId !== e.pointerId) return
-    const target = e.currentTarget as HTMLElement
-    try { target.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
-    // touchAction 복원 — 다음 렌더에서 React style이 덮어쓰지만 사이 frame 안전망
-    target.style.touchAction = ''
-
-    const wasMoved = drag.moved
-    const snapshot = drag
-
-    if (!wasMoved) {
-      // 단순 클릭 → 편집
-      setDrag(null)
-      onEditPlan(plan)
-      return
-    }
-
-    // drop — 새 시간/날짜 계산
-    justDragged.current = true
-    setTimeout(() => { justDragged.current = false }, 400)
-
-    const startMin = timeToMinutes(snapshot.originalStartTime)
-    const endMin = timeToMinutes(snapshot.originalEndTime)
-    const dur = endMin - startMin
-    const minutesDelta = snapMinutes(pxToMinutes(snapshot.deltaY))
-    let newStart = startMin + minutesDelta
-    newStart = Math.max(0, Math.min(1440 - dur, newStart))
-    const newEnd = newStart + dur
-    const newStartTime = minutesToTime(newStart)
-    const newEndTime = minutesToTime(newEnd)
-    const newDate = snapshot.deltaDays !== 0
-      ? addDaysToISO(snapshot.originalDate, snapshot.deltaDays)
-      : snapshot.originalDate
-
-    const changed = newStartTime !== snapshot.originalStartTime
-        || newEndTime !== snapshot.originalEndTime
-        || newDate !== snapshot.originalDate
-
-    if (changed) {
-      try {
-        // store가 업데이트된 후에 setDrag(null) — 깜빡임 방지
-        // (editPlan은 supabase update + zustand updatePlan을 모두 호출)
-        await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
-      } catch (err) {
-        console.error('drag editPlan 실패:', err)
-      }
-    }
-    setDrag(null)
   }
 
-  function onPointerCancel(e: React.PointerEvent) {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-      longPressStart.current = null
-    }
-    if (drag && drag.pointerId === e.pointerId) {
-      const target = e.currentTarget as HTMLElement
-      target.style.touchAction = ''
-      setDrag(null)
-    }
-  }
-
-  // 컬럼 클릭 시 새 플랜 — 단, drag 직후 일정 시간(400ms) 동안 차단
+  // 컬럼 클릭 시 새 플랜 — drag 직후 400ms 차단
   function handleColumnClick(dayStr: string) {
     if (justDragged.current) return
     onNewPlan(dayStr)
@@ -329,7 +341,6 @@ export default function WeekView({
                 )}
                 onClick={() => handleColumnClick(dayStr)}
               >
-                {/* 시간 줄 */}
                 {HOURS.map((h) => (
                   <div
                     key={h}
@@ -338,11 +349,8 @@ export default function WeekView({
                   />
                 ))}
 
-                {/* 플랜 블록 */}
                 {timedPlans.map((plan) => {
                   const draggable = isDraggable(plan)
-                  // 시각 효과는 plan이 '원래 컬럼'에 그려질 때만 적용.
-                  // store에서 plan.date가 새 날짜로 바뀌면 plan이 다른 컬럼으로 이동 → isInOriginalColumn=false → translateX/displayTop 적용 X
                   const isInOriginalColumn = drag?.originalDate === dayStr
                   const isThisDragging = drag?.planId === plan.id && drag.moved && isInOriginalColumn
                   const top = planTop(plan.startTime!)
@@ -375,14 +383,11 @@ export default function WeekView({
                         color: plan.color,
                         transform: isThisDragging ? `translateX(${translateX}px)` : undefined,
                         transition: isThisDragging ? 'none' : 'top 0.15s ease-out',
-                        // drag 시작 후엔 페이지 스크롤 차단, 평소엔 세로 스크롤 허용
                         touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
                       }}
                       onPointerDown={(e) => onPointerDown(e, plan)}
-                      onPointerMove={onPointerMove}
-                      onPointerUp={(e) => onPointerUp(e, plan)}
-                      onPointerCancel={onPointerCancel}
-                      // 컬럼 onClick으로 전파되어 새 플랜 모달이 뜨는 것 차단
+                      onPointerMove={onPointerMoveBlock}
+                      onPointerUp={onPointerUpBlock}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="font-medium truncate">{plan.title}</div>
