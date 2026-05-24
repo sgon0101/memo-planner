@@ -582,6 +582,34 @@ CREATE INDEX idx_uploaded_files_user ON uploaded_files(user_id);
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS rrule_str text;
 -- 기존 repeat_type/repeat_end_date는 그대로 유지 (legacy fallback)
 
+-- Web Push (#6-B — 백그라운드 알림)
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users NOT NULL,
+  endpoint text NOT NULL,
+  p256dh text NOT NULL,
+  auth text NOT NULL,
+  user_agent text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, endpoint)
+);
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "push_subs: 본인만" ON push_subscriptions FOR ALL USING (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS plan_notifications_sent (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users NOT NULL,
+  plan_id uuid NOT NULL,
+  plan_date date NOT NULL,
+  sent_at timestamptz DEFAULT now(),
+  UNIQUE(plan_id, plan_date)
+);
+ALTER TABLE plan_notifications_sent ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "notif_sent: 본인만" ON plan_notifications_sent FOR ALL USING (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_notif_sent_lookup ON plan_notifications_sent(user_id, plan_date);
+
 -- Postgres FTS (#9 — 메모 서버 검색)
 ALTER TABLE memos ADD COLUMN IF NOT EXISTS search_vec tsvector;
 

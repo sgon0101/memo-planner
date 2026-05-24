@@ -1,0 +1,42 @@
+name: Web Push 알림 발송 (5분 주기)
+
+# GitHub Actions로 매 5분마다 Vercel API를 호출하여 임박 플랜에 push 발송.
+# Vercel Hobby plan은 5분 단위 cron을 지원하지 않아 GitHub Actions로 대체.
+#
+# 필요한 GitHub Secrets (Repo → Settings → Secrets and variables → Actions):
+#   - CRON_SECRET   : .env.local과 Vercel 환경변수에 설정한 동일 값
+#   - WEAVE_URL     : (선택) 배포 URL. 미설정 시 기본 https://memo-planner.vercel.app
+#
+# 동작:
+#  - schedule cron 5분마다 (실제 발화는 GitHub 부하에 따라 5~15분 지연 가능 — 일반적으로 무시 수준)
+#  - workflow_dispatch 로 수동 트리거도 가능 (테스트용)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send push 호출
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          WEAVE_URL: ${{ secrets.WEAVE_URL }}
+        run: |
+          BASE="${WEAVE_URL:-https://memo-planner.vercel.app}"
+          echo "→ ${BASE}/api/cron/send-push"
+          # 실패해도 step exit 0으로 처리 (한 번 실패가 전체 schedule 중단시키지 않게)
+          # 실제 에러는 응답 body로 확인
+          HTTP_CODE=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/cron/send-push" || echo "000")
+          echo "HTTP ${HTTP_CODE}"
+          cat /tmp/resp.json || true
+          # 401/500은 실패로 처리하되 워크플로우는 계속 (다음 schedule이 또 시도)
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::warning::send-push returned ${HTTP_CODE}"
+          fi
