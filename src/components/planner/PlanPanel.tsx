@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -38,7 +38,24 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
 
   // 모바일 — 헤더(+ 그립)를 아래로 swipe 시 닫기
   const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null)
+  const gripRef = useRef<HTMLDivElement>(null)
   const [dragY, setDragY] = useState(0)  // 시각적 피드백용 따라오는 거리
+
+  // React synthetic 핸들러는 passive 모드라 preventDefault 불가 → 네이티브 리스너로 차단
+  // 아래로 수직 드래그일 때만 브라우저 pull-to-refresh를 막고, 나머지 제스처는 통과
+  useEffect(() => {
+    const el = gripRef.current
+    if (!el) return
+    const blockPullToRefresh = (e: TouchEvent) => {
+      if (!swipeStart.current || e.touches.length !== 1) return
+      const dy = e.touches[0].clientY - swipeStart.current.y
+      const dx = e.touches[0].clientX - swipeStart.current.x
+      if (dy > 0 && dy > Math.abs(dx)) e.preventDefault()
+    }
+    el.addEventListener('touchmove', blockPullToRefresh, { passive: false })
+    return () => el.removeEventListener('touchmove', blockPullToRefresh)
+  }, [])
+
   function onSwipeStart(e: React.TouchEvent) {
     if (e.touches.length !== 1) return
     const t = e.touches[0]
@@ -72,6 +89,7 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
     >
       {/* 모바일 — swipe-down 트리거 영역 (그립 + 헤더) */}
       <div
+        ref={gripRef}
         onTouchStart={onSwipeStart}
         onTouchMove={onSwipeMove}
         onTouchEnd={onSwipeEnd}
