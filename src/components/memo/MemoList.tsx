@@ -154,6 +154,20 @@ export default function MemoList() {
     })
   }
 
+  // 모든 태그 수집 (autocompleteItems보다 먼저 선언 필요)
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    memos.forEach((m) => m.tags?.forEach((t) => set.add(t)))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [memos])
+
+  // 모든 위키링크 수집
+  const allWikis = useMemo(() => {
+    const set = new Set<string>()
+    memos.forEach((m) => m.wikiLinks?.forEach((w) => set.add(w)))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [memos])
+
   // 검색창 자동완성 — # 입력 시 태그, [[ 입력 시 위키 후보 노출
   const [autocompleteIdx, setAutocompleteIdx] = useState(-1)
   const autocompleteItems = useMemo<{ type: 'tag' | 'wiki'; value: string }[]>(() => {
@@ -240,20 +254,6 @@ export default function MemoList() {
     : selectedFolderId
       ? folders.find((f) => f.id === selectedFolderId)?.name ?? '폴더'
       : '전체 메모'
-
-  // 모든 태그 수집
-  const allTags = useMemo(() => {
-    const set = new Set<string>()
-    memos.forEach((m) => m.tags?.forEach((t) => set.add(t)))
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [memos])
-
-  // 모든 위키링크 수집
-  const allWikis = useMemo(() => {
-    const set = new Set<string>()
-    memos.forEach((m) => m.wikiLinks?.forEach((w) => set.add(w)))
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [memos])
 
   // #9 — Postgres FTS 서버 검색 (debounce 300ms)
   const {
