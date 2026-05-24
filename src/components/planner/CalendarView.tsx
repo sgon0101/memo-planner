@@ -86,6 +86,49 @@ export default function CalendarView() {
     selectDate(today)
   }
 
+  // 이전/다음 — 헤더 버튼 + 모바일 스와이프 공용
+  function goPrev() {
+    if (viewMode === 'month') setCurrentMonth(subMonths(currentMonth, 1))
+    else if (viewMode === 'week') setCurrentWeek(subWeeks(currentWeek, 1))
+    else selectDate(format(subDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+  }
+  function goNext() {
+    if (viewMode === 'month') setCurrentMonth(addMonths(currentMonth, 1))
+    else if (viewMode === 'week') setCurrentWeek(addWeeks(currentWeek, 1))
+    else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+  }
+
+  // 모바일 좌우 스와이프 (월/주/일 네비게이션)
+  const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null)
+  const swipedRecently = useRef(false)
+  function onSwipeTouchStart(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return
+    const t = e.touches[0]
+    swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now() }
+  }
+  function onSwipeTouchEnd(e: React.TouchEvent) {
+    if (!swipeStart.current) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - swipeStart.current.x
+    const dy = t.clientY - swipeStart.current.y
+    const dt = Date.now() - swipeStart.current.t
+    swipeStart.current = null
+    // 가로 60px 이상 + 가로가 세로보다 1.5배 이상 우세 + 500ms 이내
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 500) {
+      swipedRecently.current = true
+      if (dx > 0) goPrev()
+      else goNext()
+      // 스와이프 직후의 click 한 번을 차단 (셀 selectDate 방지)
+      setTimeout(() => { swipedRecently.current = false }, 350)
+    }
+  }
+  function onSwipeClickCapture(e: React.MouseEvent) {
+    if (swipedRecently.current) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }
+
   // 달력에 표시할 날짜 배열 (6주 × 7일)
   const { weeks } = useMemo(() => {
     const monthStart = startOfMonth(currentMonth)
@@ -140,11 +183,7 @@ export default function CalendarView() {
         <div className="flex items-center justify-between px-3 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-0.5 sm:gap-2">
             <button
-              onClick={() => {
-                if (viewMode === 'month') setCurrentMonth(subMonths(currentMonth, 1))
-                else if (viewMode === 'week') setCurrentWeek(subWeeks(currentWeek, 1))
-                else selectDate(format(subDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
-              }}
+              onClick={goPrev}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
             >
               <ChevronLeft size={16} />
@@ -173,11 +212,7 @@ export default function CalendarView() {
             </h2>
 
             <button
-              onClick={() => {
-                if (viewMode === 'month') setCurrentMonth(addMonths(currentMonth, 1))
-                else if (viewMode === 'week') setCurrentWeek(addWeeks(currentWeek, 1))
-                else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
-              }}
+              onClick={goNext}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
             >
               <ChevronRight size={16} />
@@ -252,8 +287,13 @@ export default function CalendarView() {
           ))}
         </div>
 
-        {/* 달력 그리드 */}
-        <div className="flex-1 overflow-auto">
+        {/* 달력 그리드 (모바일 스와이프 핸들러 부착) */}
+        <div
+          className="flex-1 overflow-auto"
+          onTouchStart={onSwipeTouchStart}
+          onTouchEnd={onSwipeTouchEnd}
+          onClickCapture={onSwipeClickCapture}
+        >
           {viewMode === 'month' && weeks.map((week, wi) => {
             const rangePlans = getWeekRangePlans(week)
             const rangeSlotCount = rangePlans.reduce((m, r) => Math.max(m, r.slot + 1), 0)
