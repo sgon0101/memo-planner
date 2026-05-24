@@ -188,7 +188,8 @@ export default function HomePageClient() {
 
       return { completedPlans: completedPlans ?? 0, weekPlans }
     },
-    staleTime: HOME_STALE,
+    staleTime: 0,
+    refetchOnMount: 'always',
     initialData: readStatsCache,
     initialDataUpdatedAt: readStatsCacheTs,
   })
