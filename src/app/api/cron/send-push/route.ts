@@ -187,7 +187,6 @@ export async function GET(request: NextRequest) {
             .delete()
             .eq('user_id', userId)
             .eq('endpoint', sub.endpoint)
-            .catch(() => {})
           totalExpired++
         } else if (res.status === 'rejected') {
           errors.push(String(res.reason))
