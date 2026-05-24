@@ -123,6 +123,7 @@ export default function MemoList() {
   const [titleDir, setTitleDir] = useState<TitleDir>('asc')
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [activeWiki, setActiveWiki] = useState<string | null>(null)
 
   // 검색 input — 반응형 placeholder + 포커스 시 도움 칩
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -153,9 +154,71 @@ export default function MemoList() {
     })
   }
 
+  // 검색창 자동완성 — # 입력 시 태그, [[ 입력 시 위키 후보 노출
+  const [autocompleteIdx, setAutocompleteIdx] = useState(-1)
+  const autocompleteItems = useMemo<{ type: 'tag' | 'wiki'; value: string }[]>(() => {
+    const raw = search.trim()
+    if (raw.startsWith('[[')) {
+      const q = raw.slice(2).replace(/\]\]$/, '').toLowerCase()
+      const list = q
+        ? allWikis.filter((w) => w.toLowerCase().includes(q))
+        : allWikis
+      return list.slice(0, 8).map((value) => ({ type: 'wiki', value }))
+    }
+    if (raw.startsWith('#')) {
+      const q = raw.slice(1).toLowerCase()
+      const list = q ? allTags.filter((t) => t.toLowerCase().includes(q)) : allTags
+      return list.slice(0, 8).map((value) => ({ type: 'tag', value }))
+    }
+    return []
+  }, [search, allTags, allWikis])
+
+  // 자동완성 후보가 바뀌면 강조 인덱스 초기화
+  useEffect(() => { setAutocompleteIdx(-1) }, [autocompleteItems])
+
+  const showAutocomplete = searchFocused && autocompleteItems.length > 0
+
+  function pickAutocomplete(item: { type: 'tag' | 'wiki'; value: string }) {
+    const prefix = item.type === 'tag' ? '#' : '[['
+    setSearch(prefix + item.value)
+    setAutocompleteIdx(-1)
+    // 포커스는 유지하여 사용자가 추가 입력/Enter로 검색 시작 가능
+    requestAnimationFrame(() => {
+      const el = searchInputRef.current
+      if (el) {
+        el.focus()
+        const next = prefix.length + item.value.length
+        el.setSelectionRange(next, next)
+      }
+    })
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showAutocomplete) {
+      if (e.key === 'Escape') searchInputRef.current?.blur()
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setAutocompleteIdx((i) => Math.min(autocompleteItems.length - 1, i + 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setAutocompleteIdx((i) => Math.max(-1, i - 1))
+    } else if (e.key === 'Enter') {
+      if (autocompleteIdx >= 0) {
+        e.preventDefault()
+        pickAutocomplete(autocompleteItems[autocompleteIdx])
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setAutocompleteIdx(-1)
+      searchInputRef.current?.blur()
+    }
+  }
+
   // 검색/정렬/태그 변경 시 표시 개수 초기화 (검색 필터가 항상 우선 적용)
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [search, sort, titleDir, activeTag])
+  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [search, sort, titleDir, activeTag, activeWiki])
 
   // 카드 컬럼 수 (4~6), localStorage에 저장
   const [cols, setCols] = useState<4 | 5 | 6>(() => {
@@ -182,7 +245,14 @@ export default function MemoList() {
   const allTags = useMemo(() => {
     const set = new Set<string>()
     memos.forEach((m) => m.tags?.forEach((t) => set.add(t)))
-    return Array.from(set)
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [memos])
+
+  // 모든 위키링크 수집
+  const allWikis = useMemo(() => {
+    const set = new Set<string>()
+    memos.forEach((m) => m.wikiLinks?.forEach((w) => set.add(w)))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
   }, [memos])
 
   // #9 — Postgres FTS 서버 검색 (debounce 300ms)
@@ -229,6 +299,9 @@ export default function MemoList() {
     if (activeTag) {
       list = list.filter((m) => m.tags?.includes(activeTag))
     }
+    if (activeWiki) {
+      list = list.filter((m) => m.wikiLinks?.includes(activeWiki))
+    }
 
     if (!isTrash) {
       list.sort((a, b) => {
@@ -251,7 +324,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, searchResults, clientFiltered, isSearching, sort, titleDir, isTrash, activeTag])
+  }, [memos, searchResults, clientFiltered, isSearching, sort, titleDir, isTrash, activeTag, activeWiki])
 
   // 타임라인 전용 필터 적용
   const timelineFiltered = useMemo(() => {
@@ -456,12 +529,6 @@ export default function MemoList() {
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
     onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
   }
-
-  const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-    { value: 'updated', label: '최신순' },
-    { value: 'starred', label: '중요먼저' },
-    { value: 'pinned', label: '고정먼저' },
-  ]
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
@@ -738,6 +805,7 @@ export default function MemoList() {
             onFocus={() => setSearchFocused(true)}
             // 칩의 onMouseDown 처리(preventDefault) 후 blur가 발생하므로 약간 지연
             onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+            onKeyDown={handleSearchKeyDown}
             placeholder={searchPlaceholder}
             className="w-full pl-8 pr-9 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
           />
@@ -745,6 +813,38 @@ export default function MemoList() {
           <kbd className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 items-center justify-center w-5 h-5 text-[10px] font-mono text-gray-400 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded pointer-events-none">
             /
           </kbd>
+
+          {/* 자동완성 드롭다운 — #태그 또는 [[위키 prefix 입력 시 */}
+          {showAutocomplete && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-64 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1">
+              {autocompleteItems.map((item, i) => {
+                const isTag = item.type === 'tag'
+                const active = i === autocompleteIdx
+                return (
+                  <button
+                    key={`${item.type}-${item.value}`}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); pickAutocomplete(item) }}
+                    onMouseEnter={() => setAutocompleteIdx(i)}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors',
+                      active
+                        ? (isTag ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300' : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-300')
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+                    )}
+                  >
+                    <span className={cn('text-[10px] font-mono px-1.5 py-0.5 rounded', isTag ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-500' : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600')}>
+                      {isTag ? '#' : '[['}
+                    </span>
+                    <span className="truncate flex-1">{item.value}</span>
+                  </button>
+                )
+              })}
+              <div className="px-3 py-1 text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">
+                ↑↓ 이동 · Enter 선택 · Esc 닫기
+              </div>
+            </div>
+          )}
         </div>
         {/* 뷰 전환 버튼 */}
         <div className="flex items-center gap-1.5">
@@ -840,33 +940,28 @@ export default function MemoList() {
         </div>
       )}
 
-      {/* 정렬 필터 + 이름순 + 태그 */}
+      {/* 정렬 + 필터 칩 — 순서: 최신순 / 중요먼저 / 이름순 / 위키 / 태그 / 고정먼저
+          모바일에서 한 줄에 안 들어가면 가로 스크롤(스와이프) */}
       {!isTrash && (
-        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setSort(opt.value)}
-              className={cn(
-                'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
-                sort === opt.value
-                  ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-x-auto">
+          <SortChip value="updated" current={sort} onSelect={setSort}>최신순</SortChip>
+          <SortChip value="starred" current={sort} onSelect={setSort}>중요먼저</SortChip>
           <TitleSortDropdown
             isActive={sort === 'title'}
             dir={titleDir}
             onSelect={(d) => { setSort('title'); setTitleDir(d) }}
+          />
+          <WikiDropdown
+            allWikis={allWikis}
+            selectedWiki={activeWiki}
+            onSelect={setActiveWiki}
           />
           <TagDropdown
             allTags={allTags}
             selectedTag={activeTag}
             onSelect={setActiveTag}
           />
+          <SortChip value="pinned" current={sort} onSelect={setSort}>고정먼저</SortChip>
         </div>
       )}
 
@@ -1141,6 +1236,142 @@ function TagDropdown({
                 >
                   {selectedTag === tag && <span>✓</span>}
                   <span>{tag}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SortChip({
+  value, current, onSelect, children,
+}: {
+  value: SortKey
+  current: SortKey
+  onSelect: (v: SortKey) => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={() => onSelect(value)}
+      className={cn(
+        'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
+        current === value
+          ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+function WikiDropdown({
+  allWikis,
+  selectedWiki,
+  onSelect,
+}: {
+  allWikis: string[]
+  selectedWiki: string | null
+  onSelect: (w: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filtered = useMemo(
+    () => allWikis.filter((w) => w.toLowerCase().includes(search.toLowerCase())),
+    [allWikis, search],
+  )
+
+  function handleSelect(wiki: string | null) {
+    onSelect(wiki)
+    setOpen(false)
+    setSearch('')
+  }
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          selectedWiki
+            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400'
+            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
+        )}
+      >
+        <span>[[</span>
+        <span className="truncate max-w-[8rem]">{selectedWiki ? selectedWiki : '위키'}</span>
+        {selectedWiki ? (
+          <span
+            role="button"
+            aria-label="위키 필터 해제"
+            onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
+            className="ml-0.5 font-bold leading-none hover:opacity-70"
+          >
+            ✕
+          </span>
+        ) : (
+          <span className="text-[10px] leading-none">▾</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[220px] max-h-80 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setSearch('') } }}
+              placeholder="위키링크 검색..."
+              className="w-full text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400"
+            />
+          </div>
+          <div className="overflow-y-auto">
+            <div
+              onClick={() => handleSelect(null)}
+              className={cn(
+                'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                !selectedWiki
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+              )}
+            >
+              {!selectedWiki && <span>✓</span>}
+              <span>전체</span>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="px-3.5 py-3 text-xs text-gray-400 text-center">위키링크가 없어요</div>
+            ) : (
+              filtered.map((wiki) => (
+                <div
+                  key={wiki}
+                  onClick={() => handleSelect(wiki)}
+                  className={cn(
+                    'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                    selectedWiki === wiki
+                      ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+                  )}
+                >
+                  {selectedWiki === wiki && <span>✓</span>}
+                  <span className="truncate">{wiki}</span>
                 </div>
               ))
             )}
