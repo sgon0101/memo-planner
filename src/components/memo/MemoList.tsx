@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -168,21 +169,26 @@ export default function MemoList() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
   }, [memos])
 
-  // 검색창 자동완성 — # 입력 시 태그, [[ 입력 시 위키 후보 노출
+  // 검색창 자동완성 — # 입력 후 글자가 있을 때만, [[ 입력 후 글자가 있을 때만 후보 노출
+  // (등록된 전체는 위키/태그 칩 드롭다운에서 보면 되므로, 검색창 자동완성은 부분 입력 시에만)
   const [autocompleteIdx, setAutocompleteIdx] = useState(-1)
   const autocompleteItems = useMemo<{ type: 'tag' | 'wiki'; value: string }[]>(() => {
     const raw = search.trim()
     if (raw.startsWith('[[')) {
       const q = raw.slice(2).replace(/\]\]$/, '').toLowerCase()
-      const list = q
-        ? allWikis.filter((w) => w.toLowerCase().includes(q))
-        : allWikis
-      return list.slice(0, 8).map((value) => ({ type: 'wiki', value }))
+      if (!q) return []  // 빈 prefix — 칩으로 확인
+      return allWikis
+        .filter((w) => w.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((value) => ({ type: 'wiki' as const, value }))
     }
     if (raw.startsWith('#')) {
       const q = raw.slice(1).toLowerCase()
-      const list = q ? allTags.filter((t) => t.toLowerCase().includes(q)) : allTags
-      return list.slice(0, 8).map((value) => ({ type: 'tag', value }))
+      if (!q) return []
+      return allTags
+        .filter((t) => t.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((value) => ({ type: 'tag' as const, value }))
     }
     return []
   }, [search, allTags, allWikis])
@@ -265,8 +271,12 @@ export default function MemoList() {
     folderId: isTrash ? 'trash' : selectedFolderId,
   })
 
-  // Hybrid — 사용자 입력 즉시 client substring으로 1차 결과, 서버 FTS 응답 오면 교체
+  // Hybrid — 사용자 입력 즉시 client substring으로 1차 결과, 서버 FTS 응답 오면 합집합
   // (이전엔 server만 사용해 debounce + 왕복으로 400~800ms 지연이 체감됨)
+  //
+  // 한국어 띄어쓰기 무관 매칭:
+  // (1) 다중 토큰 AND — 'A B' → A와 B 모두 substring 포함
+  // (2) 공백 제거 substring — '일론머스크' 검색이 '일론 머스크' 메모 매칭, 반대도 가능
   const clientFiltered = useMemo(() => {
     const raw = search.trim()
     if (!raw) return null
@@ -275,7 +285,9 @@ export default function MemoList() {
     if (q.startsWith('[[')) q = q.slice(2).replace(/\]\]$/, '')
     else if (q.startsWith('#')) q = q.slice(1)
     if (!q) return null
-    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean)
+    const lower = q.toLowerCase()
+    const tokens = lower.split(/\s+/).filter(Boolean)
+    const normalizedQ = lower.replace(/\s+/g, '')
     return memos.filter((m) => {
       const haystack = [
         m.title,
@@ -283,15 +295,34 @@ export default function MemoList() {
         ...(m.tags ?? []),
         ...(m.wikiLinks ?? []),
       ].join(' ').toLowerCase()
+      const normalizedHaystack = haystack.replace(/\s+/g, '')
+      // 토큰 every AND 또는 공백 제거 substring 어느 한쪽이라도 매칭
       return tokens.every((t) => haystack.includes(t))
+        || normalizedHaystack.includes(normalizedQ)
     })
   }, [memos, search])
 
   const filtered = useMemo(() => {
-    // 검색 중일 땐 서버 결과 우선, 아직 안 왔으면 client 즉시 결과
+    // 검색 중일 땐 server FTS + client substring 합집합 (id 중복 제거, server 우선)
+    // server는 토큰 매칭(공백 단위)이라 "일론 머스크" 메모는 "일론"으로 잡지만 "일론머스크"는 못 잡음
+    // → client substring으로 보완. 다른 폴더 메모는 server가 처리.
     let list: typeof memos
     if (isSearching) {
-      list = [...(searchResults ?? clientFiltered ?? [])]
+      const serverList = searchResults ?? []
+      const clientList = clientFiltered ?? []
+      const seen = new Set<string>()
+      const merged: typeof memos = []
+      // server 결과가 아직 안 왔으면 client 즉시 (즉각성 유지)
+      // 도착하면 server 우선, client는 누락분 보완
+      const primary = searchResults ? serverList : clientList
+      const secondary = searchResults ? clientList : []
+      for (const m of primary) {
+        if (!seen.has(m.id)) { seen.add(m.id); merged.push(m) }
+      }
+      for (const m of secondary) {
+        if (!seen.has(m.id)) { seen.add(m.id); merged.push(m) }
+      }
+      list = merged
     } else {
       list = [...memos]
     }
@@ -1139,17 +1170,9 @@ function TagDropdown({
   onSelect: (tag: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const coords = useFloatingDropdown(open, triggerRef, panelRef, () => setOpen(false), { panelWidth: 220 })
 
   function handleSelect(tag: string | null) {
     onSelect(tag)
@@ -1157,11 +1180,12 @@ function TagDropdown({
   }
 
   return (
-    <div ref={ref} className="relative flex-shrink-0">
+    <>
       <button
+        ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
           selectedTag
             ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400'
             : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
@@ -1183,9 +1207,12 @@ function TagDropdown({
         )}
       </button>
 
-      {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] max-h-80 overflow-y-auto py-1">
-          {/* 전체 */}
+      {open && coords && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 220 }}
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl max-h-80 overflow-y-auto py-1"
+        >
           <div
             onClick={() => handleSelect(null)}
             className={cn(
@@ -1199,7 +1226,6 @@ function TagDropdown({
             <span>전체</span>
             <span className="ml-auto text-[10px] text-gray-400">{allTags.length}개</span>
           </div>
-
           {allTags.length === 0 ? (
             <div className="px-3.5 py-3 text-xs text-gray-400 text-center">이 폴더에 등록된 태그가 없어요</div>
           ) : (
@@ -1219,10 +1245,71 @@ function TagDropdown({
               </div>
             ))
           )}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   )
+}
+
+/**
+ * 드롭다운 패널을 portal + position:fixed로 띄우는 공용 hook.
+ * 트리거 위치 기반으로 좌표 계산, 화면 우측 가장자리 clamp, 스크롤/리사이즈 추적.
+ * 외부 클릭 + Esc로 onClose 호출.
+ */
+function useFloatingDropdown(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+  panelRef: React.RefObject<HTMLElement | null>,
+  onClose: () => void,
+  options?: { panelWidth?: number },
+): { top: number; left: number } | null {
+  const panelWidth = options?.panelWidth ?? 240
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!open) { setCoords(null); return }
+    function update() {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const r = trigger.getBoundingClientRect()
+      const vw = window.innerWidth
+      let left = r.left
+      if (left + panelWidth > vw - 8) left = vw - panelWidth - 8
+      if (left < 8) left = 8
+      setCoords({ top: r.bottom + 6, left })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, triggerRef, panelWidth])
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent | TouchEvent) {
+      const t = e.target as Node
+      if (triggerRef.current?.contains(t)) return
+      if (panelRef.current?.contains(t)) return
+      onClose()
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose, triggerRef, panelRef])
+
+  return coords
 }
 
 function SortChip({
@@ -1258,17 +1345,9 @@ function WikiDropdown({
   onSelect: (w: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const coords = useFloatingDropdown(open, triggerRef, panelRef, () => setOpen(false), { panelWidth: 240 })
 
   function handleSelect(wiki: string | null) {
     onSelect(wiki)
@@ -1276,11 +1355,12 @@ function WikiDropdown({
   }
 
   return (
-    <div ref={ref} className="relative flex-shrink-0">
+    <>
       <button
+        ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
           selectedWiki
             ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400'
             : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
@@ -1302,8 +1382,12 @@ function WikiDropdown({
         )}
       </button>
 
-      {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[220px] max-h-80 overflow-y-auto py-1">
+      {open && coords && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 240 }}
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl max-h-80 overflow-y-auto py-1"
+        >
           <div
             onClick={() => handleSelect(null)}
             className={cn(
@@ -1336,9 +1420,10 @@ function WikiDropdown({
               </div>
             ))
           )}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   )
 }
 
@@ -1393,15 +1478,9 @@ function TitleSortDropdown({
   onSelect: (dir: TitleDir) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const coords = useFloatingDropdown(open, triggerRef, panelRef, () => setOpen(false), { panelWidth: 180 })
 
   const OPTIONS: { value: TitleDir; label: string; icon: string }[] = [
     { value: 'asc',  label: '오름차순 (ㄱ → ㅎ)', icon: '↑' },
@@ -1409,14 +1488,15 @@ function TitleSortDropdown({
   ]
 
   return (
-    <div ref={ref} className="relative flex-shrink-0">
+    <>
       <button
+        ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
           isActive
             ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
-            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
         )}
       >
         이름순
@@ -1425,8 +1505,12 @@ function TitleSortDropdown({
         </span>
       </button>
 
-      {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden min-w-[160px]">
+      {open && coords && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 180 }}
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+        >
           {OPTIONS.map(({ value, label, icon }) => (
             <div
               key={value}
@@ -1435,7 +1519,7 @@ function TitleSortDropdown({
                 'flex items-center gap-2 px-3.5 py-2.5 text-xs cursor-pointer transition-colors select-none',
                 isActive && dir === value
                   ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
               )}
             >
               <span className="w-3 text-center font-mono">{icon}</span>
@@ -1443,8 +1527,9 @@ function TitleSortDropdown({
               {isActive && dir === value && <span className="text-violet-500">✓</span>}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   )
 }
