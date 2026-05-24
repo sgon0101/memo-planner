@@ -11,6 +11,7 @@ import { useFolders } from '@/hooks/useFolders'
 import { createClient } from '@/lib/supabase/client'
 import type { Folder as FolderType } from '@/types'
 import { useMemos, TRASH_ID } from '@/hooks/useMemos'
+import { useMemoSearch } from '@/hooks/useMemoSearch'
 import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import ColorWheelModal from './ColorWheelModal'
@@ -184,42 +185,20 @@ export default function MemoList() {
     return Array.from(set)
   }, [memos])
 
-  const filtered = useMemo(() => {
-    let list = [...memos]
+  // #9 — Postgres FTS 서버 검색 (debounce 300ms)
+  // 검색어 있으면 서버 결과, 비면 기존 memos (폴더/페이지 기반)
+  const {
+    results: searchResults,
+    isSearching,
+    isFetching: searchFetching,
+  } = useMemoSearch({
+    query: search,
+    folderId: isTrash ? 'trash' : selectedFolderId,
+  })
 
-    // 검색 — # 태그, [[ 위키링크, 일반 텍스트 분기
-    if (search.trim()) {
-      const raw = search.trim()
-      // [[위키링크 검색
-      if (raw.startsWith('[[')) {
-        const q = raw.slice(2).replace(/\]\]$/, '').toLowerCase()
-        if (q) {
-          list = list.filter((m) =>
-            (m.wikiLinks ?? []).some((w) => w.toLowerCase().includes(q))
-          )
-        }
-      // #태그 검색
-      } else if (raw.startsWith('#')) {
-        const q = raw.slice(1).toLowerCase()
-        if (q) {
-          list = list.filter((m) =>
-            (m.tags ?? []).some((t) => t.toLowerCase().includes(q))
-          )
-        }
-      // 일반 검색 — 공백 분리 다중 키워드(AND), title + contentText + tags + wikiLinks 모두 매칭
-      } else {
-        const tokens = raw.toLowerCase().split(/\s+/).filter(Boolean)
-        list = list.filter((m) => {
-          const haystack = [
-            m.title,
-            m.contentText,
-            ...(m.tags ?? []),
-            ...(m.wikiLinks ?? []),
-          ].join(' ').toLowerCase()
-          return tokens.every((t) => haystack.includes(t))
-        })
-      }
-    }
+  const filtered = useMemo(() => {
+    // 검색 중이면 서버 결과를 베이스로, 아니면 기존 폴더별 memos
+    let list = isSearching ? [...(searchResults ?? [])] : [...memos]
 
     if (activeTag) {
       list = list.filter((m) => m.tags?.includes(activeTag))
@@ -246,7 +225,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, search, sort, titleDir, isTrash, activeTag])
+  }, [memos, searchResults, isSearching, sort, titleDir, isTrash, activeTag])
 
   // 타임라인 전용 필터 적용
   const timelineFiltered = useMemo(() => {
@@ -717,7 +696,13 @@ export default function MemoList() {
       {/* 검색 + 뷰 전환 */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <div className="flex-1 relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search
+            size={13}
+            className={cn(
+              'absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors',
+              searchFetching ? 'text-violet-500 animate-pulse' : 'text-gray-400',
+            )}
+          />
           <input
             ref={searchInputRef}
             data-shortcut="search"
