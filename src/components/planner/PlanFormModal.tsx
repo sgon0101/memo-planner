@@ -556,7 +556,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">간격</span>
                       <input
-                        type="text"
+                        type="search"
                         min={1}
                         max={365}
                         value={intervalStr}
@@ -583,7 +583,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           setIntervalStr(String(valid))
                           setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: valid } }))
                         }}
-                        className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-search-cancel-button]:hidden"
                       />
                       <span className="text-[11px] text-gray-500">
                         {({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[recurrence.custom.freq]}마다
@@ -652,7 +652,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     {recurrence.endMode === 'count' && (
                       <div className="flex items-center gap-2 pl-12">
                         <input
-                          type="text"
+                          type="search"
                           min={1}
                           max={500}
                           value={endCountStr}
@@ -679,7 +679,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                             setEndCountStr(String(valid))
                             setRecurrence((r) => ({ ...r, endCount: valid }))
                           }}
-                          className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-search-cancel-button]:hidden"
                         />
                         <span className="text-[11px] text-gray-500">회 반복 후 종료</span>
                       </div>
