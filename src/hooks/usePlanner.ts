@@ -4,6 +4,7 @@ import { useEffect, useCallback } from 'react'
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
+import { setUntilOnRRule } from '@/lib/planner/rrulePresets'
 import type { Plan } from '@/types'
 
 export function toPlan(row: Record<string, unknown>): Plan {
@@ -33,6 +34,7 @@ export function toPlan(row: Record<string, unknown>): Plan {
 
 export function usePlanner() {
   const {
+    plans,
     currentMonth, currentWeek, selectedDate,
     setPlans, addPlan, updatePlan, deletePlan,
     setRecurringCompletions, setRecurringCompletion, deleteRecurringCompletion,
@@ -197,7 +199,9 @@ export function usePlanner() {
     setRecurringCompletion(key, false)
   }, [])
 
-  /** 이후 모든 일정 삭제: repeat_end_date를 해당 날짜 하루 전으로 설정 */
+  /** 이후 모든 일정 삭제: repeat_end_date + rrule_str의 UNTIL을 해당 날짜 하루 전으로 설정.
+   *  RRULE 기반 신규 플랜은 expandRecurringPlans가 rrule_str을 우선 사용하므로,
+   *  repeat_end_date만 갱신하면 효과가 없음 → rrule_str도 같이 갱신해야 함. */
   const stopRecurringFromDate = useCallback(async (
     originalPlanId: string,
     planDate: string,
@@ -205,8 +209,23 @@ export function usePlanner() {
     const prevDay = new Date(planDate)
     prevDay.setDate(prevDay.getDate() - 1)
     const endDate = prevDay.toISOString().split('T')[0]
-    await supabase.from('plans').update({ repeat_end_date: endDate }).eq('id', originalPlanId)
-    updatePlan(originalPlanId, { repeatEndDate: endDate })
+
+    // 원본 plan 조회 (rrule_str 보유 여부 판정)
+    const original = plans.find((p) => p.id === originalPlanId)
+
+    const patch: Record<string, unknown> = { repeat_end_date: endDate }
+    let newRrule: string | null = original?.rruleStr ?? null
+    if (original?.rruleStr) {
+      newRrule = setUntilOnRRule(original.rruleStr, endDate)
+      patch.rrule_str = newRrule
+    }
+
+    await supabase.from('plans').update(patch).eq('id', originalPlanId)
+    updatePlan(originalPlanId, {
+      repeatEndDate: endDate,
+      ...(original?.rruleStr ? { rruleStr: newRrule } : {}),
+    })
+
     // 이후 날짜의 완료 기록 정리 (있다면)
     try {
       await supabase.from('recurring_plan_completions')
@@ -216,7 +235,7 @@ export function usePlanner() {
     } catch { /* 테이블 없으면 무시 */ }
     // 로컬 completions에서도 정리
     deleteRecurringCompletion(`${originalPlanId}_${planDate}`)
-  }, [])
+  }, [plans])
 
   return {
     load,
