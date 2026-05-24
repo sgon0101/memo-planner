@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText } from 'lucide-react'
+import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText, Target } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -124,6 +124,33 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
               <span className="text-sm text-gray-400">종일</span>
             </div>
           )}
+
+          {/* D-day */}
+          {plan.ddayTarget && (() => {
+            const today = new Date(); today.setHours(0, 0, 0, 0)
+            const target = new Date(plan.ddayTarget); target.setHours(0, 0, 0, 0)
+            const diff = Math.round((target.getTime() - today.getTime()) / 86400000)
+            const label = diff > 0 ? `D-${diff}` : diff === 0 ? 'D-Day' : `D+${-diff}`
+            const tone =
+              diff < 0
+                ? 'text-gray-400'
+                : diff <= 3
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : diff <= 7
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-rose-500 dark:text-rose-400'
+            return (
+              <div className="flex items-center gap-3">
+                <Target size={15} className="text-rose-400 flex-shrink-0" />
+                <span className={cn('text-sm font-semibold', tone)}>
+                  {label}
+                </span>
+                <span className="text-xs text-gray-400">
+                  ({format(parseISO(plan.ddayTarget), 'yyyy년 M월 d일', { locale: ko })})
+                </span>
+              </div>
+            )
+          })()}
 
           {/* 반복 */}
           {(plan.repeatType || plan.isRecurringInstance) && (

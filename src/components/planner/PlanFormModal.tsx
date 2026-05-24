@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip } from 'lucide-react'
+import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
@@ -44,12 +44,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? '10:00')
   const [isAllDay, setIsAllDay]       = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
   const [repeatType, setRepeatType]   = useState<'daily' | 'weekly' | 'monthly' | null>(plan?.repeatType ?? null)
+  const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType))
+  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.ddayTarget))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
@@ -219,6 +220,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         startTime: isAllDay ? null : (startTime || null),
         endTime: isAllDay ? null : (endTime || null),
         repeatType,
+        ddayTarget,
         linkedMemoIds,
       }
       if (plan) {
@@ -430,7 +432,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {showAdvanced ? '고급 설정 접기' : '고급 설정 (설명, 반복, 메모 연결)'}
+            {showAdvanced ? '고급 설정 접기' : '고급 설정 (설명, 반복, D-day, 메모 연결)'}
           </button>
 
           {showAdvanced && (
@@ -467,6 +469,52 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* D-day */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                    <Target size={11} className="text-rose-500" /> D-day
+                  </p>
+                  {ddayTarget && (
+                    <button
+                      type="button"
+                      onClick={() => setDdayTarget(null)}
+                      className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      해제
+                    </button>
+                  )}
+                </div>
+                {ddayTarget ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={ddayTarget}
+                      onChange={(e) => setDdayTarget(e.target.value || null)}
+                      className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-rose-500"
+                    />
+                    <span className="text-xs font-medium text-rose-500 whitespace-nowrap">
+                      {(() => {
+                        const today = new Date(); today.setHours(0, 0, 0, 0)
+                        const t = new Date(ddayTarget); t.setHours(0, 0, 0, 0)
+                        const diff = Math.round((t.getTime() - today.getTime()) / 86400000)
+                        if (diff > 0) return `D-${diff}`
+                        if (diff === 0) return 'D-Day'
+                        return `D+${-diff}`
+                      })()}
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setDdayTarget(singleDate)}
+                    className="w-full px-3 py-2 text-xs text-rose-500 border border-dashed border-rose-200 dark:border-rose-900/50 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                  >
+                    + 목표일 지정 (홈 화면에 카운트다운 표시)
+                  </button>
+                )}
               </div>
 
               {/* 메모 연결 */}

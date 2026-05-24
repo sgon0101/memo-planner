@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, CheckSquare, Sparkles, Star, Pin, Plus, ArrowRight } from 'lucide-react'
+import { FileText, CheckSquare, Sparkles, Star, Pin, Plus, ArrowRight, Target } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -29,12 +29,20 @@ interface WeekPlan {
   isAllDay: boolean
 }
 
+interface DdayPlan {
+  id: string
+  title: string
+  color: string
+  ddayTarget: string
+}
+
 interface HomeClientProps {
   userEmail: string
   totalMemos: number | undefined   // undefined = 로딩 중
   completedPlans: number | undefined
   recentMemos: RecentMemo[] | undefined  // undefined = 로딩 중
   weekPlans: WeekPlan[]
+  ddayPlans?: DdayPlan[]
 }
 
 function greeting(email: string): string {
@@ -46,7 +54,7 @@ function greeting(email: string): string {
   return `오늘 하루도 수고했어요, ${name}님 🌙`
 }
 
-export default function HomeClient({ userEmail, totalMemos, completedPlans, recentMemos, weekPlans }: HomeClientProps) {
+export default function HomeClient({ userEmail, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
   const router = useRouter()
   const { addMemo } = useMemoStore()
   const [quickTitle, setQuickTitle] = useState('')
@@ -133,6 +141,49 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
           onClick={() => router.push('/insights')}
         />
       </div>
+
+      {/* 다가오는 D-day */}
+      {ddayPlans.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Target size={13} className="text-rose-500" />
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">다가오는 D-day</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {ddayPlans.map((p) => {
+              const today = new Date(); today.setHours(0, 0, 0, 0)
+              const t = new Date(p.ddayTarget); t.setHours(0, 0, 0, 0)
+              const diff = Math.round((t.getTime() - today.getTime()) / 86400000)
+              const label = diff > 0 ? `D-${diff}` : diff === 0 ? 'D-Day' : `D+${-diff}`
+              const tone =
+                diff === 0
+                  ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800'
+                  : diff <= 3
+                    ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900'
+                    : diff <= 7
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900'
+                      : 'text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => router.push(`/planner?date=${p.ddayTarget}`)}
+                  className={cn(
+                    'flex flex-col gap-1 px-3 py-2.5 rounded-xl border text-left transition-all hover:shadow-sm cursor-pointer',
+                    tone,
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                    <span className="text-sm font-bold tabular-nums">{label}</span>
+                  </div>
+                  <span className="text-xs truncate font-medium opacity-90">{p.title}</span>
+                  <span className="text-[10px] opacity-60">{format(new Date(p.ddayTarget), 'M/d (E)', { locale: ko })}</span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* 빠른 메모 입력 */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
