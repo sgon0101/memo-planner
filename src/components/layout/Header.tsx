@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, LogOut, Moon, Sun } from 'lucide-react'
+import { Menu, LogOut, Moon, Sun, Keyboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
 
@@ -46,6 +46,19 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-0.5">
+        {/* 단축키 안내 — 데스크탑 전용 */}
+        <button
+          onClick={() => {
+            // KeyboardShortcuts 컴포넌트가 `?` 키를 듣고 모달을 토글
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))
+          }}
+          title="키보드 단축키 (?)"
+          aria-label="키보드 단축키 보기"
+          className="hidden md:flex w-9 h-9 items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer"
+        >
+          <Keyboard size={16} />
+        </button>
+
         <button
           onClick={toggleDarkMode}
           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer"

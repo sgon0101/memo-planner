@@ -65,7 +65,9 @@ memo-planner/
 │   ├── layout/
 │   │   ├── Sidebar.tsx
 │   │   ├── Header.tsx
-│   │   └── MobileNav.tsx
+│   │   ├── MobileNav.tsx
+│   │   ├── KeyboardShortcuts.tsx       # 글로벌 단축키 + 안내 모달
+│   │   └── NotificationScheduler.tsx   # 브라우저 알림 백그라운드 스케줄러
 │   ├── memo/
 │   │   ├── FolderPanel.tsx         # 폴더 목록 + 색상 관리
 │   │   ├── ColorWheelModal.tsx     # 컬러 휠 UI
@@ -103,6 +105,8 @@ memo-planner/
 │   │   └── analyzer.ts             # 메모·플랜 분석 로직
 │   ├── crypto/
 │   │   └── lock.ts                 # AES-256 암호화/복호화
+│   ├── notifications/
+│   │   └── scheduler.ts            # 브라우저 Notification + setTimeout 스케줄러
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기

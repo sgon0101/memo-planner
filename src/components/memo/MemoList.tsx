@@ -158,11 +158,38 @@ export default function MemoList() {
   const filtered = useMemo(() => {
     let list = [...memos]
 
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter((m) =>
-        m.title.toLowerCase().includes(q) || m.contentText.toLowerCase().includes(q)
-      )
+    // 검색 — # 태그, [[ 위키링크, 일반 텍스트 분기
+    if (search.trim()) {
+      const raw = search.trim()
+      // [[위키링크 검색
+      if (raw.startsWith('[[')) {
+        const q = raw.slice(2).replace(/\]\]$/, '').toLowerCase()
+        if (q) {
+          list = list.filter((m) =>
+            (m.wikiLinks ?? []).some((w) => w.toLowerCase().includes(q))
+          )
+        }
+      // #태그 검색
+      } else if (raw.startsWith('#')) {
+        const q = raw.slice(1).toLowerCase()
+        if (q) {
+          list = list.filter((m) =>
+            (m.tags ?? []).some((t) => t.toLowerCase().includes(q))
+          )
+        }
+      // 일반 검색 — 공백 분리 다중 키워드(AND), title + contentText + tags + wikiLinks 모두 매칭
+      } else {
+        const tokens = raw.toLowerCase().split(/\s+/).filter(Boolean)
+        list = list.filter((m) => {
+          const haystack = [
+            m.title,
+            m.contentText,
+            ...(m.tags ?? []),
+            ...(m.wikiLinks ?? []),
+          ].join(' ').toLowerCase()
+          return tokens.every((t) => haystack.includes(t))
+        })
+      }
     }
 
     if (activeTag) {
@@ -663,10 +690,11 @@ export default function MemoList() {
         <div className="flex-1 relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
+            data-shortcut="search"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="메모 검색..."
+            placeholder="메모 검색 — # 태그, [[ 위키링크 ( / 키로 포커스)"
             className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
           />
         </div>
