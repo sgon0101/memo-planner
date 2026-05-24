@@ -37,13 +37,12 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
   const displayDate = format(parseISO(date), 'M월 d일 (EEE)', { locale: ko })
   const isToday = date === format(new Date(), 'yyyy-MM-dd')
 
-  // 모바일 — 헤더(+ 그립)를 아래로 swipe 시 닫기
-  const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null)
+  // 헤더(+ 그립) 아래로 드래그 시 닫기 — 마우스/터치 통합 (PointerEvent)
+  const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
   const gripRef = useRef<HTMLDivElement>(null)
   const [dragY, setDragY] = useState(0)  // 시각적 피드백용 따라오는 거리
 
-  // React synthetic 핸들러는 passive 모드라 preventDefault 불가 → 네이티브 리스너로 차단
-  // 아래로 수직 드래그일 때만 브라우저 pull-to-refresh를 막고, 나머지 제스처는 통과
+  // 모바일 pull-to-refresh 차단 — React synthetic 핸들러는 passive라 네이티브로 부착
   useEffect(() => {
     const el = gripRef.current
     if (!el) return
@@ -57,23 +56,28 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
     return () => el.removeEventListener('touchmove', blockPullToRefresh)
   }, [])
 
-  function onSwipeStart(e: React.TouchEvent) {
-    if (e.touches.length !== 1) return
-    const t = e.touches[0]
-    swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now() }
+  function onSwipeStart(e: React.PointerEvent) {
+    // 헤더 안 X 버튼/링크 등에서 시작하면 패널 자체 드래그 제외
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, textarea')) return
+    const handle = e.currentTarget as HTMLElement
+    try { handle.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+    swipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now(), pointerId: e.pointerId }
   }
-  function onSwipeMove(e: React.TouchEvent) {
-    if (!swipeStart.current) return
-    const t = e.touches[0]
-    const dy = t.clientY - swipeStart.current.y
+  function onSwipeMove(e: React.PointerEvent) {
+    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) return
+    const dy = e.clientY - swipeStart.current.y
     // 아래로 드래그할 때만 시각적 피드백 (위로 끌면 무시)
     if (dy > 0) setDragY(Math.min(dy, 160))
   }
-  function onSwipeEnd(e: React.TouchEvent) {
-    if (!swipeStart.current) { setDragY(0); return }
-    const t = e.changedTouches[0]
-    const dx = t.clientX - swipeStart.current.x
-    const dy = t.clientY - swipeStart.current.y
+  function onSwipeEnd(e: React.PointerEvent) {
+    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) {
+      setDragY(0); return
+    }
+    const handle = e.currentTarget as HTMLElement
+    try { handle.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    const dx = e.clientX - swipeStart.current.x
+    const dy = e.clientY - swipeStart.current.y
     const dt = Date.now() - swipeStart.current.t
     swipeStart.current = null
     setDragY(0)
@@ -88,17 +92,18 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none"
       style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: 'none' } : { transition: 'transform 0.2s ease-out' }}
     >
-      {/* 모바일 — swipe-down 트리거 영역 (그립 + 헤더) */}
+      {/* swipe-down 트리거 영역 (그립 + 헤더) — 마우스/터치 통합 */}
       <div
         ref={gripRef}
-        onTouchStart={onSwipeStart}
-        onTouchMove={onSwipeMove}
-        onTouchEnd={onSwipeEnd}
-        className="md:[&_.grab-handle]:hidden"
+        onPointerDown={onSwipeStart}
+        onPointerMove={onSwipeMove}
+        onPointerUp={onSwipeEnd}
+        onPointerCancel={onSwipeEnd}
+        style={{ touchAction: 'none' }}  // 데스크탑/모바일 둘 다 swipe 잡힘
       >
-        {/* 그립 핸들 — 모바일만 */}
-        <div className="grab-handle md:hidden flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none">
-          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+        {/* 그립 핸들 — 모바일·작은 화면에서 노출 (데스크탑 사이드 패널은 hover 시 옅게) */}
+        <div className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none">
+          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity" />
         </div>
 
         {/* 헤더 */}
