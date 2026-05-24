@@ -82,14 +82,14 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
           <button
             onClick={handleToggleComplete}
             className={cn(
-              'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 border',
               plan.isCompleted
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                ? 'bg-emerald-500 dark:bg-emerald-600 border-emerald-500 dark:border-emerald-600 text-white shadow-sm hover:bg-emerald-600 dark:hover:bg-emerald-700'
+                : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             )}
           >
-            <Check size={13} />
-            {plan.isCompleted ? '완료됨' : '완료 표시'}
+            <Check size={13} className={plan.isCompleted ? 'text-white' : 'text-gray-400'} />
+            {plan.isCompleted ? '완료됨 (다시 누르면 해제)' : '완료 표시'}
           </button>
         </div>
 
