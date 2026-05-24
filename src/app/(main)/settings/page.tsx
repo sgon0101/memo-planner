@@ -15,6 +15,7 @@ import {
   getNotifLead, setNotifLead, requestPermissionIfNeeded,
   refreshScheduled, showTestNotification, LEAD_OPTIONS,
 } from '@/lib/notifications/scheduler'
+import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
 
@@ -49,10 +50,25 @@ export default function SettingsPage() {
   const [nextBackupAt, setNextBackupAt] = useState<string | null>(null)
   const [autoBackupLoading, setAutoBackupLoading] = useState(false)
 
-  // 알림 상태
+  // 알림 상태 (단계 A — 탭 열린 동안)
   const [notifEnabled, setNotifEnabledState] = useState(false)
   const [notifPerm, setNotifPerm] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default')
   const [notifLead, setNotifLeadState] = useState(10)
+
+  // Web Push (단계 B — 백그라운드 알림)
+  const push = usePushSubscription()
+
+  async function handleTogglePush() {
+    if (push.subscribed) {
+      const ok = await push.unsubscribe()
+      if (ok) setToast({ type: 'success', message: '백그라운드 알림이 꺼졌어요.' })
+      else if (push.error) setToast({ type: 'error', message: push.error })
+    } else {
+      const ok = await push.subscribe()
+      if (ok) setToast({ type: 'success', message: '백그라운드 알림 등록 완료! 앱을 닫아도 알림이 와요.' })
+      else if (push.error) setToast({ type: 'error', message: push.error })
+    }
+  }
 
   useEffect(() => {
     if (!isNotifSupported()) {
@@ -434,8 +450,24 @@ export default function SettingsPage() {
                 </SettingRow>
               </>
             )}
+            {/* 백그라운드 알림 (Web Push) */}
+            <SettingRow
+              label="백그라운드 알림 (PWA)"
+              description={
+                push.permission === 'unsupported'
+                  ? '이 브라우저는 Web Push를 지원하지 않아요'
+                  : push.subscribed
+                    ? '앱이 닫혀있어도 시작 ~10분 전에 알림이 와요'
+                    : '활성화하면 PWA를 닫아도 알림을 받을 수 있어요'
+              }
+            >
+              <Toggle
+                enabled={push.subscribed}
+                onChange={handleTogglePush}
+              />
+            </SettingRow>
             <div className="px-4 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/30">
-              ℹ️ 현재 단계는 브라우저 탭이 열려있을 때만 동작해요. 백그라운드 알림은 다음 업데이트에서 지원될 예정입니다.
+              ℹ️ <strong>탭 열린 알림</strong>은 위 시점 설정대로 즉시. <strong>백그라운드 알림</strong>은 서버에서 매 5분 단위로 발송되어 시작 약 10~15분 전 한 번만 와요.
             </div>
           </>
         )}
