@@ -123,6 +123,35 @@ export default function MemoList() {
   const [view, setView] = useState<ViewMode>('card')
   const [activeTag, setActiveTag] = useState<string | null>(null)
 
+  // 검색 input — 반응형 placeholder + 포커스 시 도움 칩
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const [searchPlaceholder, setSearchPlaceholder] = useState('메모 검색')
+  const [searchFocused, setSearchFocused] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)')
+    function update() {
+      setSearchPlaceholder(mq.matches
+        ? '메모 검색  ·  공백으로 여러 단어 검색 가능'
+        : '메모 검색'
+      )
+    }
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  function insertSearchPrefix(prefix: string) {
+    setSearch(prefix)
+    requestAnimationFrame(() => {
+      const el = searchInputRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(prefix.length, prefix.length)
+      }
+    })
+  }
+
   // 검색/정렬/태그 변경 시 표시 개수 초기화 (검색 필터가 항상 우선 적용)
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setDisplayCount(PAGE_SIZE) }, [search, sort, titleDir, activeTag])
@@ -690,13 +719,21 @@ export default function MemoList() {
         <div className="flex-1 relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
+            ref={searchInputRef}
             data-shortcut="search"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="메모 검색 — # 태그, [[ 위키링크 ( / 키로 포커스)"
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
+            onFocus={() => setSearchFocused(true)}
+            // 칩의 onMouseDown 처리(preventDefault) 후 blur가 발생하므로 약간 지연
+            onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+            placeholder={searchPlaceholder}
+            className="w-full pl-8 pr-9 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
           />
+          {/* 데스크탑 — '/' 단축키 안내 */}
+          <kbd className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 items-center justify-center w-5 h-5 text-[10px] font-mono text-gray-400 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded pointer-events-none">
+            /
+          </kbd>
         </div>
         {/* 뷰 전환 버튼 */}
         <div className="flex items-center gap-1.5">
@@ -738,6 +775,30 @@ export default function MemoList() {
           )}
         </div>
       </div>
+
+      {/* 검색 도움 칩 — 포커스 + 빈 입력일 때만 */}
+      {searchFocused && !search.trim() && (
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-x-auto">
+          <span className="flex-shrink-0 text-[10px] text-gray-400 dark:text-gray-500 mr-1">검색 팁:</span>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); insertSearchPrefix('#') }}
+            className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900/50 text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer"
+          >
+            # 태그로 검색
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); insertSearchPrefix('[[') }}
+            className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors cursor-pointer"
+          >
+            [[ 위키링크로 검색
+          </button>
+          <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-700">
+            공백 = 여러 단어 모두 포함
+          </span>
+        </div>
+      )}
 
       {/* 휴지통 선택 바 */}
       {isTrash && memos.length > 0 && (
