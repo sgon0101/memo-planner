@@ -122,6 +122,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
     repeatEndDate: row.repeat_end_date ?? null,
     rruleStr: row.rrule_str ?? null,
     notifyEnabled: row.notify_enabled ?? false,
+    notifyLeadMin: row.notify_lead_min ?? 10,
     ddayTarget: row.dday_target ?? null,
     googleEventId: row.google_event_id ?? null,
     linkedMemoIds: row.linked_memo_ids ?? [],
@@ -132,7 +133,6 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
   // 반복 전개 (오늘부터 36h)
   const expanded = expandRecurringPlans(plans, today, tomorrow, {})
 
-  const leadMin = getNotifLead()
   let scheduled = 0
   let skipped = 0
 
@@ -154,7 +154,8 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
       fireDate = new Date(`${dateStr}T09:00:00`)
     }
 
-    // lead 분 빼기
+    // lead 분 빼기 — plan별 notifyLeadMin 사용 (없으면 사용자 default 10)
+    const leadMin = p.notifyLeadMin ?? 10
     const fireAt = fireDate.getTime() - leadMin * 60 * 1000
     const delay = fireAt - now
     if (delay <= 0) { skipped++; continue }

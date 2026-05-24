@@ -25,6 +25,7 @@ export function toPlan(row: Record<string, unknown>): Plan {
     repeatEndDate: (row.repeat_end_date as string) ?? null,
     rruleStr: (row.rrule_str as string) ?? null,
     notifyEnabled: (row.notify_enabled as boolean) ?? false,
+    notifyLeadMin: (row.notify_lead_min as number) ?? 10,
     ddayTarget: (row.dday_target as string) ?? null,
     googleEventId: (row.google_event_id as string) ?? null,
     linkedMemoIds: (row.linked_memo_ids as string[]) ?? [],
@@ -103,6 +104,7 @@ export function usePlanner() {
         repeat_end_date: data.repeatEndDate ?? null,
         rrule_str: data.rruleStr ?? null,
         notify_enabled: data.notifyEnabled ?? false,
+        notify_lead_min: data.notifyLeadMin ?? 10,
         dday_target: data.ddayTarget ?? null,
         linked_memo_ids: data.linkedMemoIds ?? [],
       })
@@ -130,6 +132,7 @@ export function usePlanner() {
       repeat_end_date: data.repeatEndDate,
       rrule_str: data.rruleStr,
       notify_enabled: data.notifyEnabled,
+      notify_lead_min: data.notifyLeadMin,
       dday_target: data.ddayTarget,
     }
     if (data.linkedMemoIds !== undefined) patch.linked_memo_ids = data.linkedMemoIds

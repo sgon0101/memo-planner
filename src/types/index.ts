@@ -52,6 +52,8 @@ export interface Plan {
   rruleStr: string | null
   /** 이 플랜에 대해 알림을 발송할지 (기본 true) — false면 #6-A scheduler / #6-B cron 모두 skip */
   notifyEnabled: boolean
+  /** 알림 시점 — 시작 시간 N분 전 (0=정시, 5/10/30/60). 기본 10. */
+  notifyLeadMin: number
   ddayTarget: string | null
   googleEventId: string | null
   linkedMemoIds: string[]

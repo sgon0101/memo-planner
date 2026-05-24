@@ -83,6 +83,16 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [endCountStr,  setEndCountStr]  = useState(() => String(recurrence.endCount ?? 1))
   // 기본 OFF (opt-in) — 알림 받고 싶은 플랜만 사용자가 명시적으로 켜기
   const [notifyEnabled, setNotifyEnabled] = useState<boolean>(plan?.notifyEnabled ?? false)
+  // 알림 시점 — 시작 시간 N분 전 (사용자 설정 default → fallback 10)
+  const [notifyLeadMin, setNotifyLeadMin] = useState<number>(() => {
+    if (plan?.notifyLeadMin !== undefined && plan?.notifyLeadMin !== null) return plan.notifyLeadMin
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('weave-notif-lead-min')
+      const n = raw ? parseInt(raw, 10) : NaN
+      if (!isNaN(n) && [0, 5, 10, 30, 60].includes(n)) return n
+    }
+    return 10
+  })
   const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
@@ -265,6 +275,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         repeatType: null,
         repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
         notifyEnabled,
+        notifyLeadMin,
         ddayTarget,
         linkedMemoIds,
       }
@@ -466,6 +477,30 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               알림
             </button>
           </div>
+
+          {/* 알림 시점 — 토글 ON일 때만 노출 */}
+          {notifyEnabled && (
+            <div className="flex items-center gap-1.5 flex-wrap pl-2">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mr-1">
+                <Bell size={10} className="text-violet-500" /> 시점
+              </span>
+              {[0, 5, 10, 30, 60].map((min) => (
+                <button
+                  key={min}
+                  type="button"
+                  onClick={() => setNotifyLeadMin(min)}
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full border transition-colors',
+                    notifyLeadMin === min
+                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
+                  )}
+                >
+                  {min === 0 ? '정시' : `${min}분 전`}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* 날짜 */}
           {isRange ? (

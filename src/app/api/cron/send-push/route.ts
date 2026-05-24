@@ -42,6 +42,7 @@ interface PlanRow {
   repeat_end_date: string | null
   rrule_str: string | null
   notify_enabled: boolean | null
+  notify_lead_min: number | null
   dday_target: string | null
   google_event_id: string | null
   linked_memo_ids: string[]
@@ -67,6 +68,7 @@ function rowToPlan(r: PlanRow): Plan {
     repeatEndDate: r.repeat_end_date ?? null,
     rruleStr: r.rrule_str ?? null,
     notifyEnabled: r.notify_enabled ?? false,
+    notifyLeadMin: r.notify_lead_min ?? 10,
     ddayTarget: r.dday_target ?? null,
     googleEventId: r.google_event_id ?? null,
     linkedMemoIds: r.linked_memo_ids ?? [],
@@ -88,13 +90,14 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // 발송 윈도우: "지금 + 10분" ~ "지금 + 15분" 시작하는 플랜 (10분 전 알림)
-  // cron이 5분마다 돌므로 윈도우를 5분으로 잡으면 누락 없이 한 번씩 발송됨
+  // 발송 윈도우 — 이제 plan별 notify_lead_min 적용이라 window는 "지금 ~ 지금+10분" (cron 5분 + buffer 5분)
+  // 각 candidate에 대해 fireAt = startTime - notify_lead_min 분이 windowStart ~ windowEnd 안에 들어오는지 비교
   const now = new Date()
-  const windowStart = new Date(now.getTime() + 10 * 60 * 1000)
-  const windowEnd = new Date(now.getTime() + 15 * 60 * 1000)
+  const windowStart = now
+  const windowEnd = new Date(now.getTime() + 10 * 60 * 1000)
 
   // 오늘 + 내일 범위 (DST/타임존 안전을 위해 약간 넓게)
+  // 60분 전 알림까지 지원하므로 window 끝(now+10분)에서 추가 60분 buffer
   const dayBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const dayAfter = new Date(now.getTime() + 48 * 60 * 60 * 1000)
   const dateBeforeStr = dayBefore.toISOString().slice(0, 10)
@@ -133,11 +136,13 @@ export async function GET(request: NextRequest) {
     // 반복 인스턴스 전개 (completions 미반영 — cron은 사용자 완료 상태 영향 X. 발송만)
     const expanded = expandRecurringPlans(userPlans, dayBefore, dayAfter, {})
 
-    // 윈도우에 들어오는 인스턴스만
+    // 윈도우에 들어오는 인스턴스만 — fireAt = startTime - notify_lead_min 분
     const candidates = expanded.filter((p) => {
       if (!p.startTime || !p.date) return false
       const [h, m] = p.startTime.split(':').map(Number)
-      const fireAt = new Date(`${p.date}T${pad2(h)}:${pad2(m)}:00`)
+      const startAt = new Date(`${p.date}T${pad2(h)}:${pad2(m)}:00`)
+      const lead = p.notifyLeadMin ?? 10
+      const fireAt = new Date(startAt.getTime() - lead * 60 * 1000)
       return fireAt.getTime() >= windowStart.getTime() && fireAt.getTime() < windowEnd.getTime()
     })
 
@@ -167,9 +172,11 @@ export async function GET(request: NextRequest) {
       if (sentSet.has(key)) { totalSkipped++; continue }
 
       const timeLabel = p.startTime ? p.startTime.slice(0, 5) : ''
+      const lead = p.notifyLeadMin ?? 10
+      const leadLabel = lead === 0 ? '곧 시작' : `${lead}분 후 시작`
       const payload = {
         title: p.title,
-        body: `${timeLabel} — 10분 후 시작`,
+        body: `${timeLabel} — ${leadLabel}`,
         tag: key,
         url: `/planner?date=${p.date}`,
       }

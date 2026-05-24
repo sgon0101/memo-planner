@@ -423,7 +423,10 @@ export default function SettingsPage() {
             {notifEnabled && notifPerm === 'granted' && (
               <>
                 <div className="px-4 py-3.5 bg-white dark:bg-gray-900 space-y-3">
-                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">알림 시점</p>
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                    기본 알림 시점
+                    <span className="ml-1.5 text-[10px] font-normal text-gray-400">(새 플랜 만들 때 이 값으로 시작)</span>
+                  </p>
                   <div className="flex gap-2 flex-wrap">
                     {LEAD_OPTIONS.map((min) => (
                       <button
@@ -468,7 +471,8 @@ export default function SettingsPage() {
               />
             </SettingRow>
             <div className="px-4 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/30">
-              ℹ️ <strong>탭 열린 알림</strong>은 위 시점 설정대로 즉시. <strong>백그라운드 알림</strong>은 서버에서 매 5분 단위로 발송되어 시작 약 10~15분 전 한 번만 와요.
+              ℹ️ 시점은 플랜별로 다르게 설정할 수 있어요. 위 값은 새 플랜 만들 때 기본으로 적용되는 값이에요.
+              <strong>백그라운드 알림</strong>은 서버 cron 5분 단위라 시점 ±5분 오차가 있어요.
             </div>
           </>
         )}
