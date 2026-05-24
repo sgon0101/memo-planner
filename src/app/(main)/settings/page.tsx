@@ -109,8 +109,9 @@ export default function SettingsPage() {
     if (notifEnabled) refreshScheduled().catch(() => {})
   }
 
-  function handleTestNotif() {
-    if (showTestNotification()) {
+  async function handleTestNotif() {
+    const ok = await showTestNotification()
+    if (ok) {
       setToast({ type: 'success', message: '테스트 알림을 보냈어요.' })
     } else {
       setToast({ type: 'error', message: '먼저 알림을 활성화해주세요.' })

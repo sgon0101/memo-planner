@@ -50,6 +50,8 @@ export interface Plan {
   /** RFC 5545 RRULE 문자열 (예: "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2")
    *  존재하면 repeatType보다 우선. legacy(repeatType) 호환을 위해 둘 다 유지. */
   rruleStr: string | null
+  /** 이 플랜에 대해 알림을 발송할지 (기본 true) — false면 #6-A scheduler / #6-B cron 모두 skip */
+  notifyEnabled: boolean
   ddayTarget: string | null
   googleEventId: string | null
   linkedMemoIds: string[]

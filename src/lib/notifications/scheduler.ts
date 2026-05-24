@@ -121,6 +121,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
     repeatType: row.repeat_type ?? null,
     repeatEndDate: row.repeat_end_date ?? null,
     rruleStr: row.rrule_str ?? null,
+    notifyEnabled: row.notify_enabled ?? false,
     ddayTarget: row.dday_target ?? null,
     googleEventId: row.google_event_id ?? null,
     linkedMemoIds: row.linked_memo_ids ?? [],
@@ -137,6 +138,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
 
   for (const p of expanded) {
     if (p.isCompleted) continue
+    if (!p.notifyEnabled) continue  // 알림 OFF인 플랜 skip
 
     // 시간 결정: 시간 지정이면 startTime, 종일이면 09:00 (오늘만)
     const dateStr = p.date ?? p.startDate
@@ -185,15 +187,29 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
   return { scheduled, skipped }
 }
 
-export function showTestNotification() {
+export async function showTestNotification(): Promise<boolean> {
   if (getNotifPermission() !== 'granted') return false
   try {
+    // 모바일 Chrome 등 SW 등록된 사이트는 new Notification() 직접 호출이 제한됨 (TypeError throw)
+    // → ServiceWorkerRegistration.showNotification 우선 사용
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready
+      await reg.showNotification('weave 알림 테스트', {
+        body: '알림이 정상적으로 표시됩니다 🎉',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: 'weave-test',
+      })
+      return true
+    }
+    // Fallback (SW 미지원 환경)
     new Notification('weave 알림 테스트', {
       body: '알림이 정상적으로 표시됩니다 🎉',
       icon: '/icon-192.png',
     })
     return true
-  } catch {
+  } catch (err) {
+    console.error('[showTestNotification]', err)
     return false
   }
 }
