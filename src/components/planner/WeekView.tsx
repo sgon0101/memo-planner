@@ -34,7 +34,10 @@ function isDraggable(p: Plan): boolean {
   return !p.isAllDay && !!p.startTime && !!p.endTime && !!p.date && !p.startDate && !p.isRecurringInstance
 }
 
+type DragMode = 'move' | 'resize-top' | 'resize-bottom'
+
 interface DragState {
+  mode: DragMode
   planId: string
   pointerId: number
   startClientX: number
@@ -47,6 +50,8 @@ interface DragState {
   moved: boolean
   colWidthPx: number
 }
+
+const MIN_DURATION_MIN = 15  // 리사이즈 최소 길이
 
 export default function WeekView({
   weekStart, plans, today, selectedDate,
@@ -103,7 +108,9 @@ export default function WeekView({
     const dx = e.clientX - d.startClientX
     const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX || Math.abs(dx) > DRAG_THRESHOLD_PX
     const deltaDays = Math.round(dx / d.colWidthPx)
-    setDrag({ ...d, deltaY: dy, deltaDays, moved })
+    const next = { ...d, deltaY: dy, deltaDays, moved }
+    dragRef.current = next  // 다음 pointermove에서 누적 정확하도록 즉시 sync
+    setDrag(next)
   }, [])
 
   const onDocUp = useCallback(async (e: PointerEvent) => {
@@ -123,7 +130,7 @@ export default function WeekView({
       return
     }
 
-    // 새 시간/날짜 계산
+    // 새 시간/날짜 계산 — 모드별 분기
     justDragged.current = true
     setTimeout(() => { justDragged.current = false }, 400)
 
@@ -131,12 +138,25 @@ export default function WeekView({
     const endMin = timeToMinutes(d.originalEndTime)
     const dur = endMin - startMin
     const minutesDelta = snapMinutes(pxToMinutes(d.deltaY))
-    let newStart = startMin + minutesDelta
-    newStart = Math.max(0, Math.min(1440 - dur, newStart))
-    const newEnd = newStart + dur
+
+    let newStart = startMin
+    let newEnd = endMin
+    let newDate = d.originalDate
+
+    if (d.mode === 'move') {
+      newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
+      newEnd = newStart + dur
+      newDate = d.deltaDays !== 0 ? addDaysToISO(d.originalDate, d.deltaDays) : d.originalDate
+    } else if (d.mode === 'resize-top') {
+      // startTime만 이동, endTime 고정. 최소 15분 보장.
+      newStart = Math.max(0, Math.min(endMin - MIN_DURATION_MIN, startMin + minutesDelta))
+    } else if (d.mode === 'resize-bottom') {
+      // endTime만 이동, startTime 고정. 최소 15분 보장.
+      newEnd = Math.min(1440, Math.max(startMin + MIN_DURATION_MIN, endMin + minutesDelta))
+    }
+
     const newStartTime = minutesToTime(newStart)
     const newEndTime = minutesToTime(newEnd)
-    const newDate = d.deltaDays !== 0 ? addDaysToISO(d.originalDate, d.deltaDays) : d.originalDate
 
     const changed = newStartTime !== d.originalStartTime
         || newEndTime !== d.originalEndTime
@@ -159,6 +179,7 @@ export default function WeekView({
     clientX: number,
     clientY: number,
     target: HTMLElement,
+    mode: DragMode = 'move',
   ) => {
     // setPointerCapture fallback (안 잡혀도 document listener가 잡음)
     try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
@@ -192,7 +213,8 @@ export default function WeekView({
       try { target.releasePointerCapture(pointerId) } catch { /* ignore */ }
     }
 
-    setDrag({
+    const initial: DragState = {
+      mode,
       planId: plan.id,
       pointerId,
       startClientX: clientX,
@@ -204,7 +226,10 @@ export default function WeekView({
       deltaDays: 0,
       moved: false,
       colWidthPx: measureColWidth(),
-    })
+    }
+    // dragRef를 즉시 sync — 첫 pointermove가 도착해도 valid (useEffect 대기 X)
+    dragRef.current = initial
+    setDrag(initial)
   }, [onDocMove, onDocUp])
 
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
@@ -213,16 +238,28 @@ export default function WeekView({
     const { pointerId, clientX, clientY, pointerType } = e
     const target = e.currentTarget as HTMLElement
     if (pointerType === 'touch') {
+      e.preventDefault()
       longPressStart.current = { x: clientX, y: clientY }
       longPressTimer.current = setTimeout(() => {
         longPressTimer.current = null
-        startDrag(plan, pointerId, clientX, clientY, target)
+        startDrag(plan, pointerId, clientX, clientY, target, 'move')
         longPressStart.current = null
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
     } else {
-      startDrag(plan, pointerId, clientX, clientY, target)
+      startDrag(plan, pointerId, clientX, clientY, target, 'move')
     }
+  }
+
+  // 리사이즈 핸들 — long-press 없이 즉시 시작 (영역이 명확하니까)
+  function onResizeDown(e: React.PointerEvent, plan: Plan, mode: 'resize-top' | 'resize-bottom') {
+    if (!isDraggable(plan)) return
+    e.stopPropagation()
+    // 리사이즈 핸들은 블록 안의 자식이라 target을 블록(부모)으로 잡아야 setPointerCapture가 의미 있음
+    const handleEl = e.currentTarget as HTMLElement
+    const blockEl = (handleEl.parentElement as HTMLElement) ?? handleEl
+    if (e.pointerType === 'touch') e.preventDefault()
+    startDrag(plan, e.pointerId, e.clientX, e.clientY, blockEl, mode)
   }
 
   // long-press 대기 중에 손가락이 움직이면 timer 취소 (drag 시작 안 함)
@@ -356,16 +393,29 @@ export default function WeekView({
                   const top = planTop(plan.startTime!)
                   const height = planHeight(plan.startTime!, plan.endTime!)
                   let displayTop = top
+                  let displayHeight = height
                   let translateX = 0
                   let snappedTime: string | null = null
                   if (isThisDragging && drag) {
                     const startMin = timeToMinutes(drag.originalStartTime)
-                    const dur = timeToMinutes(drag.originalEndTime) - startMin
+                    const endMin = timeToMinutes(drag.originalEndTime)
+                    const dur = endMin - startMin
                     const minutesDelta = snapMinutes(pxToMinutes(drag.deltaY))
-                    const newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
-                    displayTop = (newStart / 60) * HOUR_H
-                    translateX = drag.deltaDays * drag.colWidthPx
-                    snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(newStart + dur)}`
+                    if (drag.mode === 'move') {
+                      const newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
+                      displayTop = (newStart / 60) * HOUR_H
+                      translateX = drag.deltaDays * drag.colWidthPx
+                      snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(newStart + dur)}`
+                    } else if (drag.mode === 'resize-top') {
+                      const newStart = Math.max(0, Math.min(endMin - MIN_DURATION_MIN, startMin + minutesDelta))
+                      displayTop = (newStart / 60) * HOUR_H
+                      displayHeight = ((endMin - newStart) / 60) * HOUR_H
+                      snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(endMin)}`
+                    } else if (drag.mode === 'resize-bottom') {
+                      const newEnd = Math.min(1440, Math.max(startMin + MIN_DURATION_MIN, endMin + minutesDelta))
+                      displayHeight = ((newEnd - startMin) / 60) * HOUR_H
+                      snappedTime = `${minutesToTime(startMin)} – ${minutesToTime(newEnd)}`
+                    }
                   }
                   return (
                     <div
@@ -377,23 +427,51 @@ export default function WeekView({
                       )}
                       style={{
                         top: `${displayTop}px`,
-                        height: `${height}px`,
+                        height: `${displayHeight}px`,
                         backgroundColor: plan.color + '33',
                         borderLeft: `3px solid ${plan.color}`,
                         color: plan.color,
                         transform: isThisDragging ? `translateX(${translateX}px)` : undefined,
-                        transition: isThisDragging ? 'none' : 'top 0.15s ease-out',
+                        transition: isThisDragging ? 'none' : 'top 0.15s ease-out, height 0.15s ease-out',
                         touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
+                        WebkitTouchCallout: 'none',
+                        WebkitUserSelect: 'none',
                       }}
                       onPointerDown={(e) => onPointerDown(e, plan)}
                       onPointerMove={onPointerMoveBlock}
                       onPointerUp={onPointerUpBlock}
                       onClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.preventDefault()}
                     >
                       <div className="font-medium truncate">{plan.title}</div>
                       <div className="opacity-70">
                         {snappedTime ?? `${plan.startTime?.slice(0, 5)}–${plan.endTime?.slice(0, 5)}`}
                       </div>
+
+                      {/* 리사이즈 핸들 (상/하) — draggable한 단일일 비반복 블록만 */}
+                      {draggable && (
+                        <>
+                          <div
+                            onPointerDown={(e) => onResizeDown(e, plan, 'resize-top')}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute', top: 0, left: 0, right: 0, height: 8,
+                              cursor: 'ns-resize', touchAction: 'none',
+                              // 호버 시 살짝 보이는 막대 (안 보이지만 클릭 영역 확보)
+                            }}
+                            className="group hover:bg-violet-400/30"
+                          />
+                          <div
+                            onPointerDown={(e) => onResizeDown(e, plan, 'resize-bottom')}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute', bottom: 0, left: 0, right: 0, height: 8,
+                              cursor: 'ns-resize', touchAction: 'none',
+                            }}
+                            className="group hover:bg-violet-400/30"
+                          />
+                        </>
+                      )}
                     </div>
                   )
                 })}

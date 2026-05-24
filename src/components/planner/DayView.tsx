@@ -33,7 +33,10 @@ function isDraggable(p: Plan): boolean {
   return !p.isAllDay && !!p.startTime && !!p.endTime && !!p.date && !p.startDate && !p.isRecurringInstance
 }
 
+type DragMode = 'move' | 'resize-top' | 'resize-bottom'
+
 interface DragState {
+  mode: DragMode
   planId: string
   pointerId: number
   startClientY: number
@@ -42,6 +45,8 @@ interface DragState {
   deltaY: number
   moved: boolean
 }
+
+const MIN_DURATION_MIN = 15
 
 export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -101,7 +106,9 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (!d || d.pointerId !== e.pointerId) return
     const dy = e.clientY - d.startClientY
     const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX
-    setDrag({ ...d, deltaY: dy, moved })
+    const next = { ...d, deltaY: dy, moved }
+    dragRef.current = next
+    setDrag(next)
   }, [])
 
   const onDocUp = useCallback(async (e: PointerEvent) => {
@@ -127,9 +134,18 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const endMin = timeToMinutes(d.originalEndTime)
     const dur = endMin - startMin
     const minutesDelta = snapMinutes(pxToMinutes(d.deltaY))
-    let newStart = startMin + minutesDelta
-    newStart = Math.max(0, Math.min(1440 - dur, newStart))
-    const newEnd = newStart + dur
+
+    let newStart = startMin
+    let newEnd = endMin
+    if (d.mode === 'move') {
+      newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
+      newEnd = newStart + dur
+    } else if (d.mode === 'resize-top') {
+      newStart = Math.max(0, Math.min(endMin - MIN_DURATION_MIN, startMin + minutesDelta))
+    } else if (d.mode === 'resize-bottom') {
+      newEnd = Math.min(1440, Math.max(startMin + MIN_DURATION_MIN, endMin + minutesDelta))
+    }
+
     const newStartTime = minutesToTime(newStart)
     const newEndTime = minutesToTime(newEnd)
 
@@ -148,6 +164,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     pointerId: number,
     clientY: number,
     target: HTMLElement,
+    mode: DragMode = 'move',
   ) => {
     try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
     target.style.touchAction = 'none'
@@ -178,7 +195,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       try { target.releasePointerCapture(pointerId) } catch { /* ignore */ }
     }
 
-    setDrag({
+    const initial: DragState = {
+      mode,
       planId: plan.id,
       pointerId,
       startClientY: clientY,
@@ -186,7 +204,9 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       originalEndTime: plan.endTime!.slice(0, 5),
       deltaY: 0,
       moved: false,
-    })
+    }
+    dragRef.current = initial
+    setDrag(initial)
   }, [onDocMove, onDocUp])
 
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
@@ -195,16 +215,27 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const { pointerId, clientX, clientY, pointerType } = e
     const target = e.currentTarget as HTMLElement
     if (pointerType === 'touch') {
+      e.preventDefault()
       longPressStart.current = { x: clientX, y: clientY }
       longPressTimer.current = setTimeout(() => {
         longPressTimer.current = null
-        startDrag(plan, pointerId, clientY, target)
+        startDrag(plan, pointerId, clientY, target, 'move')
         longPressStart.current = null
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
     } else {
-      startDrag(plan, pointerId, clientY, target)
+      startDrag(plan, pointerId, clientY, target, 'move')
     }
+  }
+
+  // 리사이즈 핸들 — long-press 없이 즉시
+  function onResizeDown(e: React.PointerEvent, plan: Plan, mode: 'resize-top' | 'resize-bottom') {
+    if (!isDraggable(plan)) return
+    e.stopPropagation()
+    const handleEl = e.currentTarget as HTMLElement
+    const blockEl = (handleEl.parentElement as HTMLElement) ?? handleEl
+    if (e.pointerType === 'touch') e.preventDefault()
+    startDrag(plan, e.pointerId, e.clientY, blockEl, mode)
   }
 
   function onPointerMoveBlock(e: React.PointerEvent) {
@@ -292,14 +323,27 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
               const top = planTop(plan.startTime!)
               const height = planHeight(plan.startTime!, plan.endTime!)
               let displayTop = top
+              let displayHeight = height
               let snappedTime: string | null = null
               if (isThisDragging && drag) {
                 const startMin = timeToMinutes(drag.originalStartTime)
-                const dur = timeToMinutes(drag.originalEndTime) - startMin
+                const endMin = timeToMinutes(drag.originalEndTime)
+                const dur = endMin - startMin
                 const minutesDelta = snapMinutes(pxToMinutes(drag.deltaY))
-                const newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
-                displayTop = (newStart / 60) * HOUR_H
-                snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(newStart + dur)}`
+                if (drag.mode === 'move') {
+                  const newStart = Math.max(0, Math.min(1440 - dur, startMin + minutesDelta))
+                  displayTop = (newStart / 60) * HOUR_H
+                  snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(newStart + dur)}`
+                } else if (drag.mode === 'resize-top') {
+                  const newStart = Math.max(0, Math.min(endMin - MIN_DURATION_MIN, startMin + minutesDelta))
+                  displayTop = (newStart / 60) * HOUR_H
+                  displayHeight = ((endMin - newStart) / 60) * HOUR_H
+                  snappedTime = `${minutesToTime(newStart)} – ${minutesToTime(endMin)}`
+                } else if (drag.mode === 'resize-bottom') {
+                  const newEnd = Math.min(1440, Math.max(startMin + MIN_DURATION_MIN, endMin + minutesDelta))
+                  displayHeight = ((newEnd - startMin) / 60) * HOUR_H
+                  snappedTime = `${minutesToTime(startMin)} – ${minutesToTime(newEnd)}`
+                }
               }
               return (
                 <div
@@ -311,22 +355,49 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                   )}
                   style={{
                     top: `${displayTop}px`,
-                    height: `${height}px`,
+                    height: `${displayHeight}px`,
                     backgroundColor: plan.color + '33',
                     borderLeft: `3px solid ${plan.color}`,
                     color: plan.color,
-                    transition: isThisDragging ? 'none' : 'top 0.15s ease-out',
+                    transition: isThisDragging ? 'none' : 'top 0.15s ease-out, height 0.15s ease-out',
                     touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
+                    WebkitTouchCallout: 'none',
+                    WebkitUserSelect: 'none',
                   }}
                   onPointerDown={(e) => onPointerDown(e, plan)}
                   onPointerMove={onPointerMoveBlock}
                   onPointerUp={onPointerUpBlock}
                   onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.preventDefault()}
                 >
                   <div className="font-medium truncate">{plan.title}</div>
                   <div className="opacity-70">
                     {snappedTime ?? `${plan.startTime?.slice(0, 5)}–${plan.endTime?.slice(0, 5)}`}
                   </div>
+
+                  {/* 리사이즈 핸들 (상/하) */}
+                  {draggable && (
+                    <>
+                      <div
+                        onPointerDown={(e) => onResizeDown(e, plan, 'resize-top')}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute', top: 0, left: 0, right: 0, height: 8,
+                          cursor: 'ns-resize', touchAction: 'none',
+                        }}
+                        className="hover:bg-violet-400/30"
+                      />
+                      <div
+                        onPointerDown={(e) => onResizeDown(e, plan, 'resize-bottom')}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute', bottom: 0, left: 0, right: 0, height: 8,
+                          cursor: 'ns-resize', touchAction: 'none',
+                        }}
+                        className="hover:bg-violet-400/30"
+                      />
+                    </>
+                  )}
                 </div>
               )
             })}
