@@ -109,7 +109,8 @@ memo-planner/
 │   │   └── scheduler.ts            # 브라우저 Notification + setTimeout 스케줄러
 │   ├── planner/
 │   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
-│   │   └── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
+│   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
+│   │   └── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기
@@ -543,6 +544,9 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-05-24 | UX 패키지 1차 | (#3 죽은 코드 정리, #4 검색 #태그/[[위키/공백 AND, #2 D-day 활성화, #5 모바일 캘린더 스와이프, #1 글로벌 단축키, #6-A 브라우저 알림) — dev push + main merge + Vercel 배포 완료 | 100% |
 | 2026-05-24 | UX 패키지 2차 | 모바일 PlanPanel swipe-down 닫기(그립 핸들 + 드래그 따라옴 + spring back) + 메모 검색 placeholder 반응형 + 도움 칩(#/[[ prefix 자동 입력) + 데스크탑 `/` 키 뱃지 | 100% |
 | 2026-05-24 | #8 RRULE 확장 | `rrule@^2.8.1` 도입 · `plans.rrule_str` 컬럼 추가 · `expandRecurringPlans`를 rrule 기반(UTC 정오 dtstart, DST 안전) + legacy `repeat_type` fallback로 교체 · `lib/planner/rrulePresets.ts`(preset 9개/parser/한국어 라벨러) · PlanFormModal 빠른 프리셋 9종(없음/매일/평일/매주/격주/매월같은날/매월같은요일/매년/맞춤) + 맞춤 빌더(단위·간격·요일 다중) + 종료조건(끝없음/N회/날짜) · PlanDetailPanel·PlanPanel 한국어 RRULE 라벨 표시 · usePlanner/notifications 쿼리도 `rrule_str.not.is.null` OR 추가 | 100% |
+| 2026-05-24 | #8 후속 픽스 | 반복 인스턴스 완료 해제 시 인스턴스 사라지던 버그(`is_completed=false`가 skip과 의미 충돌) — `toggleRecurringComplete`를 완료시 row delete 패턴으로 · `PlanDetailPanel` stale prop 픽스(zustand 직접 구독으로 fresh isCompleted) · `stopRecurringFromDate`가 `rrule_str` 내부 UNTIL도 갱신(`setUntilOnRRule` 헬퍼) · "이 일정 및 이후 모두 삭제" → "이 일정부터 반복 종료" 라벨 변경 · PlanFormModal autofill bar 차단(data-1p-ignore/form-type/name) | 100% |
+| 2026-05-24 | #7 캘린더 드래그 | WeekView/DayView 블록을 Pointer Events로 드래그 — 시간 이동(15분 snap) + 요일 이동(WeekView) + 상하단 8px 핸들 리사이즈(`resize-top`/`resize-bottom`, 최소 15분) · 데스크탑 즉시, 모바일 long-press 450ms 후 진동 · document 레벨 pointer listener(setPointerCapture 모바일 실패 대응) · drag 중 body+scrollRef overflow lock + touchmove preventDefault · Android long-press contextmenu/selection 차단(`e.preventDefault`, `WebkitTouchCallout`, `onContextMenu`) · 시각 피드백: top+height 동적, translateX(요일), violet ring · `lib/planner/dragHelpers.ts` 신규 | 100% |
+| 2026-05-24 | #9 Postgres FTS 검색 | `memos.search_vec` tsvector 컬럼 + GIN 인덱스 + 자동 갱신 트리거(title/content_text/tags/wiki_links를 weight A/B로) · `/api/memos/search` route(websearch_to_tsquery, 폴더 필터) · `useMemoSearch` hook(debounce 300ms + React Query 30s 캐시) · MemoList 검색을 client substring → 서버 FTS로 교체 · 검색 중 Search 아이콘 violet pulse · prefix(#태그/[[위키)는 서버에서 정리해 본문 매칭 | 100% |
 
 ---
 
@@ -577,6 +581,29 @@ CREATE INDEX idx_uploaded_files_user ON uploaded_files(user_id);
 -- RFC 5545 RRULE 컬럼 (#8 반복 옵션 확장)
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS rrule_str text;
 -- 기존 repeat_type/repeat_end_date는 그대로 유지 (legacy fallback)
+
+-- Postgres FTS (#9 — 메모 서버 검색)
+ALTER TABLE memos ADD COLUMN IF NOT EXISTS search_vec tsvector;
+
+CREATE OR REPLACE FUNCTION memos_search_vec_update() RETURNS trigger AS $$
+BEGIN
+  NEW.search_vec :=
+    setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
+    setweight(to_tsvector('simple', coalesce(NEW.content_text, '')), 'B') ||
+    setweight(to_tsvector('simple', array_to_string(coalesce(NEW.tags, '{}'), ' ')), 'A') ||
+    setweight(to_tsvector('simple', array_to_string(coalesce(NEW.wiki_links, '{}'), ' ')), 'A');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER memos_search_vec_trg
+BEFORE INSERT OR UPDATE OF title, content_text, tags, wiki_links ON memos
+FOR EACH ROW EXECUTE FUNCTION memos_search_vec_update();
+
+CREATE INDEX IF NOT EXISTS idx_memos_search_vec ON memos USING gin(search_vec);
+
+-- 기존 데이터 backfill (트리거 발화)
+UPDATE memos SET title = title;
 ```
 
 ---
