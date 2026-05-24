@@ -1139,29 +1139,21 @@ function TagDropdown({
   onSelect: (tag: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false)
-        setSearch('')
       }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const filtered = useMemo(
-    () => allTags.filter((t) => t.toLowerCase().includes(search.toLowerCase())),
-    [allTags, search]
-  )
-
   function handleSelect(tag: string | null) {
     onSelect(tag)
     setOpen(false)
-    setSearch('')
   }
 
   return (
@@ -1172,7 +1164,7 @@ function TagDropdown({
           'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
           selectedTag
             ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400'
-            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
         )}
       >
         <span>#</span>
@@ -1192,54 +1184,41 @@ function TagDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] max-h-80 overflow-hidden flex flex-col">
-          {/* 검색창 */}
-          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setSearch('') } }}
-              placeholder="태그 검색..."
-              className="w-full text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400"
-            />
-          </div>
-
-          {/* 태그 목록 */}
-          <div className="overflow-y-auto">
-            <div
-              onClick={() => handleSelect(null)}
-              className={cn(
-                'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
-                !selectedTag
-                  ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-              )}
-            >
-              {!selectedTag && <span>✓</span>}
-              <span>전체</span>
-            </div>
-
-            {filtered.length === 0 ? (
-              <div className="px-3.5 py-3 text-xs text-gray-400 text-center">태그가 없어요</div>
-            ) : (
-              filtered.map((tag) => (
-                <div
-                  key={tag}
-                  onClick={() => handleSelect(tag)}
-                  className={cn(
-                    'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
-                    selectedTag === tag
-                      ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                  )}
-                >
-                  {selectedTag === tag && <span>✓</span>}
-                  <span>{tag}</span>
-                </div>
-              ))
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] max-h-80 overflow-y-auto py-1">
+          {/* 전체 */}
+          <div
+            onClick={() => handleSelect(null)}
+            className={cn(
+              'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+              !selectedTag
+                ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
+          >
+            {!selectedTag && <span>✓</span>}
+            <span>전체</span>
+            <span className="ml-auto text-[10px] text-gray-400">{allTags.length}개</span>
           </div>
+
+          {allTags.length === 0 ? (
+            <div className="px-3.5 py-3 text-xs text-gray-400 text-center">이 폴더에 등록된 태그가 없어요</div>
+          ) : (
+            allTags.map((tag) => (
+              <div
+                key={tag}
+                onClick={() => handleSelect(tag)}
+                className={cn(
+                  'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                  selectedTag === tag
+                    ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+                )}
+              >
+                {selectedTag === tag && <span>✓</span>}
+                <span className="truncate">{tag}</span>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
@@ -1279,29 +1258,21 @@ function WikiDropdown({
   onSelect: (w: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false)
-        setSearch('')
       }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const filtered = useMemo(
-    () => allWikis.filter((w) => w.toLowerCase().includes(search.toLowerCase())),
-    [allWikis, search],
-  )
-
   function handleSelect(wiki: string | null) {
     onSelect(wiki)
     setOpen(false)
-    setSearch('')
   }
 
   return (
@@ -1332,50 +1303,39 @@ function WikiDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[220px] max-h-80 overflow-hidden flex flex-col">
-          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setSearch('') } }}
-              placeholder="위키링크 검색..."
-              className="w-full text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400"
-            />
-          </div>
-          <div className="overflow-y-auto">
-            <div
-              onClick={() => handleSelect(null)}
-              className={cn(
-                'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
-                !selectedWiki
-                  ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
-              )}
-            >
-              {!selectedWiki && <span>✓</span>}
-              <span>전체</span>
-            </div>
-            {filtered.length === 0 ? (
-              <div className="px-3.5 py-3 text-xs text-gray-400 text-center">위키링크가 없어요</div>
-            ) : (
-              filtered.map((wiki) => (
-                <div
-                  key={wiki}
-                  onClick={() => handleSelect(wiki)}
-                  className={cn(
-                    'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
-                    selectedWiki === wiki
-                      ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
-                  )}
-                >
-                  {selectedWiki === wiki && <span>✓</span>}
-                  <span className="truncate">{wiki}</span>
-                </div>
-              ))
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[220px] max-h-80 overflow-y-auto py-1">
+          <div
+            onClick={() => handleSelect(null)}
+            className={cn(
+              'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+              !selectedWiki
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
+          >
+            {!selectedWiki && <span>✓</span>}
+            <span>전체</span>
+            <span className="ml-auto text-[10px] text-gray-400">{allWikis.length}개</span>
           </div>
+          {allWikis.length === 0 ? (
+            <div className="px-3.5 py-3 text-xs text-gray-400 text-center">이 폴더에 등록된 위키링크가 없어요</div>
+          ) : (
+            allWikis.map((wiki) => (
+              <div
+                key={wiki}
+                onClick={() => handleSelect(wiki)}
+                className={cn(
+                  'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
+                  selectedWiki === wiki
+                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+                )}
+              >
+                {selectedWiki === wiki && <span>✓</span>}
+                <span className="truncate">{wiki}</span>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
