@@ -90,10 +90,12 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // 발송 윈도우 — 이제 plan별 notify_lead_min 적용이라 window는 "지금 ~ 지금+10분" (cron 5분 + buffer 5분)
-  // 각 candidate에 대해 fireAt = startTime - notify_lead_min 분이 windowStart ~ windowEnd 안에 들어오는지 비교
+  // 발송 윈도우 — plan별 notify_lead_min 적용. fireAt = startTime - lead가 윈도우 안에 들면 발송.
+  // windowStart에 과거 buffer 15분 → GitHub Actions schedule 부정확(5~30분 지연)로 cron이 늦게 발화해도 잡힘.
+  // windowEnd 미래 10분 → 다음 cron 발화까지 5분 buffer.
+  // 총 25분 윈도우라 한 fireAt이 여러 cron에 잡힐 수 있으나 plan_notifications_sent로 중복 방지.
   const now = new Date()
-  const windowStart = now
+  const windowStart = new Date(now.getTime() - 15 * 60 * 1000)
   const windowEnd = new Date(now.getTime() + 10 * 60 * 1000)
 
   // 오늘 + 내일 범위 (DST/타임존 안전을 위해 약간 넓게)
