@@ -142,7 +142,9 @@ export function usePlanner() {
     updatePlan(id, { isCompleted: !current })
   }, [])
 
-  /** 반복 인스턴스 완료 토글 */
+  /** 반복 인스턴스 완료 토글
+   *  is_completed=false는 "이 인스턴스 숨김(skip)" 의미로 예약되어 있으므로
+   *  완료 해제 시에는 row를 delete해서 충돌 방지 (delete = 미완료 상태) */
   const toggleRecurringComplete = useCallback(async (
     originalPlanId: string,
     planDate: string,
@@ -152,16 +154,27 @@ export function usePlanner() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     try {
-      await supabase.from('recurring_plan_completions').upsert({
-        user_id: user.id,
-        original_plan_id: originalPlanId,
-        plan_date: planDate,
-        is_completed: !currentlyCompleted,
-      }, { onConflict: 'original_plan_id,plan_date' })
-      setRecurringCompletion(key, !currentlyCompleted)
+      if (currentlyCompleted) {
+        // 완료 → 해제: row 삭제 (skip 의미와 충돌 방지)
+        await supabase.from('recurring_plan_completions')
+          .delete()
+          .eq('original_plan_id', originalPlanId)
+          .eq('plan_date', planDate)
+        deleteRecurringCompletion(key)
+      } else {
+        // 미완료 → 완료: upsert true
+        await supabase.from('recurring_plan_completions').upsert({
+          user_id: user.id,
+          original_plan_id: originalPlanId,
+          plan_date: planDate,
+          is_completed: true,
+        }, { onConflict: 'original_plan_id,plan_date' })
+        setRecurringCompletion(key, true)
+      }
     } catch {
       // 테이블 없으면 로컬만 업데이트
-      setRecurringCompletion(key, !currentlyCompleted)
+      if (currentlyCompleted) deleteRecurringCompletion(key)
+      else setRecurringCompletion(key, true)
     }
   }, [])
 
