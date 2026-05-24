@@ -344,7 +344,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
+              data-1p-ignore="true"
               data-lpignore="true"
+              data-form-type="other"
+              name="plan-title"
               className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             />
             <button
@@ -494,8 +497,12 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                   rows={3}
                   autoComplete="off"
                   autoCorrect="off"
+                  autoCapitalize="off"
                   spellCheck={false}
+                  data-1p-ignore="true"
                   data-lpignore="true"
+                  data-form-type="other"
+                  name="plan-description"
                   className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-violet-500 resize-none"
                 />
               </div>
@@ -556,6 +563,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                         autoComplete="off"
                         autoCorrect="off"
                         inputMode="numeric"
+                        data-1p-ignore="true"
+                        data-lpignore="true"
+                        data-form-type="other"
+                        name="custom-interval"
                         onChange={(e) => {
                           const raw = e.target.value
                           setIntervalStr(raw)
@@ -646,6 +657,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           autoComplete="off"
                           autoCorrect="off"
                           inputMode="numeric"
+                          data-1p-ignore="true"
+                          data-lpignore="true"
+                          data-form-type="other"
+                          name="recurrence-count"
                           onChange={(e) => {
                             const raw = e.target.value
                             setEndCountStr(raw)
@@ -672,6 +687,11 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           value={recurrence.endUntil ?? ''}
                           min={isRange ? startDate : singleDate}
                           onChange={(e) => setRecurrence((r) => ({ ...r, endUntil: e.target.value || null }))}
+                          autoComplete="off"
+                          data-1p-ignore="true"
+                          data-lpignore="true"
+                          data-form-type="other"
+                          name="recurrence-until"
                           className="px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
                         />
                         <span className="text-[11px] text-gray-500">까지 반복</span>
