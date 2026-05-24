@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -36,19 +36,64 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
   const displayDate = format(parseISO(date), 'M월 d일 (EEE)', { locale: ko })
   const isToday = date === format(new Date(), 'yyyy-MM-dd')
 
+  // 모바일 — 헤더(+ 그립)를 아래로 swipe 시 닫기
+  const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null)
+  const [dragY, setDragY] = useState(0)  // 시각적 피드백용 따라오는 거리
+  function onSwipeStart(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return
+    const t = e.touches[0]
+    swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now() }
+  }
+  function onSwipeMove(e: React.TouchEvent) {
+    if (!swipeStart.current) return
+    const t = e.touches[0]
+    const dy = t.clientY - swipeStart.current.y
+    // 아래로 드래그할 때만 시각적 피드백 (위로 끌면 무시)
+    if (dy > 0) setDragY(Math.min(dy, 160))
+  }
+  function onSwipeEnd(e: React.TouchEvent) {
+    if (!swipeStart.current) { setDragY(0); return }
+    const t = e.changedTouches[0]
+    const dx = t.clientX - swipeStart.current.x
+    const dy = t.clientY - swipeStart.current.y
+    const dt = Date.now() - swipeStart.current.t
+    swipeStart.current = null
+    setDragY(0)
+    // 아래로 70px 이상 + 세로가 가로보다 1.5배 우세 + 600ms 이내 → 닫기
+    if (dy > 70 && dy > Math.abs(dx) * 1.5 && dt < 600) {
+      onClose()
+    }
+  }
+
   return (
-    <div className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-        <div>
-          <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
-            {displayDate}
-          </p>
-          {isToday && <p className="text-xs text-violet-500">오늘</p>}
+    <div
+      className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none"
+      style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: 'none' } : { transition: 'transform 0.2s ease-out' }}
+    >
+      {/* 모바일 — swipe-down 트리거 영역 (그립 + 헤더) */}
+      <div
+        onTouchStart={onSwipeStart}
+        onTouchMove={onSwipeMove}
+        onTouchEnd={onSwipeEnd}
+        className="md:[&_.grab-handle]:hidden"
+      >
+        {/* 그립 핸들 — 모바일만 */}
+        <div className="grab-handle md:hidden flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none">
+          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-          <X size={15} />
-        </button>
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+          <div>
+            <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
+              {displayDate}
+            </p>
+            {isToday && <p className="text-xs text-violet-500">오늘</p>}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X size={15} />
+          </button>
+        </div>
       </div>
 
       {/* 플랜 목록 */}
