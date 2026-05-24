@@ -78,8 +78,9 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     }
     return defaultRecurrence()
   })
-  // interval 입력은 문자열로 따로 관리 — 사용자가 지우고 재입력 가능하게
-  const [intervalStr, setIntervalStr] = useState(() => String(recurrence.custom?.interval ?? 1))
+  // 숫자 입력은 문자열로 따로 관리 — 사용자가 지우고 재입력 가능하게
+  const [intervalStr,  setIntervalStr]  = useState(() => String(recurrence.custom?.interval ?? 1))
+  const [endCountStr,  setEndCountStr]  = useState(() => String(recurrence.endCount ?? 1))
   const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
@@ -543,6 +544,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                         min={1}
                         max={365}
                         value={intervalStr}
+                        autoComplete="off"
+                        autoCorrect="off"
                         onChange={(e) => {
                           const raw = e.target.value
                           setIntervalStr(raw)
@@ -557,7 +560,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           setIntervalStr(String(valid))
                           setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: valid } }))
                         }}
-                        className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center"
+                        className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                       <span className="text-[11px] text-gray-500">
                         {({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[recurrence.custom.freq]}마다
@@ -629,9 +632,24 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                           type="number"
                           min={1}
                           max={500}
-                          value={recurrence.endCount}
-                          onChange={(e) => setRecurrence((r) => ({ ...r, endCount: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
-                          className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center"
+                          value={endCountStr}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            setEndCountStr(raw)
+                            const n = parseInt(raw, 10)
+                            if (!isNaN(n) && n >= 1) {
+                              setRecurrence((r) => ({ ...r, endCount: Math.min(500, n) }))
+                            }
+                          }}
+                          onBlur={() => {
+                            const n = parseInt(endCountStr, 10)
+                            const valid = isNaN(n) || n < 1 ? 1 : Math.min(500, n)
+                            setEndCountStr(String(valid))
+                            setRecurrence((r) => ({ ...r, endCount: valid }))
+                          }}
+                          className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                         <span className="text-[11px] text-gray-500">회 반복 후 종료</span>
                       </div>
