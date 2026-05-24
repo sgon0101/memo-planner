@@ -830,10 +830,13 @@ export default function MemoList() {
           <input
             ref={searchInputRef}
             data-shortcut="search"
-            type="text"
+            type="search"
             name="memo-search"
             autoComplete="off"
-            data-1p-ignore
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-1p-ignore="true"
             data-lpignore="true"
             data-form-type="other"
             value={search}
@@ -843,7 +846,7 @@ export default function MemoList() {
             onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
             onKeyDown={handleSearchKeyDown}
             placeholder={searchPlaceholder}
-            className="w-full pl-8 pr-9 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400"
+            className="w-full pl-8 pr-9 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-violet-400 [&::-webkit-search-cancel-button]:hidden"
           />
           {/* 데스크탑 — '/' 단축키 안내 */}
           <kbd className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 items-center justify-center w-5 h-5 text-[10px] font-mono text-gray-400 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded pointer-events-none">
