@@ -333,7 +333,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
           <div className="relative">
             <input
               ref={titleInputRef}
-              type="text"
+              type="search"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onFocus={() => setShowTemplateDropdown(true)}
@@ -348,7 +348,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
               data-lpignore="true"
               data-form-type="other"
               name="plan-title"
-              className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent [&::-webkit-search-cancel-button]:hidden"
             />
             <button
               type="button"
@@ -556,12 +556,14 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">간격</span>
                       <input
-                        type="number"
+                        type="text"
                         min={1}
                         max={365}
                         value={intervalStr}
                         autoComplete="off"
                         autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         inputMode="numeric"
                         data-1p-ignore="true"
                         data-lpignore="true"
@@ -650,12 +652,14 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
                     {recurrence.endMode === 'count' && (
                       <div className="flex items-center gap-2 pl-12">
                         <input
-                          type="number"
+                          type="text"
                           min={1}
                           max={500}
                           value={endCountStr}
                           autoComplete="off"
                           autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
                           inputMode="numeric"
                           data-1p-ignore="true"
                           data-lpignore="true"
