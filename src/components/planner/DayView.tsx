@@ -95,6 +95,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     target: HTMLElement,
   ) => {
     try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
+    target.style.touchAction = 'none'  // 즉시 페이지 스크롤 차단
     setDrag({
       planId: plan.id,
       pointerId,
@@ -148,12 +149,13 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (!drag || drag.pointerId !== e.pointerId) return
     const target = e.currentTarget as HTMLElement
     try { target.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    target.style.touchAction = ''
 
     const wasMoved = drag.moved
     const snapshot = drag
-    setDrag(null)
 
     if (!wasMoved) {
+      setDrag(null)
       onEditPlan(plan)
       return
     }
@@ -171,13 +173,15 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const newStartTime = minutesToTime(newStart)
     const newEndTime = minutesToTime(newEnd)
 
-    if (newStartTime !== snapshot.originalStartTime || newEndTime !== snapshot.originalEndTime) {
+    const changed = newStartTime !== snapshot.originalStartTime || newEndTime !== snapshot.originalEndTime
+    if (changed) {
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime })
       } catch (err) {
         console.error('drag editPlan 실패:', err)
       }
     }
+    setDrag(null)
   }
 
   function onPointerCancel(e: React.PointerEvent) {
@@ -186,7 +190,11 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       longPressTimer.current = null
       longPressStart.current = null
     }
-    if (drag && drag.pointerId === e.pointerId) setDrag(null)
+    if (drag && drag.pointerId === e.pointerId) {
+      const target = e.currentTarget as HTMLElement
+      target.style.touchAction = ''
+      setDrag(null)
+    }
   }
 
   return (

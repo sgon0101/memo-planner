@@ -96,7 +96,9 @@ export default function WeekView({
     clientY: number,
     target: HTMLElement,
   ) => {
+    // setPointerCapture + touchAction을 즉시 DOM에 적용 (React 렌더 대기하지 않음)
     try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
+    target.style.touchAction = 'none'  // 그 즉시 페이지 스크롤 차단
     setDrag({
       planId: plan.id,
       pointerId,
@@ -160,13 +162,15 @@ export default function WeekView({
     if (!drag || drag.pointerId !== e.pointerId) return
     const target = e.currentTarget as HTMLElement
     try { target.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    // touchAction 복원 — 다음 렌더에서 React style이 덮어쓰지만 사이 frame 안전망
+    target.style.touchAction = ''
 
     const wasMoved = drag.moved
     const snapshot = drag
-    setDrag(null)
 
     if (!wasMoved) {
       // 단순 클릭 → 편집
+      setDrag(null)
       onEditPlan(plan)
       return
     }
@@ -188,15 +192,20 @@ export default function WeekView({
       ? addDaysToISO(snapshot.originalDate, snapshot.deltaDays)
       : snapshot.originalDate
 
-    if (newStartTime !== snapshot.originalStartTime
+    const changed = newStartTime !== snapshot.originalStartTime
         || newEndTime !== snapshot.originalEndTime
-        || newDate !== snapshot.originalDate) {
+        || newDate !== snapshot.originalDate
+
+    if (changed) {
       try {
+        // store가 업데이트된 후에 setDrag(null) — 깜빡임 방지
+        // (editPlan은 supabase update + zustand updatePlan을 모두 호출)
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
       } catch (err) {
         console.error('drag editPlan 실패:', err)
       }
     }
+    setDrag(null)
   }
 
   function onPointerCancel(e: React.PointerEvent) {
@@ -205,7 +214,11 @@ export default function WeekView({
       longPressTimer.current = null
       longPressStart.current = null
     }
-    if (drag && drag.pointerId === e.pointerId) setDrag(null)
+    if (drag && drag.pointerId === e.pointerId) {
+      const target = e.currentTarget as HTMLElement
+      target.style.touchAction = ''
+      setDrag(null)
+    }
   }
 
   // 컬럼 클릭 시 새 플랜 — 단, drag 직후 일정 시간(400ms) 동안 차단
