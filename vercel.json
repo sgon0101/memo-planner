@@ -1,5 +1,4 @@
 {
-  "comment": "send-push cron은 GitHub Actions(.github/workflows/send-push.yml)에서 5분 주기로 실행 — Vercel Hobby plan은 분 단위 cron 미지원이라 분리",
   "crons": [
     {
       "path": "/api/cron/cleanup-trash",
