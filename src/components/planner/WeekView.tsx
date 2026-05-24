@@ -5,7 +5,7 @@ import { format, addDays } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import {
-  HOUR_H, SNAP_MINUTES, DRAG_THRESHOLD_PX, LONG_PRESS_MS,
+  HOUR_H, DRAG_THRESHOLD_PX, LONG_PRESS_MS,
   timeToMinutes, minutesToTime, snapMinutes, addDaysToISO, pxToMinutes,
 } from '@/lib/planner/dragHelpers'
 import type { Plan } from '@/types'
@@ -32,7 +32,6 @@ function planHeight(startTime: string, endTime: string): number {
   return Math.max((diff / 60) * HOUR_H, 20)
 }
 
-// 드래그 가능 여부 — 시간 지정 단일일 + 비반복만 (반복 인스턴스는 1단계 제외)
 function isDraggable(p: Plan): boolean {
   return !p.isAllDay && !!p.startTime && !!p.endTime && !!p.date && !p.startDate && !p.isRecurringInstance
 }
@@ -42,13 +41,13 @@ interface DragState {
   pointerId: number
   startClientX: number
   startClientY: number
-  originalStartTime: string  // 'HH:MM'
+  originalStartTime: string
   originalEndTime: string
-  originalDate: string       // 'YYYY-MM-DD'
-  deltaY: number             // 시각 피드백
-  deltaDays: number          // 시각 피드백
-  moved: boolean             // 5px 이상 이동했는가
-  colWidthPx: number         // 컬럼 폭 (한 번 측정)
+  originalDate: string
+  deltaY: number
+  deltaDays: number
+  moved: boolean
+  colWidthPx: number
 }
 
 export default function WeekView({
@@ -58,27 +57,25 @@ export default function WeekView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const colsContainerRef = useRef<HTMLDivElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // long-press 시작점 (timer 취소 판단용) + drag 종료 직후 click 차단용
+  const longPressStart = useRef<{ x: number; y: number } | null>(null)
+  const justDragged = useRef(false)
   const { editPlan } = usePlanner()
 
   const [drag, setDrag] = useState<DragState | null>(null)
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 8 * HOUR_H - 20
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = 8 * HOUR_H - 20
   }, [])
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
-  // 날짜별 시간 플랜 분류
   function getTimedPlans(dayStr: string): Plan[] {
     return plans.filter(
       (p) => (p.date === dayStr || (p.startDate && p.startDate <= dayStr && p.endDate && p.endDate >= dayStr))
         && !p.isAllDay && p.startTime && p.endTime,
     )
   }
-
-  // 종일 플랜
   function getAllDayPlans(dayStr: string): Plan[] {
     return plans.filter(
       (p) => (p.date === dayStr || (p.startDate && p.startDate <= dayStr && p.endDate && p.endDate >= dayStr))
@@ -86,21 +83,25 @@ export default function WeekView({
     )
   }
 
-  // 컬럼 폭 측정
   function measureColWidth(): number {
     if (!colsContainerRef.current) return 100
-    return (colsContainerRef.current.clientWidth - 56) / 7  // 56 = w-14 시간 레이블
+    return (colsContainerRef.current.clientWidth - 56) / 7
   }
 
-  // ── 드래그 핸들러 ──────────────────────────────────────
-  const startDrag = useCallback((plan: Plan, e: React.PointerEvent) => {
-    const target = e.currentTarget as HTMLElement
-    target.setPointerCapture(e.pointerId)
+  // startDrag — explicit params (e 비동기 사용 회피)
+  const startDrag = useCallback((
+    plan: Plan,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    target: HTMLElement,
+  ) => {
+    try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
     setDrag({
       planId: plan.id,
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
+      pointerId,
+      startClientX: clientX,
+      startClientY: clientY,
       originalStartTime: plan.startTime!.slice(0, 5),
       originalEndTime: plan.endTime!.slice(0, 5),
       originalDate: plan.date!,
@@ -114,26 +115,31 @@ export default function WeekView({
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
     if (!isDraggable(plan)) return
     e.stopPropagation()
-    if (e.pointerType === 'touch') {
-      // 모바일 — 450ms long-press 후 drag 진입 (스크롤과 충돌 방지)
+    const { pointerId, clientX, clientY, pointerType } = e
+    const target = e.currentTarget as HTMLElement
+    if (pointerType === 'touch') {
+      // 모바일 — long-press 대기, 시작점 기억
+      longPressStart.current = { x: clientX, y: clientY }
       longPressTimer.current = setTimeout(() => {
-        startDrag(plan, e)
+        startDrag(plan, pointerId, clientX, clientY, target)
+        longPressStart.current = null
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
     } else {
-      // 데스크탑 — 즉시 drag 대기, 5px 이상 움직여야 drag로 인식
-      startDrag(plan, e)
+      // 데스크탑 — 즉시 drag 준비
+      startDrag(plan, pointerId, clientX, clientY, target)
     }
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    // long-press 대기 중에 손가락 움직이면 취소 (스크롤 의도)
-    if (longPressTimer.current && !drag) {
-      const dx = e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left
-      // 그냥 시간으로 충분 — 손가락이 움직이면 long-press 취소
-      if (Math.abs(dx) > 8) {
+    // long-press 대기 중 — 시작점에서 8px 이상 움직이면 취소 (스크롤 의도로 판단)
+    if (longPressTimer.current && longPressStart.current && !drag) {
+      const dx = e.clientX - longPressStart.current.x
+      const dy = e.clientY - longPressStart.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > 8) {
         clearTimeout(longPressTimer.current)
         longPressTimer.current = null
+        longPressStart.current = null
       }
     }
     if (!drag || drag.pointerId !== e.pointerId) return
@@ -149,16 +155,14 @@ export default function WeekView({
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
+      longPressStart.current = null
     }
-    if (!drag || drag.pointerId !== e.pointerId) {
-      // drag 시작 안 됐음 (long-press 대기 중 lift)
-      return
-    }
+    if (!drag || drag.pointerId !== e.pointerId) return
     const target = e.currentTarget as HTMLElement
     try { target.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
 
     const wasMoved = drag.moved
-    const dragSnapshot = drag
+    const snapshot = drag
     setDrag(null)
 
     if (!wasMoved) {
@@ -167,30 +171,28 @@ export default function WeekView({
       return
     }
 
-    // 새 시간/날짜 계산
-    const startMin = timeToMinutes(dragSnapshot.originalStartTime)
-    const endMin = timeToMinutes(dragSnapshot.originalEndTime)
+    // drop — 새 시간/날짜 계산
+    justDragged.current = true
+    setTimeout(() => { justDragged.current = false }, 400)
+
+    const startMin = timeToMinutes(snapshot.originalStartTime)
+    const endMin = timeToMinutes(snapshot.originalEndTime)
     const dur = endMin - startMin
-    const minutesDelta = snapMinutes(pxToMinutes(dragSnapshot.deltaY))
+    const minutesDelta = snapMinutes(pxToMinutes(snapshot.deltaY))
     let newStart = startMin + minutesDelta
-    // 자정 경계 clamp (0 ≤ start, end ≤ 1440)
     newStart = Math.max(0, Math.min(1440 - dur, newStart))
     const newEnd = newStart + dur
     const newStartTime = minutesToTime(newStart)
     const newEndTime = minutesToTime(newEnd)
-    const newDate = dragSnapshot.deltaDays !== 0
-      ? addDaysToISO(dragSnapshot.originalDate, dragSnapshot.deltaDays)
-      : dragSnapshot.originalDate
+    const newDate = snapshot.deltaDays !== 0
+      ? addDaysToISO(snapshot.originalDate, snapshot.deltaDays)
+      : snapshot.originalDate
 
-    if (newStartTime !== dragSnapshot.originalStartTime
-        || newEndTime !== dragSnapshot.originalEndTime
-        || newDate !== dragSnapshot.originalDate) {
+    if (newStartTime !== snapshot.originalStartTime
+        || newEndTime !== snapshot.originalEndTime
+        || newDate !== snapshot.originalDate) {
       try {
-        await editPlan(plan.id, {
-          startTime: newStartTime,
-          endTime: newEndTime,
-          date: newDate,
-        })
+        await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
       } catch (err) {
         console.error('drag editPlan 실패:', err)
       }
@@ -201,8 +203,15 @@ export default function WeekView({
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
+      longPressStart.current = null
     }
     if (drag && drag.pointerId === e.pointerId) setDrag(null)
+  }
+
+  // 컬럼 클릭 시 새 플랜 — 단, drag 직후 일정 시간(400ms) 동안 차단
+  function handleColumnClick(dayStr: string) {
+    if (justDragged.current) return
+    onNewPlan(dayStr)
   }
 
   return (
@@ -291,7 +300,7 @@ export default function WeekView({
                   'flex-1 border-l border-gray-100 dark:border-gray-800 relative',
                   isToday && 'bg-violet-50/30 dark:bg-violet-950/10',
                 )}
-                onClick={() => onNewPlan(dayStr)}
+                onClick={() => handleColumnClick(dayStr)}
               >
                 {/* 시간 줄 */}
                 {HOURS.map((h) => (
@@ -308,7 +317,6 @@ export default function WeekView({
                   const isThisDragging = drag?.planId === plan.id && drag.moved
                   const top = planTop(plan.startTime!)
                   const height = planHeight(plan.startTime!, plan.endTime!)
-                  // 시각 피드백: snap 적용된 새 위치
                   let displayTop = top
                   let translateX = 0
                   let snappedTime: string | null = null
@@ -325,10 +333,9 @@ export default function WeekView({
                     <div
                       key={plan.id}
                       className={cn(
-                        'absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-xs overflow-hidden',
+                        'absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-xs overflow-hidden select-none',
                         draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
                         isThisDragging && 'opacity-90 ring-2 ring-violet-400 shadow-lg z-30',
-                        'touch-none select-none',  // 드래그 시 텍스트 선택/스크롤 방지
                       )}
                       style={{
                         top: `${displayTop}px`,
@@ -338,11 +345,15 @@ export default function WeekView({
                         color: plan.color,
                         transform: isThisDragging ? `translateX(${translateX}px)` : undefined,
                         transition: isThisDragging ? 'none' : 'top 0.15s ease-out',
+                        // drag 시작 후엔 페이지 스크롤 차단, 평소엔 세로 스크롤 허용
+                        touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
                       }}
                       onPointerDown={(e) => onPointerDown(e, plan)}
                       onPointerMove={onPointerMove}
                       onPointerUp={(e) => onPointerUp(e, plan)}
                       onPointerCancel={onPointerCancel}
+                      // 컬럼 onClick으로 전파되어 새 플랜 모달이 뜨는 것 차단
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <div className="font-medium truncate">{plan.title}</div>
                       <div className="opacity-70">

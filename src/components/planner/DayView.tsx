@@ -21,17 +21,14 @@ interface DayViewProps {
 function planTop(startTime: string): number {
   return (timeToMinutes(startTime) / 60) * HOUR_H
 }
-
 function planHeight(startTime: string, endTime: string): number {
   const diff = timeToMinutes(endTime) - timeToMinutes(startTime)
   return Math.max((diff / 60) * HOUR_H, 20)
 }
-
 function nowTop(): number {
   const now = new Date()
   return ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_H
 }
-
 function isDraggable(p: Plan): boolean {
   return !p.isAllDay && !!p.startTime && !!p.endTime && !!p.date && !p.startDate && !p.isRecurringInstance
 }
@@ -49,6 +46,8 @@ interface DragState {
 export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressStart = useRef<{ x: number; y: number } | null>(null)
+  const justDragged = useRef(false)
   const [currentTop, setCurrentTop] = useState(nowTop())
   const { editPlan } = usePlanner()
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -78,6 +77,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   )
 
   function handleGridClick(e: React.MouseEvent<HTMLDivElement>) {
+    // drag 직후 click 차단
+    if (justDragged.current) return
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     const hours = Math.floor(y / HOUR_H)
@@ -87,13 +88,17 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   }
 
   // ── 드래그 핸들러 ──────────────────────────────────────
-  const startDrag = useCallback((plan: Plan, e: React.PointerEvent) => {
-    const target = e.currentTarget as HTMLElement
-    target.setPointerCapture(e.pointerId)
+  const startDrag = useCallback((
+    plan: Plan,
+    pointerId: number,
+    clientY: number,
+    target: HTMLElement,
+  ) => {
+    try { target.setPointerCapture(pointerId) } catch { /* ignore */ }
     setDrag({
       planId: plan.id,
-      pointerId: e.pointerId,
-      startClientY: e.clientY,
+      pointerId,
+      startClientY: clientY,
       originalStartTime: plan.startTime!.slice(0, 5),
       originalEndTime: plan.endTime!.slice(0, 5),
       deltaY: 0,
@@ -104,23 +109,28 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
     if (!isDraggable(plan)) return
     e.stopPropagation()
-    if (e.pointerType === 'touch') {
+    const { pointerId, clientX, clientY, pointerType } = e
+    const target = e.currentTarget as HTMLElement
+    if (pointerType === 'touch') {
+      longPressStart.current = { x: clientX, y: clientY }
       longPressTimer.current = setTimeout(() => {
-        startDrag(plan, e)
+        startDrag(plan, pointerId, clientY, target)
+        longPressStart.current = null
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
     } else {
-      startDrag(plan, e)
+      startDrag(plan, pointerId, clientY, target)
     }
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (longPressTimer.current && !drag) {
-      // long-press 대기 중 움직이면 취소
-      const dy = e.clientY - (e.currentTarget as HTMLElement).getBoundingClientRect().top
-      if (Math.abs(dy) > 8) {
+    if (longPressTimer.current && longPressStart.current && !drag) {
+      const dx = e.clientX - longPressStart.current.x
+      const dy = e.clientY - longPressStart.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > 8) {
         clearTimeout(longPressTimer.current)
         longPressTimer.current = null
+        longPressStart.current = null
       }
     }
     if (!drag || drag.pointerId !== e.pointerId) return
@@ -133,6 +143,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
+      longPressStart.current = null
     }
     if (!drag || drag.pointerId !== e.pointerId) return
     const target = e.currentTarget as HTMLElement
@@ -146,6 +157,9 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       onEditPlan(plan)
       return
     }
+
+    justDragged.current = true
+    setTimeout(() => { justDragged.current = false }, 400)
 
     const startMin = timeToMinutes(snapshot.originalStartTime)
     const endMin = timeToMinutes(snapshot.originalEndTime)
@@ -170,6 +184,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
+      longPressStart.current = null
     }
     if (drag && drag.pointerId === e.pointerId) setDrag(null)
   }
@@ -256,10 +271,9 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                 <div
                   key={plan.id}
                   className={cn(
-                    'absolute left-1 right-1 rounded px-2 py-1 text-xs overflow-hidden',
+                    'absolute left-1 right-1 rounded px-2 py-1 text-xs overflow-hidden select-none',
                     draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
                     isThisDragging && 'opacity-90 ring-2 ring-violet-400 shadow-lg z-30',
-                    'touch-none select-none',
                   )}
                   style={{
                     top: `${displayTop}px`,
@@ -268,11 +282,13 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                     borderLeft: `3px solid ${plan.color}`,
                     color: plan.color,
                     transition: isThisDragging ? 'none' : 'top 0.15s ease-out',
+                    touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
                   }}
                   onPointerDown={(e) => onPointerDown(e, plan)}
                   onPointerMove={onPointerMove}
                   onPointerUp={(e) => onPointerUp(e, plan)}
                   onPointerCancel={onPointerCancel}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <div className="font-medium truncate">{plan.title}</div>
                   <div className="opacity-70">
