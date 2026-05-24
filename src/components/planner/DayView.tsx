@@ -64,6 +64,20 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     return () => clearInterval(interval)
   }, [])
 
+  // drag 중 페이지/그리드 스크롤 잠금 (모바일 세로 스크롤 누수 차단)
+  useEffect(() => {
+    if (!drag) return
+    const scrollEl = scrollRef.current
+    const oldBodyOverflow = document.body.style.overflow
+    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
+    document.body.style.overflow = 'hidden'
+    if (scrollEl) scrollEl.style.overflowY = 'hidden'
+    return () => {
+      document.body.style.overflow = oldBodyOverflow
+      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
+    }
+  }, [drag])
+
   const today = new Date().toISOString().slice(0, 10)
   const isToday = date === today
 
