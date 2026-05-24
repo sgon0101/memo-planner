@@ -191,7 +191,7 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
                   </button>
                   <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
                     onClick={() => { stopRecurringFromDate(deletingPlan.originalPlanId!, deletingPlan.date!).catch(console.error); setDeletingPlan(null) }}>
-                    이 일정 및 이후 모두 삭제
+                    이 일정부터 반복 종료
                   </button>
                   <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500"
                     onClick={() => { removePlan(deletingPlan.originalPlanId!).catch(console.error); setDeletingPlan(null) }}>
