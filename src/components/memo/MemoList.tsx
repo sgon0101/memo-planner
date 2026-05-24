@@ -186,7 +186,6 @@ export default function MemoList() {
   }, [memos])
 
   // #9 — Postgres FTS 서버 검색 (debounce 300ms)
-  // 검색어 있으면 서버 결과, 비면 기존 memos (폴더/페이지 기반)
   const {
     results: searchResults,
     isSearching,
@@ -196,9 +195,36 @@ export default function MemoList() {
     folderId: isTrash ? 'trash' : selectedFolderId,
   })
 
+  // Hybrid — 사용자 입력 즉시 client substring으로 1차 결과, 서버 FTS 응답 오면 교체
+  // (이전엔 server만 사용해 debounce + 왕복으로 400~800ms 지연이 체감됨)
+  const clientFiltered = useMemo(() => {
+    const raw = search.trim()
+    if (!raw) return null
+    // prefix(#태그, [[위키)는 그대로 두고 본문도 같이 매칭되도록 정리
+    let q = raw
+    if (q.startsWith('[[')) q = q.slice(2).replace(/\]\]$/, '')
+    else if (q.startsWith('#')) q = q.slice(1)
+    if (!q) return null
+    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean)
+    return memos.filter((m) => {
+      const haystack = [
+        m.title,
+        m.contentText,
+        ...(m.tags ?? []),
+        ...(m.wikiLinks ?? []),
+      ].join(' ').toLowerCase()
+      return tokens.every((t) => haystack.includes(t))
+    })
+  }, [memos, search])
+
   const filtered = useMemo(() => {
-    // 검색 중이면 서버 결과를 베이스로, 아니면 기존 폴더별 memos
-    let list = isSearching ? [...(searchResults ?? [])] : [...memos]
+    // 검색 중일 땐 서버 결과 우선, 아직 안 왔으면 client 즉시 결과
+    let list: typeof memos
+    if (isSearching) {
+      list = [...(searchResults ?? clientFiltered ?? [])]
+    } else {
+      list = [...memos]
+    }
 
     if (activeTag) {
       list = list.filter((m) => m.tags?.includes(activeTag))
@@ -225,7 +251,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, searchResults, isSearching, sort, titleDir, isTrash, activeTag])
+  }, [memos, searchResults, clientFiltered, isSearching, sort, titleDir, isTrash, activeTag])
 
   // 타임라인 전용 필터 적용
   const timelineFiltered = useMemo(() => {
