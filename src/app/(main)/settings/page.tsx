@@ -418,7 +418,8 @@ export default function SettingsPage() {
 
       {/* 프로필 */}
       <Section title="프로필" icon={<User size={15} />}>
-        <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-3">
+        {/* 프로필 카드 — Section 내부에 풀폭으로 채워 nested rounded 제거 */}
+        <div className="flex items-center gap-3 px-4 py-4 bg-white dark:bg-gray-900">
           <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
             {(nickname || email).charAt(0).toUpperCase()}
           </div>
@@ -427,8 +428,13 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-500 truncate">{email || '—'}</p>
           </div>
         </div>
-        <SettingRow label="별명" description="홈 화면 인사말과 사이드바에 표시됩니다">
-          <div className="flex gap-2">
+        {/* 별명 — 모바일 세로 스택 (label/description/input+저장), 데스크탑 가로 배치 */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3.5 bg-white dark:bg-gray-900">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">별명</p>
+            <p className="text-xs text-gray-500 mt-0.5">홈 화면 인사말과 사이드바에 표시됩니다</p>
+          </div>
+          <div className="flex gap-2 sm:flex-shrink-0">
             <input
               type="search"
               value={nickname}
@@ -438,18 +444,18 @@ export default function SettingsPage() {
               maxLength={20}
               autoComplete="off"
               data-1p-ignore="true"
-              className="[&::-webkit-search-cancel-button]:hidden w-36 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-400"
+              className="[&::-webkit-search-cancel-button]:hidden flex-1 sm:w-36 sm:flex-none px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
             <button
               onClick={saveNickname}
               disabled={nicknameSaving}
-              className="px-3 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
             >
               {nicknameSaving ? <Loader2 size={13} className="animate-spin" /> : null}
               저장
             </button>
           </div>
-        </SettingRow>
+        </div>
       </Section>
 
       {/* 외관 */}
