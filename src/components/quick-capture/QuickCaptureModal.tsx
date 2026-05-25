@@ -306,7 +306,22 @@ function QuickCaptureInner({
   }
 
   const selectedFolder = folders.find((f) => f.id === folderId)
-  const activeFolders = folders.filter((f) => f.id !== '__trash__')
+
+  // FolderPanel과 동일한 depth-first 순서로 폴더 목록 평탄화
+  const folderTree = useMemo(() => {
+    const result: { folder: typeof folders[number]; depth: number }[] = []
+    function traverse(parentId: string | null, depth: number) {
+      folders
+        .filter((f) => f.parentId === parentId)
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .forEach((f) => {
+          result.push({ folder: f, depth })
+          traverse(f.id, depth + 1)
+        })
+    }
+    traverse(null, 0)
+    return result
+  }, [folders])
 
   return (
     <div
@@ -350,8 +365,8 @@ function QuickCaptureInner({
                 className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border-0 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 leading-relaxed"
               />
 
-              {/* 폴더 — 커스텀 드롭다운 (색상 원형 + 이름) */}
-              {activeFolders.length > 0 && (
+              {/* 폴더 — 커스텀 드롭다운 (FolderPanel과 동일한 계층 순서) */}
+              {folderTree.length > 0 && (
                 <div ref={folderDropdownRef} className="relative">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">폴더</span>
@@ -377,6 +392,7 @@ function QuickCaptureInner({
 
                   {folderOpen && (
                     <div className="absolute left-12 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {/* 미분류 */}
                       <button
                         type="button"
                         onClick={() => { setFolderId(null); setFolderOpen(false) }}
@@ -390,18 +406,23 @@ function QuickCaptureInner({
                         <span className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
                         미분류
                       </button>
-                      {activeFolders.map((f) => (
+                      {/* 트리 순서 폴더 목록 */}
+                      {folderTree.map(({ folder: f, depth }) => (
                         <button
                           key={f.id}
                           type="button"
                           onClick={() => { setFolderId(f.id); setFolderOpen(false) }}
                           className={cn(
-                            'w-full flex items-center gap-2 px-3 py-2 text-xs border-t border-gray-100 dark:border-gray-700/50 transition-colors',
+                            'w-full flex items-center gap-1.5 py-2 pr-3 text-xs border-t border-gray-100 dark:border-gray-700/50 transition-colors',
                             folderId === f.id
                               ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
                               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
                           )}
+                          style={{ paddingLeft: `${12 + depth * 14}px` }}
                         >
+                          {depth > 0 && (
+                            <span className="text-gray-300 dark:text-gray-600 flex-shrink-0 text-[10px] leading-none">└</span>
+                          )}
                           <span
                             className="w-3 h-3 rounded-full flex-shrink-0"
                             style={{ backgroundColor: `hsl(${f.colorH},${f.colorS}%,${f.colorL}%)` }}
