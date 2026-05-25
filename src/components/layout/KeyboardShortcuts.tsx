@@ -6,6 +6,7 @@
  * 동작:
  *  - input / textarea / contenteditable 안에서는 모든 단축키 비활성 (Esc만 예외)
  *  - Ctrl/Cmd/Alt 조합은 무시 (기본 단축키 충돌 방지)
+ *  - 단, Ctrl/Cmd+Shift+K(빠른 캡처)는 입력 중에도 동작
  *  - `g` prefix는 700ms sequence (Vim 스타일: `g h` → 홈)
  *  - `?` (Shift+/) — 단축키 안내 모달
  *  - `n` — 새 메모
@@ -16,6 +17,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { X } from 'lucide-react'
+import { useUIStore } from '@/store/uiStore'
 
 type Shortcut = {
   keys: string[]      // 표시용
@@ -25,6 +27,7 @@ type Shortcut = {
 
 const SHORTCUTS: Shortcut[] = [
   { keys: ['?'], label: '단축키 안내 열기', scope: '전체' },
+  { keys: ['Ctrl', 'Shift', 'K'], label: '빠른 캡처 (메모/플랜)', scope: '전체' },
   { keys: ['N'], label: '새 메모 작성', scope: '전체' },
   { keys: ['/'], label: '검색창 포커스', scope: '전체' },
   { keys: ['G', 'H'], label: '홈으로', scope: '전체' },
@@ -51,6 +54,7 @@ export default function KeyboardShortcuts() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const openQuickCapture = useUIStore((s) => s.openQuickCapture)
   const gPrefix = useRef<number | null>(null)  // performance.now() 값 또는 null
   const pathRef = useRef(pathname)
 
@@ -58,6 +62,13 @@ export default function KeyboardShortcuts() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Ctrl/Cmd+Shift+K — 빠른 캡처 (입력 중에도 동작, 가장 먼저 처리)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'K' || e.key === 'k')) {
+        e.preventDefault()
+        openQuickCapture()
+        return
+      }
+
       // Esc — 모달 우선
       if (e.key === 'Escape') {
         if (open) { setOpen(false); return }
@@ -125,7 +136,7 @@ export default function KeyboardShortcuts() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [router, open])
+  }, [router, open, openQuickCapture])
 
   if (!open) return null
 

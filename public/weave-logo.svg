@@ -1,11 +1,11 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100" height="100" rx="22" fill="#7F77DD"/>
-  <path d="M 22 30 L 38 70 L 50 40 L 62 70 L 78 30" 
-        stroke="white" stroke-width="2.5" fill="none" 
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="400" rx="88" fill="#7F77DD"/>
+  <path d="M 88 120 L 152 280 L 200 160 L 248 280 L 312 120" 
+        stroke="white" stroke-width="10" fill="none" 
         stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-  <circle cx="22" cy="30" r="7" fill="white"/>
-  <circle cx="38" cy="70" r="7" fill="white"/>
-  <circle cx="50" cy="40" r="9" fill="white"/>
-  <circle cx="62" cy="70" r="7" fill="white"/>
-  <circle cx="78" cy="30" r="7" fill="white"/>
+  <circle cx="88" cy="120" r="28" fill="white"/>
+  <circle cx="152" cy="280" r="28" fill="white"/>
+  <circle cx="200" cy="160" r="36" fill="white"/>
+  <circle cx="248" cy="280" r="28" fill="white"/>
+  <circle cx="312" cy="120" r="28" fill="white"/>
 </svg>
