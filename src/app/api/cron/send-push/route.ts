@@ -142,7 +142,8 @@ export async function GET(request: NextRequest) {
     const candidates = expanded.filter((p) => {
       if (!p.startTime || !p.date) return false
       const [h, m] = p.startTime.split(':').map(Number)
-      const startAt = new Date(`${p.date}T${pad2(h)}:${pad2(m)}:00`)
+      // start_time은 KST(UTC+9) 로컬 시각이므로 +09:00 명시
+      const startAt = new Date(`${p.date}T${pad2(h)}:${pad2(m)}:00+09:00`)
       const lead = p.notifyLeadMin ?? 10
       const fireAt = new Date(startAt.getTime() - lead * 60 * 1000)
       return fireAt.getTime() >= windowStart.getTime() && fireAt.getTime() < windowEnd.getTime()
