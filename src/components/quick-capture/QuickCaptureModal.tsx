@@ -244,7 +244,7 @@ function QuickCaptureInner({
                 ref={bodyRef}
                 value={memoBody}
                 onChange={(e) => setMemoBody(e.target.value)}
-                placeholder="메모 내용을 입력하세요...&#10;&#10;Ctrl+Enter로 저장, Esc로 닫기"
+                placeholder="메모 내용을 입력하세요..."
                 rows={6}
                 className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border-0 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 leading-relaxed"
               />
@@ -335,9 +335,9 @@ function QuickCaptureInner({
           )}
         </div>
 
-        {/* 푸터 */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/30">
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+        {/* 푸터 — 모바일은 단축키 힌트 숨김 (키보드 없음) */}
+        <div className="flex items-center justify-end sm:justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/30">
+          <span className="hidden sm:inline text-[11px] text-gray-400 dark:text-gray-500">
             <kbd className="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded font-mono text-[10px]">Ctrl+Enter</kbd>
             {' '}저장 ·{' '}
             <kbd className="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded font-mono text-[10px]">Esc</kbd>
