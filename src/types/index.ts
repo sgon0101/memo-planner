@@ -82,4 +82,12 @@ export interface PlanTemplate {
   endTime: string | null
   isAllDay: boolean
   linkedMemoIds: string[]
+  // 확장 필드 (optional — 기존 코드 호환)
+  description?: string | null
+  rruleStr?: string | null
+  notifyEnabled?: boolean
+  notifyLeadMin?: number | null
+  useCount?: number
+  lastUsedAt?: string | null
+  createdAt?: string
 }

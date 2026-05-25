@@ -165,6 +165,9 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
     supabase
       .from('plan_templates')
       .select('*')
+      // 자주 쓰는 템플릿이 위로 — use_count → last_used_at → created_at 폴백
+      .order('use_count', { ascending: false })
+      .order('last_used_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         if (data) setTemplates(data.map((r) => ({
@@ -176,6 +179,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
           endTime: r.end_time ?? null,
           isAllDay: r.is_all_day ?? true,
           linkedMemoIds: r.linked_memo_ids ?? [],
+          description: r.description ?? null,
+          rruleStr: r.rrule_str ?? null,
+          notifyEnabled: r.notify_enabled ?? false,
+          notifyLeadMin: r.notify_lead_min ?? 10,
+          useCount: r.use_count ?? 0,
+          lastUsedAt: r.last_used_at ?? null,
+          createdAt: r.created_at,
         })))
       })
   }, [])
@@ -183,6 +193,9 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   async function handleSaveTemplate() {
     if (!title.trim()) return
     const { data: { user } } = await supabase.auth.getUser()
+    // 현재 폼의 모든 옵션을 템플릿에 함께 저장 (반복/알림/설명 포함)
+    const baseDate = isRange ? startDate : singleDate
+    const tplRrule = buildRRule(recurrence, baseDate)
     const { data } = await supabase
       .from('plan_templates')
       .insert({
@@ -193,6 +206,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
         end_time: isAllDay ? null : (endTime || null),
         is_all_day: isAllDay,
         linked_memo_ids: linkedMemoIds,
+        description: description.trim() || null,
+        rrule_str: tplRrule,
+        notify_enabled: notifyEnabled,
+        notify_lead_min: notifyLeadMin,
       })
       .select().single()
     if (data) setTemplates((prev) => [{
@@ -204,6 +221,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
       endTime: data.end_time ?? null,
       isAllDay: data.is_all_day ?? true,
       linkedMemoIds: data.linked_memo_ids ?? [],
+      description: data.description ?? null,
+      rruleStr: data.rrule_str ?? null,
+      notifyEnabled: data.notify_enabled ?? false,
+      notifyLeadMin: data.notify_lead_min ?? 10,
+      useCount: data.use_count ?? 0,
+      lastUsedAt: data.last_used_at ?? null,
+      createdAt: data.created_at,
     }, ...prev])
   }
 
@@ -220,12 +244,40 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime)   setEndTime(t.endTime.slice(0, 5))
     }
-    if (t.linkedMemoIds.length > 0) {
+    if (t.linkedMemoIds && t.linkedMemoIds.length > 0) {
       setLinkedMemoIds(t.linkedMemoIds)
       setShowAdvanced(true)
     }
+    // 확장 필드 — 있으면 적용 (옵셔널)
+    if (t.description) {
+      setDescription(t.description)
+      setShowAdvanced(true)
+    }
+    if (t.rruleStr) {
+      const baseDate = isRange ? startDate : singleDate
+      setRecurrence(parseRRule(t.rruleStr, baseDate))
+      setShowAdvanced(true)
+    }
+    if (typeof t.notifyEnabled === 'boolean') setNotifyEnabled(t.notifyEnabled)
+    if (typeof t.notifyLeadMin === 'number') setNotifyLeadMin(t.notifyLeadMin)
     setShowTemplateDropdown(false)
     titleInputRef.current?.blur()
+
+    // 사용 빈도 증가 — fire & forget
+    void supabase
+      .from('plan_templates')
+      .update({
+        use_count: (t.useCount ?? 0) + 1,
+        last_used_at: new Date().toISOString(),
+      })
+      .eq('id', t.id)
+      .then(() => {
+        setTemplates((prev) => prev.map((p) =>
+          p.id === t.id
+            ? { ...p, useCount: (p.useCount ?? 0) + 1, lastUsedAt: new Date().toISOString() }
+            : p,
+        ))
+      })
   }
 
   function toggleMemo(id: string) {

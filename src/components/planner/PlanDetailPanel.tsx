@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText, Target } from 'lucide-react'
+import { X, Pencil, Trash2, Check, Calendar, Clock, RepeatIcon, FileText, Target, BookmarkPlus, Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,36 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
   const { memos } = useMemoStore()
   const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [showDeleteMenu, setShowDeleteMenu] = useState(false)
+  const [tplSaveState, setTplSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const supabase = createClient()
+
+  /** 현재 플랜을 새 템플릿으로 저장 — 색/시간/반복/알림/설명 모두 복사 */
+  async function saveAsTemplate() {
+    if (tplSaveState === 'saving') return
+    setTplSaveState('saving')
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인 필요')
+      await supabase.from('plan_templates').insert({
+        user_id: user.id,
+        title: plan.title,
+        color: plan.color,
+        start_time: plan.isAllDay ? null : (plan.startTime || null),
+        end_time:   plan.isAllDay ? null : (plan.endTime   || null),
+        is_all_day: plan.isAllDay,
+        linked_memo_ids: plan.linkedMemoIds ?? [],
+        description: plan.description?.trim() || null,
+        rrule_str: plan.rruleStr ?? null,
+        notify_enabled: plan.notifyEnabled ?? false,
+        notify_lead_min: plan.notifyLeadMin ?? 10,
+      })
+      setTplSaveState('saved')
+      setTimeout(() => setTplSaveState('idle'), 1500)
+    } catch (e) {
+      console.error('[saveAsTemplate]', e)
+      setTplSaveState('idle')
+    }
+  }
 
   // store 직접 구독 — props로 받은 plan은 stale일 수 있음
   const recurringCompletions = usePlannerStore((s) => s.recurringCompletions)
@@ -225,6 +256,23 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Pencil size={13} /> 수정
+          </button>
+          <button
+            onClick={saveAsTemplate}
+            disabled={tplSaveState !== 'idle'}
+            title="이 플랜을 템플릿으로 저장"
+            className={cn(
+              'flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              tplSaveState === 'saved'
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600'
+                : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-60'
+            )}
+          >
+            {tplSaveState === 'saving'
+              ? <Loader2 size={13} className="animate-spin" />
+              : tplSaveState === 'saved'
+                ? <Check size={13} />
+                : <BookmarkPlus size={13} />}
           </button>
           <button
             onClick={handleDelete}
