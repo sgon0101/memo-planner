@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/uiStore'
 import { useFolderStore } from '@/store/folderStore'
+import { useFolders } from '@/hooks/useFolders'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
 import { memoKeys, toMemo } from '@/hooks/useMemos'
@@ -60,6 +61,8 @@ function QuickCaptureInner({
 }) {
   const supabase = createClient()
   const queryClient = useQueryClient()
+  // 모달이 어느 페이지에서 열려도 폴더 목록이 로드되도록 useFolders() 직접 호출
+  useFolders()
   const folders = useFolderStore((s) => s.folders)
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
   const addMemoToStore = useMemoStore((s) => s.addMemo)
