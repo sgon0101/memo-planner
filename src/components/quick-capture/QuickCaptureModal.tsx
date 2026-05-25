@@ -8,7 +8,7 @@ import {
   Link2, Search, Clock, Paperclip, Target, Bell, BellOff,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/uiStore'
 import { useFolderStore } from '@/store/folderStore'
 import { useFolders } from '@/hooks/useFolders'
@@ -112,9 +112,22 @@ function QuickCaptureInner({
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [templates, setTemplates] = useState<PlanTemplate[]>([])
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  // 템플릿: React Query 캐시로 모달 재오픈 시 즉시 표시
+  const { data: templates = [], refetch: refetchTemplates } = useQuery<PlanTemplate[]>({
+    queryKey: ['plan-templates'],
+    queryFn: async () => {
+      const { data } = await supabase.from('plan_templates').select('*').order('created_at', { ascending: false })
+      return (data ?? []).map((r) => ({
+        id: r.id, userId: r.user_id, title: r.title, color: r.color,
+        startTime: r.start_time ?? null, endTime: r.end_time ?? null,
+        isAllDay: r.is_all_day ?? true, linkedMemoIds: r.linked_memo_ids ?? [],
+      }))
+    },
+    staleTime: 30_000,
+  })
 
   const activeMemos = memos.filter((m) => !m.isDeleted && !m.isLocked)
 
@@ -149,19 +162,6 @@ function QuickCaptureInner({
       return aL === bL ? 0 : aL ? -1 : 1
     })
   }, [activeMemos, memoSearch, linkedMemoIds])
-
-  // 템플릿 로드
-  useEffect(() => {
-    supabase.from('plan_templates').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setTemplates(data.map((r) => ({
-          id: r.id, userId: r.user_id, title: r.title, color: r.color,
-          startTime: r.start_time ?? null, endTime: r.end_time ?? null,
-          isAllDay: r.is_all_day ?? true, linkedMemoIds: r.linked_memo_ids ?? [],
-        })))
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // 탭 전환 시 첫 input 포커스
   useEffect(() => {
@@ -214,22 +214,18 @@ function QuickCaptureInner({
   async function handleSaveTemplate() {
     if (!planTitle.trim()) return
     const { data: { user } } = await supabase.auth.getUser()
-    const { data } = await supabase.from('plan_templates').insert({
+    await supabase.from('plan_templates').insert({
       user_id: user?.id, title: planTitle.trim(), color,
       start_time: isAllDay ? null : (startTime || null),
       end_time: isAllDay ? null : (endTime || null),
       is_all_day: isAllDay, linked_memo_ids: linkedMemoIds,
-    }).select().single()
-    if (data) setTemplates((prev) => [{
-      id: data.id, userId: data.user_id, title: data.title, color: data.color,
-      startTime: data.start_time ?? null, endTime: data.end_time ?? null,
-      isAllDay: data.is_all_day ?? true, linkedMemoIds: data.linked_memo_ids ?? [],
-    }, ...prev])
+    })
+    refetchTemplates()
   }
 
   async function handleDeleteTemplate(id: string) {
     await supabase.from('plan_templates').delete().eq('id', id)
-    setTemplates((prev) => prev.filter((t) => t.id !== id))
+    refetchTemplates()
   }
 
   function applyTemplate(t: PlanTemplate) {
