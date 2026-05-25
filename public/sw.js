@@ -1,4 +1,4 @@
-const CACHE_NAME = 'memo-planner-v3'
+const CACHE_NAME = 'memo-planner-v4'
 const STATIC_ASSETS = ['/manifest.json']
 
 self.addEventListener('install', (event) => {
@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
 })
 
 /* ────────────────────────────────────────────────────────── */
-/* Web Push (#6-B)                                            */
+/* Web Push (#6-B) + 액션 버튼 (스누즈/완료)                  */
 /* ────────────────────────────────────────────────────────── */
 
 // 서버에서 보낸 push 메시지 수신 → 알림 표시
@@ -80,31 +80,95 @@ self.addEventListener('push', (event) => {
     }
   }
   const title = payload.title || 'weave'
+  // 액션 버튼 — planId/planDate 있을 때만 제공 (테스트/일반 알림엔 미노출)
+  const hasPlanCtx = payload.data && payload.data.planId && payload.data.planDate
+  const actions = hasPlanCtx
+    ? [
+        { action: 'snooze', title: '10분 후 다시' },
+        { action: 'complete', title: '완료' },
+      ]
+    : []
   const options = {
     body: payload.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: payload.tag || undefined,         // 같은 tag면 알림이 교체됨 (중복 방지)
+    tag: payload.tag || undefined,
     data: { url: payload.url || '/', ...(payload.data || {}) },
     vibrate: [60, 30, 60],
+    actions,
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
-// 알림 클릭 시 — 앱 탭이 있으면 그 탭으로 focus, 없으면 새 창 열기
+// 액션 버튼 처리 — 현재 push subscription의 endpoint로 서버에 user 식별
+async function postWithEndpoint(url, body) {
+  try {
+    const sub = await self.registration.pushManager.getSubscription()
+    const endpoint = sub ? sub.endpoint : null
+    if (!endpoint) return false
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, endpoint }),
+    })
+    return res.ok
+  } catch (_e) {
+    return false
+  }
+}
+
+// 알림 클릭 시 — 액션이면 API 호출, 본문이면 앱 열기
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/'
+  const data = event.notification.data || {}
+  const { url, planId, planDate } = data
+
+  // 액션: 스누즈 — 10분 후 다시 알림
+  if (event.action === 'snooze') {
+    event.waitUntil((async () => {
+      const ok = await postWithEndpoint('/api/notifications/snooze', { planId, planDate })
+      if (ok) {
+        await self.registration.showNotification('⏰ 10분 후 다시 알려드릴게요', {
+          body: '',
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'weave-snooze-ack',
+          silent: true,
+          requireInteraction: false,
+        })
+      }
+    })())
+    return
+  }
+
+  // 액션: 완료 — 플랜 완료 처리
+  if (event.action === 'complete') {
+    event.waitUntil((async () => {
+      const ok = await postWithEndpoint('/api/notifications/complete', { planId, planDate })
+      if (ok) {
+        await self.registration.showNotification('✅ 완료 처리됐어요', {
+          body: '',
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'weave-complete-ack',
+          silent: true,
+          requireInteraction: false,
+        })
+      }
+    })())
+    return
+  }
+
+  // 본문 클릭 — 앱 탭으로 navigate 또는 새 창
+  const targetUrl = url || '/'
   event.waitUntil((async () => {
     const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    // 같은 origin의 탭이 있으면 navigate + focus
     for (const client of allClients) {
       if (client.url.startsWith(self.location.origin)) {
         try { await client.navigate(targetUrl) } catch (_e) { /* navigate 불가 시 무시 */ }
         return client.focus()
       }
     }
-    // 없으면 새 창
     if (self.clients.openWindow) {
       return self.clients.openWindow(targetUrl)
     }

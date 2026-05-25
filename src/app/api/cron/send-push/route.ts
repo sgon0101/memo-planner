@@ -11,8 +11,11 @@
  *  4. 만료(410/404)된 subscription은 DB에서 삭제
  *  5. 발송 성공한 (plan_id, plan_date) 기록
  *
- * 알림 시점: 시작 시간 - 10분 (대략) ~ 시작 시간 직전
- *   (5분 cron이라 시작 정확히가 아닌 윈도우로 처리)
+ * 스누즈 처리:
+ *  - 사용자가 알림의 "10분 후 다시" 버튼을 누르면 /api/notifications/snooze가
+ *    plan_notifications_sent.snoozed_until을 +10min으로 설정.
+ *  - cron은 매 발화마다 snoozed_until <= now인 row를 재발사 대상으로 인식하고,
+ *    윈도우 밖이어도 후보에 추가해 푸시를 다시 보낸 뒤 컬럼을 null로 정리.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -90,22 +93,15 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // 발송 윈도우 — plan별 notify_lead_min 적용. fireAt = startTime - lead가 윈도우 안에 들면 발송.
-  // windowStart에 과거 buffer 15분 → GitHub Actions schedule 부정확(5~30분 지연)로 cron이 늦게 발화해도 잡힘.
-  // windowEnd 미래 10분 → 다음 cron 발화까지 5분 buffer.
-  // 총 25분 윈도우라 한 fireAt이 여러 cron에 잡힐 수 있으나 plan_notifications_sent로 중복 방지.
   const now = new Date()
   const windowStart = new Date(now.getTime() - 15 * 60 * 1000)
   const windowEnd = new Date(now.getTime() + 10 * 60 * 1000)
 
-  // 오늘 + 내일 범위 (DST/타임존 안전을 위해 약간 넓게)
-  // 60분 전 알림까지 지원하므로 window 끝(now+10분)에서 추가 60분 buffer
   const dayBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const dayAfter = new Date(now.getTime() + 48 * 60 * 60 * 1000)
   const dateBeforeStr = dayBefore.toISOString().slice(0, 10)
   const dateAfterStr = dayAfter.toISOString().slice(0, 10)
 
-  // 1) 시간 지정 + (단일일 또는 반복) 플랜 후보 조회 — notify_enabled=true만
   const { data: rows, error: rowsErr } = await supabase
     .from('plans')
     .select('*')
@@ -121,7 +117,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: rowsErr.message }, { status: 500 })
   }
 
-  // 2) 반복 전개 — viewStart=dayBefore, viewEnd=dayAfter
   const plansByUser = new Map<string, Plan[]>()
   for (const r of rows ?? []) {
     const list = plansByUser.get(r.user_id) ?? []
@@ -135,32 +130,60 @@ export async function GET(request: NextRequest) {
   const errors: string[] = []
 
   for (const [userId, userPlans] of plansByUser) {
-    // 반복 인스턴스 전개 (completions 미반영 — cron은 사용자 완료 상태 영향 X. 발송만)
     const expanded = expandRecurringPlans(userPlans, dayBefore, dayAfter, {})
 
-    // 윈도우에 들어오는 인스턴스만 — fireAt = startTime - notify_lead_min 분
-    const candidates = expanded.filter((p) => {
+    // 3) 이 user의 발송/스누즈 기록 전체 조회 (expanded plan 범위)
+    const allPlanIds = Array.from(new Set(expanded.map((p) => p.originalPlanId ?? p.id)))
+    const allPlanDates = Array.from(
+      new Set(expanded.map((p) => p.date).filter((d): d is string => !!d)),
+    )
+    const sentRows = allPlanIds.length > 0 && allPlanDates.length > 0
+      ? (await supabase
+          .from('plan_notifications_sent')
+          .select('plan_id, plan_date, snoozed_until')
+          .eq('user_id', userId)
+          .in('plan_id', allPlanIds)
+          .in('plan_date', allPlanDates)).data
+      : []
+
+    // sentSet: 더 이상 발사하지 말 키 (이미 보냈고 스누즈 없음 / 스누즈 진행 중)
+    // snoozeReady: 스누즈가 만료되어 재발사할 키
+    const nowMs = Date.now()
+    const sentSet = new Set<string>()
+    const snoozeReady = new Set<string>()
+    for (const r of sentRows ?? []) {
+      const k = `${r.plan_id}_${r.plan_date}`
+      if (r.snoozed_until) {
+        const t = new Date(r.snoozed_until).getTime()
+        if (t <= nowMs) snoozeReady.add(k)
+        else sentSet.add(k)
+      } else {
+        sentSet.add(k)
+      }
+    }
+
+    // 후보: 윈도우 안에 들어온 인스턴스 + 스누즈 만료된 인스턴스(윈도우 밖이어도 재발사)
+    const windowCandidates = expanded.filter((p) => {
       if (!p.startTime || !p.date) return false
       const [h, m] = p.startTime.split(':').map(Number)
-      // start_time은 KST(UTC+9) 로컬 시각이므로 +09:00 명시
       const startAt = new Date(`${p.date}T${pad2(h)}:${pad2(m)}:00+09:00`)
       const lead = p.notifyLeadMin ?? 10
       const fireAt = new Date(startAt.getTime() - lead * 60 * 1000)
       return fireAt.getTime() >= windowStart.getTime() && fireAt.getTime() < windowEnd.getTime()
     })
+    const windowKeys = new Set(windowCandidates.map((p) => `${p.originalPlanId ?? p.id}_${p.date}`))
+    const snoozeExtras: typeof windowCandidates = []
+    for (const k of snoozeReady) {
+      if (windowKeys.has(k)) continue
+      const lastUs = k.lastIndexOf('_')
+      const pid = k.slice(0, lastUs)
+      const pdate = k.slice(lastUs + 1)
+      const extra = expanded.find((p) => (p.originalPlanId ?? p.id) === pid && p.date === pdate)
+      if (extra) snoozeExtras.push(extra)
+    }
+    const candidates = [...windowCandidates, ...snoozeExtras]
 
     if (candidates.length === 0) continue
-
-    // 3) 이미 보낸 (plan_id, plan_date) 조회
-    const planIds = candidates.map((p) => p.originalPlanId ?? p.id)
-    const planDates = candidates.map((p) => p.date!)
-    const { data: sentRows } = await supabase
-      .from('plan_notifications_sent')
-      .select('plan_id, plan_date')
-      .eq('user_id', userId)
-      .in('plan_id', planIds)
-      .in('plan_date', planDates)
-    const sentSet = new Set((sentRows ?? []).map((r) => `${r.plan_id}_${r.plan_date}`))
 
     // 4) 그 user의 subscriptions 조회
     const { data: subs } = await supabase
@@ -172,19 +195,24 @@ export async function GET(request: NextRequest) {
     for (const p of candidates) {
       const originalId = p.originalPlanId ?? p.id
       const key = `${originalId}_${p.date}`
-      if (sentSet.has(key)) { totalSkipped++; continue }
+      const isSnoozeRefire = snoozeReady.has(key)
+      if (sentSet.has(key) && !isSnoozeRefire) { totalSkipped++; continue }
 
       const timeLabel = p.startTime ? p.startTime.slice(0, 5) : ''
       const lead = p.notifyLeadMin ?? 10
       const leadLabel = lead === 0 ? '곧 시작' : `${lead}분 후 시작`
       const payload = {
-        title: p.title,
-        body: `${timeLabel} — ${leadLabel}`,
+        title: isSnoozeRefire ? `🔔 ${p.title}` : p.title,
+        body: isSnoozeRefire ? `${timeLabel} — 스누즈 알림` : `${timeLabel} — ${leadLabel}`,
         tag: key,
         url: `/planner?date=${p.date}`,
+        // SW가 액션 버튼 처리할 때 필요한 컨텍스트
+        data: {
+          planId: originalId,
+          planDate: p.date,
+        },
       }
 
-      // 모든 subscription에 발송 + 만료된 것 삭제
       const results = await Promise.allSettled(
         (subs as PushSubscriptionRow[]).map((s) => sendPushTo(s, payload)),
       )
@@ -207,11 +235,12 @@ export async function GET(request: NextRequest) {
       }
 
       if (anySuccess) {
-        // 5) 발송 기록
+        // 5) 발송 기록 — 스누즈 만료 후 재발사면 snoozed_until 정리
         await supabase.from('plan_notifications_sent').upsert({
           user_id: userId,
           plan_id: originalId,
           plan_date: p.date!,
+          snoozed_until: null,
         }, { onConflict: 'plan_id,plan_date' })
         totalSent++
       }
