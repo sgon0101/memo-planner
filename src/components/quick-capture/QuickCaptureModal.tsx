@@ -350,11 +350,19 @@ function QuickCaptureInner({
           {mode === 'memo' && (
             <>
               <input
-                type="text"
+                type="search"
                 value={memoTitle}
                 onChange={(e) => setMemoTitle(e.target.value)}
                 placeholder="제목 (선택)"
-                className="w-full px-3 py-2 text-sm font-medium bg-gray-50 dark:bg-gray-800 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
+                name="memo-title-qc"
+                className="w-full px-3 py-2 text-sm font-medium bg-gray-50 dark:bg-gray-800 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 [&::-webkit-search-cancel-button]:hidden"
               />
               <textarea
                 ref={bodyRef}
