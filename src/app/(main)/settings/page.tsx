@@ -58,18 +58,6 @@ export default function SettingsPage() {
   // Web Push (단계 B — 백그라운드 알림)
   const push = usePushSubscription()
 
-  async function handleTogglePush() {
-    if (push.subscribed) {
-      const ok = await push.unsubscribe()
-      if (ok) setToast({ type: 'success', message: '백그라운드 알림이 꺼졌어요.' })
-      else if (push.error) setToast({ type: 'error', message: push.error })
-    } else {
-      const ok = await push.subscribe()
-      if (ok) setToast({ type: 'success', message: '백그라운드 알림 등록 완료! 앱을 닫아도 알림이 와요.' })
-      else if (push.error) setToast({ type: 'error', message: push.error })
-    }
-  }
-
   useEffect(() => {
     if (!isNotifSupported()) {
       setNotifPerm('unsupported')
@@ -80,6 +68,21 @@ export default function SettingsPage() {
     setNotifLeadState(getNotifLead())
   }, [])
 
+  /**
+   * 통합 알림 토글 — 포어그라운드(setTimeout) + 백그라운드(Web Push + cron)를 한 번에 컨트롤.
+   *
+   * ON 시:
+   *  1) Notification 권한 요청
+   *  2) localStorage `weave-notif-enabled = '1'`
+   *  3) refreshScheduled — 탭 열려있는 동안 setTimeout 알림 예약
+   *  4) push.subscribe — Web Push 등록 → DB push_subscriptions 행 생성
+   *     → 이후 cron이 백그라운드에서 푸시 발송 가능
+   *
+   * OFF 시:
+   *  1) localStorage `weave-notif-enabled = '0'` + clearAllTimers
+   *  2) push.unsubscribe — DB push_subscriptions 삭제 + 브라우저 구독 해제
+   *     → cron은 발송 대상이 없어져서 사실상 멈춤
+   */
   async function handleToggleNotif() {
     const next = !notifEnabled
     if (next) {
@@ -96,10 +99,33 @@ export default function SettingsPage() {
     setNotifEnabled(next)
     setNotifEnabledState(next)
     if (next) {
+      // ① 포어그라운드 setTimeout 예약
       await refreshScheduled()
-      setToast({ type: 'success', message: '알림이 활성화되었어요. 다가오는 플랜을 알려드릴게요.' })
+      // ② 백그라운드 Web Push 구독 (cron이 발송할 수 있게)
+      const ok = await push.subscribe()
+      if (ok) {
+        setToast({ type: 'success', message: '알림이 활성화됐어요. 앱이 닫혀있어도 알림이 와요.' })
+      } else {
+        // 푸시 구독 실패해도 포어그라운드는 동작하므로 그대로 진행
+        setToast({
+          type: 'error',
+          message: push.error
+            ? `포어그라운드 알림만 활성화됐어요 — 백그라운드 실패: ${push.error}`
+            : '포어그라운드 알림만 활성화됐어요 (백그라운드 등록 실패).',
+        })
+      }
     } else {
-      setToast({ type: 'success', message: '알림이 꺼졌습니다.' })
+      // 백그라운드 푸시 구독도 같이 해제 → cron 발송 대상에서 제외
+      let unsubscribed = true
+      if (push.subscribed) {
+        unsubscribed = await push.unsubscribe()
+      }
+      setToast({
+        type: unsubscribed ? 'success' : 'error',
+        message: unsubscribed
+          ? '알림이 꺼졌어요. 백그라운드 알림도 중단됩니다.'
+          : '포어그라운드 알림은 꺼졌지만 백그라운드 해제에 실패했어요. 잠시 후 다시 시도해주세요.',
+      })
     }
   }
 
@@ -410,8 +436,8 @@ export default function SettingsPage() {
                   ? '브라우저 알림이 차단되어 있어요. 주소창 자물쇠 아이콘에서 허용해주세요.'
                   : notifPerm === 'granted'
                     ? notifEnabled
-                      ? '다가오는 플랜의 시작 시간을 알려드려요 (탭이 열려있을 때만)'
-                      : '활성화하면 시간 지정 플랜의 시작 시간을 알려드려요'
+                      ? '앱이 열려있을 때(setTimeout)와 닫혀있을 때(Web Push) 모두 알림이 와요'
+                      : '활성화하면 시간 지정 플랜의 시작 시간을 알려드려요 (포어그라운드 + 백그라운드 통합)'
                     : '활성화하면 브라우저 알림 권한을 요청합니다'
               }
             >
@@ -454,22 +480,33 @@ export default function SettingsPage() {
                 </SettingRow>
               </>
             )}
-            {/* 백그라운드 알림 (Web Push) */}
-            <SettingRow
-              label="백그라운드 알림 (PWA)"
-              description={
-                push.permission === 'unsupported'
-                  ? '이 브라우저는 Web Push를 지원하지 않아요'
-                  : push.subscribed
-                    ? '앱이 닫혀있어도 시작 ~10분 전에 알림이 와요'
-                    : '활성화하면 PWA를 닫아도 알림을 받을 수 있어요'
-              }
-            >
-              <Toggle
-                enabled={push.subscribed}
-                onChange={handleTogglePush}
-              />
-            </SettingRow>
+            {/* 백그라운드 푸시 상태 — 별도 토글 X, 위 알림 토글이 컨트롤 */}
+            {notifEnabled && push.permission !== 'unsupported' && (
+              <div className="px-4 py-3 bg-white dark:bg-gray-900 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    이 기기 백그라운드 푸시
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {push.subscribed
+                      ? '등록됨 — 앱을 닫아도 알림이 와요'
+                      : '미등록 — 알림 토글을 다시 켜면 재등록됩니다'}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-full',
+                    push.subscribed
+                      ? 'bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                  )}
+                >
+                  {push.subscribed
+                    ? <><CheckCircle size={11} /> 활성</>
+                    : <><AlertCircle size={11} /> 비활성</>}
+                </span>
+              </div>
+            )}
             <div className="px-4 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/30">
               ℹ️ 시점은 플랜별로 다르게 설정할 수 있어요. 위 값은 새 플랜 만들 때 기본으로 적용되는 값이에요.
               <strong>백그라운드 알림</strong>은 서버 cron 5분 단위라 시점 ±5분 오차가 있어요.
