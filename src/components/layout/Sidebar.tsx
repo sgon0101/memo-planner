@@ -31,12 +31,13 @@ const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768
 
 interface SidebarProps {
   userEmail: string
+  userName: string
 }
 
-export default function Sidebar({ userEmail }: SidebarProps) {
+export default function Sidebar({ userEmail, userName }: SidebarProps) {
   const pathname = usePathname()
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore()
-  const initial = userEmail[0]?.toUpperCase() ?? '?'
+  const initial = (userName || userEmail)[0]?.toUpperCase() ?? '?'
 
   // 모바일 첫 방문 시 드로어 닫힌 상태로 시작 (persist 기본값 true 대응)
   useEffect(() => {
@@ -178,13 +179,16 @@ export default function Sidebar({ userEmail }: SidebarProps) {
             <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center flex-shrink-0">
               <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">{initial}</span>
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{userEmail}</p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{userName}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{userEmail}</p>
+            </div>
           </div>
           {/* 아이콘만: 데스크톱 접힘 */}
           <div className={cn('hidden justify-center', !sidebarOpen && 'md:flex')}>
             <div
               className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center cursor-default"
-              title={userEmail}
+              title={userName || userEmail}
             >
               <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">{initial}</span>
             </div>

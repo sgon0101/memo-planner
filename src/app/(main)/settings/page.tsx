@@ -26,6 +26,8 @@ export default function SettingsPage() {
 
   const { darkMode, toggleDarkMode } = useUIStore()
   const [email, setEmail] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [nicknameSaving, setNicknameSaving] = useState(false)
   const [calendarConnected, setCalendarConnected] = useState(false)
   const [calendarLoading, setCalendarLoading] = useState(false)
   const [driveConnected, setDriveConnected] = useState(false)
@@ -200,7 +202,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setEmail(data.user.email ?? '')
+      if (data.user) {
+        setEmail(data.user.email ?? '')
+        setNickname((data.user.user_metadata?.display_name as string | undefined) ?? '')
+      }
     })
     fetchIntegrationStatus()
     fetchBackupSettings()
@@ -259,6 +264,19 @@ export default function SettingsPage() {
       setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
     } finally {
       setCalendarLoading(false)
+    }
+  }
+
+  async function saveNickname() {
+    setNicknameSaving(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { display_name: nickname.trim() } })
+      if (error) throw error
+      setToast({ type: 'success', message: '별명이 저장되었습니다.' })
+    } catch {
+      setToast({ type: 'error', message: '저장 중 오류가 발생했습니다.' })
+    } finally {
+      setNicknameSaving(false)
     }
   }
 
@@ -400,15 +418,38 @@ export default function SettingsPage() {
 
       {/* 프로필 */}
       <Section title="프로필" icon={<User size={15} />}>
-        <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-semibold text-sm">
-            {email.charAt(0).toUpperCase()}
+        <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-3">
+          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+            {(nickname || email).charAt(0).toUpperCase()}
           </div>
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{email || '—'}</p>
-            <p className="text-xs text-gray-500">Supabase Auth</p>
+          <div className="min-w-0">
+            {nickname && <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{nickname}</p>}
+            <p className="text-xs text-gray-500 truncate">{email || '—'}</p>
           </div>
         </div>
+        <SettingRow label="별명" description="홈 화면 인사말과 사이드바에 표시됩니다">
+          <div className="flex gap-2">
+            <input
+              type="search"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveNickname()}
+              placeholder="별명 입력"
+              maxLength={20}
+              autoComplete="off"
+              data-1p-ignore="true"
+              className="[&::-webkit-search-cancel-button]:hidden w-36 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+            <button
+              onClick={saveNickname}
+              disabled={nicknameSaving}
+              className="px-3 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              {nicknameSaving ? <Loader2 size={13} className="animate-spin" /> : null}
+              저장
+            </button>
+          </div>
+        </SettingRow>
       </Section>
 
       {/* 외관 */}
