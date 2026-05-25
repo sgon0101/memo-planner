@@ -20,7 +20,7 @@ import TimePicker from '@/components/planner/TimePicker'
 import {
   type RepeatPreset, type EndMode, type CustomFreq,
   type RecurrenceSettings,
-  defaultRecurrence, buildRRule,
+  defaultRecurrence, buildRRule, parseRRule,
 } from '@/lib/planner/rrulePresets'
 import type { PlanTemplate } from '@/types'
 
@@ -119,11 +119,23 @@ function QuickCaptureInner({
   const { data: templates = [], refetch: refetchTemplates } = useQuery<PlanTemplate[]>({
     queryKey: ['plan-templates'],
     queryFn: async () => {
-      const { data } = await supabase.from('plan_templates').select('*').order('created_at', { ascending: false })
+      const { data } = await supabase
+        .from('plan_templates')
+        .select('*')
+        .order('use_count', { ascending: false })
+        .order('last_used_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
       return (data ?? []).map((r) => ({
         id: r.id, userId: r.user_id, title: r.title, color: r.color,
         startTime: r.start_time ?? null, endTime: r.end_time ?? null,
         isAllDay: r.is_all_day ?? true, linkedMemoIds: r.linked_memo_ids ?? [],
+        description: r.description ?? null,
+        rruleStr: r.rrule_str ?? null,
+        notifyEnabled: r.notify_enabled ?? false,
+        notifyLeadMin: r.notify_lead_min ?? 10,
+        useCount: r.use_count ?? 0,
+        lastUsedAt: r.last_used_at ?? null,
+        createdAt: r.created_at,
       }))
     },
     staleTime: 30_000,
@@ -214,11 +226,16 @@ function QuickCaptureInner({
   async function handleSaveTemplate() {
     if (!planTitle.trim()) return
     const { data: { user } } = await supabase.auth.getUser()
+    const baseDate = isRange ? startDate : singleDate
     await supabase.from('plan_templates').insert({
       user_id: user?.id, title: planTitle.trim(), color,
       start_time: isAllDay ? null : (startTime || null),
       end_time: isAllDay ? null : (endTime || null),
       is_all_day: isAllDay, linked_memo_ids: linkedMemoIds,
+      description: description.trim() || null,
+      rrule_str: buildRRule(recurrence, baseDate),
+      notify_enabled: notifyEnabled,
+      notify_lead_min: notifyLeadMin,
     })
     refetchTemplates()
   }
@@ -234,9 +251,21 @@ function QuickCaptureInner({
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime) setEndTime(t.endTime.slice(0, 5))
     }
-    if (t.linkedMemoIds.length > 0) { setLinkedMemoIds(t.linkedMemoIds); setShowAdvanced(true) }
+    if (t.linkedMemoIds && t.linkedMemoIds.length > 0) { setLinkedMemoIds(t.linkedMemoIds); setShowAdvanced(true) }
+    if (t.description) { setDescription(t.description); setShowAdvanced(true) }
+    if (t.rruleStr) {
+      const baseDate = isRange ? startDate : singleDate
+      setRecurrence(parseRRule(t.rruleStr, baseDate))
+      setShowAdvanced(true)
+    }
+    if (typeof t.notifyEnabled === 'boolean') setNotifyEnabled(t.notifyEnabled)
+    if (typeof t.notifyLeadMin === 'number') setNotifyLeadMin(t.notifyLeadMin)
     setShowTemplateDropdown(false)
     titleInputRef.current?.blur()
+    // 사용 빈도 증가 — fire & forget
+    void supabase.from('plan_templates')
+      .update({ use_count: (t.useCount ?? 0) + 1, last_used_at: new Date().toISOString() })
+      .eq('id', t.id)
   }
 
   async function save() {
