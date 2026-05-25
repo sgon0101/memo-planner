@@ -9,6 +9,8 @@ import KeyboardShortcuts from '@/components/layout/KeyboardShortcuts'
 import NotificationScheduler from '@/components/layout/NotificationScheduler'
 import QueryProvider from '@/components/providers/QueryProvider'
 import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
+import QuickCaptureFAB from '@/components/quick-capture/QuickCaptureFAB'
+import QuickCaptureModal from '@/components/quick-capture/QuickCaptureModal'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -19,13 +21,16 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   if (!session) redirect('/login')
 
   const userEmail = session.user.email ?? ''
+  const userName = (session.user.user_metadata?.display_name as string | undefined)
+    || userEmail.split('@')[0]
+    || ''
 
   return (
     <QueryProvider>
     <MemoListPrefetch />
     <DarkModeProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
-        <Sidebar userEmail={userEmail} />
+        <Sidebar userEmail={userEmail} userName={userName} />
         <SidebarSpacer />
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -38,6 +43,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <MobileNav />
         <KeyboardShortcuts />
         <NotificationScheduler />
+        <QuickCaptureFAB />
+        <QuickCaptureModal />
       </div>
     </DarkModeProvider>
     </QueryProvider>

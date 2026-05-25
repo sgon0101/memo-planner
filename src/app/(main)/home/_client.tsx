@@ -130,12 +130,14 @@ export default function HomePageClient() {
     }
   }, [homeMemos])
 
-  // 사용자 이메일 — Supabase 클라이언트 세션에서 즉각 (로컬 토큰)
-  const { data: userEmail = '' } = useQuery({
-    queryKey: ['user-email'],
+  // 표시 이름 — 닉네임(display_name) 우선, 없으면 이메일 앞부분
+  const { data: userName = '' } = useQuery({
+    queryKey: ['user-name'],
     queryFn: async () => {
       const { data: { user } } = await createClient().auth.getUser()
-      return user?.email ?? ''
+      return (user?.user_metadata?.display_name as string | undefined)
+        || user?.email?.split('@')[0]
+        || ''
     },
     staleTime: Infinity,
   })
@@ -226,7 +228,7 @@ export default function HomePageClient() {
 
   return (
     <HomeClient
-      userEmail={userEmail}
+      userName={userName}
       totalMemos={totalMemos}
       completedPlans={stats?.completedPlans}
       recentMemos={homeMemos?.recentMemos}

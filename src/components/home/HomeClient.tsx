@@ -37,7 +37,7 @@ interface DdayPlan {
 }
 
 interface HomeClientProps {
-  userEmail: string
+  userName: string
   totalMemos: number | undefined   // undefined = 로딩 중
   completedPlans: number | undefined
   recentMemos: RecentMemo[] | undefined  // undefined = 로딩 중
@@ -45,16 +45,15 @@ interface HomeClientProps {
   ddayPlans?: DdayPlan[]
 }
 
-function greeting(email: string): string {
+function greeting(name: string): string {
   const hour = new Date().getHours()
-  const name = email.split('@')[0]
   if (hour < 6)  return `잘 자고 있나요, ${name}님 🌙`
   if (hour < 12) return `좋은 아침이에요, ${name}님 ☀️`
   if (hour < 18) return `즐거운 오후예요, ${name}님 🌤️`
   return `오늘 하루도 수고했어요, ${name}님 🌙`
 }
 
-export default function HomeClient({ userEmail, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
+export default function HomeClient({ userName, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
   const router = useRouter()
   const { addMemo } = useMemoStore()
   const [quickTitle, setQuickTitle] = useState('')
@@ -113,7 +112,7 @@ export default function HomeClient({ userEmail, totalMemos, completedPlans, rece
       <div>
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 tracking-wide uppercase">{today}</p>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-          {greeting(userEmail)}
+          {greeting(userName)}
         </h1>
       </div>
 
