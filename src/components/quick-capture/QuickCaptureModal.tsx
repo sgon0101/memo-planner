@@ -1,48 +1,58 @@
 'use client'
 
-/**
- * Quick Capture Modal — 어디서든 빠르게 메모/플랜 작성
- *
- * 단축키: Ctrl/Cmd + Shift + K (KeyboardShortcuts.tsx에서 트리거)
- * FAB: 모바일 우하단 floating button (QuickCaptureFAB.tsx)
- *
- * 메모 탭:
- *  - 제목(optional) + 본문 + 폴더 선택
- *  - 저장 시 Tiptap JSON {paragraph[]}으로 변환해 직접 insert
- *
- * 플랜 탭:
- *  - 제목(required) + 날짜(default 오늘) + 종일/시간 + 색상
- *  - usePlanner.createPlan 호출
- */
-
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { format } from 'date-fns'
-import { X, FileText, Calendar, Loader2, CheckCircle } from 'lucide-react'
+import {
+  X, FileText, Calendar, Loader2, CheckCircle,
+  ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
+  Link2, Search, Clock, Paperclip, Target, Bell, BellOff,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/uiStore'
 import { useFolderStore } from '@/store/folderStore'
 import { usePlanner } from '@/hooks/usePlanner'
-import { memoKeys, toMemo } from '@/hooks/useMemos'
 import { useMemoStore } from '@/store/memoStore'
+import { memoKeys, toMemo } from '@/hooks/useMemos'
 import { cn } from '@/lib/utils'
+import TimePicker from '@/components/planner/TimePicker'
+import {
+  type RepeatPreset, type EndMode, type CustomFreq,
+  type RecurrenceSettings,
+  defaultRecurrence, buildRRule,
+} from '@/lib/planner/rrulePresets'
+import type { PlanTemplate } from '@/types'
 
-const COLORS = ['#7F77DD', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899'] as const
+const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
+
+const PRESET_CHIPS: { value: RepeatPreset; label: string }[] = [
+  { value: 'none',         label: '반복 없음' },
+  { value: 'daily',        label: '매일' },
+  { value: 'weekdays',     label: '평일만' },
+  { value: 'weekly',       label: '매주 같은 요일' },
+  { value: 'biweekly',     label: '격주' },
+  { value: 'monthly-date', label: '매월 같은 날' },
+  { value: 'monthly-day',  label: '매월 같은 요일' },
+  { value: 'yearly',       label: '매년' },
+  { value: 'custom',       label: '맞춤' },
+]
+
+const WEEKDAY_LABELS = [
+  { code: 'MO', label: '월' }, { code: 'TU', label: '화' }, { code: 'WE', label: '수' },
+  { code: 'TH', label: '목' }, { code: 'FR', label: '금' }, { code: 'SA', label: '토' }, { code: 'SU', label: '일' },
+]
 
 export default function QuickCaptureModal() {
   const open = useUIStore((s) => s.quickCaptureOpen)
   const mode = useUIStore((s) => s.quickCaptureMode)
   const setMode = useUIStore((s) => s.toggleQuickCaptureMode)
   const close = useUIStore((s) => s.closeQuickCapture)
-
   if (!open) return null
   return <QuickCaptureInner mode={mode} setMode={setMode} close={close} />
 }
 
 function QuickCaptureInner({
-  mode,
-  setMode,
-  close,
+  mode, setMode, close,
 }: {
   mode: 'memo' | 'plan'
   setMode: () => void
@@ -53,122 +63,231 @@ function QuickCaptureInner({
   const folders = useFolderStore((s) => s.folders)
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
   const addMemoToStore = useMemoStore((s) => s.addMemo)
+  const { memos } = useMemoStore()
   const { createPlan } = usePlanner()
 
-  // 공통
-  const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const titleRef = useRef<HTMLInputElement>(null)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
-  // 메모
+  // ── 메모 탭 ──────────────────────────────────────────────
+  const [memoTitle, setMemoTitle] = useState('')
   const [memoBody, setMemoBody] = useState('')
   const [folderId, setFolderId] = useState<string | null>(
     selectedFolderId && selectedFolderId !== '__trash__' ? selectedFolderId : null,
   )
+  const [folderOpen, setFolderOpen] = useState(false)
+  const folderDropdownRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
-  // 플랜
+  // ── 플랜 탭 ──────────────────────────────────────────────
   const today = format(new Date(), 'yyyy-MM-dd')
-  const [planDate, setPlanDate] = useState(today)
-  const [isAllDay, setIsAllDay] = useState(true)
+  const [planTitle, setPlanTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [color, setColor] = useState<string>(PRESET_COLORS[0])
+  const [isRange, setIsRange] = useState(false)
+  const [singleDate, setSingleDate] = useState(today)
+  const [startDate, setStartDate] = useState(today)
+  const [endDate, setEndDate] = useState(today)
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:00')
-  const [color, setColor] = useState<string>(COLORS[0])
+  const [isAllDay, setIsAllDay] = useState(true)
+  const [recurrence, setRecurrence] = useState<RecurrenceSettings>(() => defaultRecurrence())
+  const [intervalStr, setIntervalStr] = useState('1')
+  const [endCountStr, setEndCountStr] = useState('1')
+  const [notifyEnabled, setNotifyEnabled] = useState(false)
+  const [notifyLeadMin, setNotifyLeadMin] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('weave-notif-lead-min')
+      const n = raw ? parseInt(raw, 10) : NaN
+      if (!isNaN(n) && [0, 5, 10, 30, 60].includes(n)) return n
+    }
+    return 10
+  })
+  const [ddayTarget, setDdayTarget] = useState<string | null>(null)
+  const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>([])
+  const [showMemoPopup, setShowMemoPopup] = useState(false)
+  const [memoSearch, setMemoSearch] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [templates, setTemplates] = useState<PlanTemplate[]>([])
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
-  // 진입 시 첫 input focus
+  const activeMemos = memos.filter((m) => !m.isDeleted && !m.isLocked)
+
+  const matchingTemplates = useMemo(() => {
+    const q = planTitle.trim().toLowerCase()
+    if (!q) return []
+    return templates.filter((t) => t.title.toLowerCase().includes(q))
+  }, [templates, planTitle])
+
+  const filteredMemos = useMemo(() => {
+    const q = memoSearch.trim().toLowerCase()
+    let list = activeMemos
+    if (q) {
+      if (q.startsWith('#')) {
+        const tagQ = q.slice(1)
+        list = activeMemos.filter((m) => m.tags.some((t) => t.toLowerCase().includes(tagQ)))
+      } else if (q.startsWith('[[')) {
+        const wikiQ = q.slice(2)
+        list = activeMemos.filter((m) => m.wikiLinks.some((w) => w.toLowerCase().includes(wikiQ)))
+      } else {
+        list = activeMemos.filter((m) =>
+          m.title.toLowerCase().includes(q) ||
+          m.contentText.toLowerCase().includes(q) ||
+          m.tags.some((t) => t.toLowerCase().includes(q)) ||
+          m.wikiLinks.some((w) => w.toLowerCase().includes(q))
+        )
+      }
+    }
+    return [...list].sort((a, b) => {
+      const aL = linkedMemoIds.includes(a.id)
+      const bL = linkedMemoIds.includes(b.id)
+      return aL === bL ? 0 : aL ? -1 : 1
+    })
+  }, [activeMemos, memoSearch, linkedMemoIds])
+
+  // 템플릿 로드
+  useEffect(() => {
+    supabase.from('plan_templates').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setTemplates(data.map((r) => ({
+          id: r.id, userId: r.user_id, title: r.title, color: r.color,
+          startTime: r.start_time ?? null, endTime: r.end_time ?? null,
+          isAllDay: r.is_all_day ?? true, linkedMemoIds: r.linked_memo_ids ?? [],
+        })))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 탭 전환 시 첫 input 포커스
   useEffect(() => {
     setTimeout(() => {
       if (mode === 'memo' && bodyRef.current) bodyRef.current.focus()
-      else if (titleRef.current) titleRef.current.focus()
+      else if (titleInputRef.current) titleInputRef.current.focus()
     }, 50)
   }, [mode])
 
-  // Esc/Ctrl+Enter — 모달 내부 핸들러
+  // 폴더 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    if (!folderOpen) return
+    function handleClick(e: MouseEvent) {
+      if (folderDropdownRef.current && !folderDropdownRef.current.contains(e.target as Node)) {
+        setFolderOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [folderOpen])
+
+  // Esc / Ctrl+Enter
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        close()
-        return
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        save()
-      }
+      if (e.key === 'Escape') { e.preventDefault(); close(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, memoBody, planDate, isAllDay, startTime, endTime, folderId, color, mode])
+  }, [mode, memoTitle, memoBody, folderId, planTitle, description, color, isRange,
+      singleDate, startDate, endDate, startTime, endTime, isAllDay,
+      recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds])
+
+  function calcDuration(s: string, e: string) {
+    const [sh, sm] = s.split(':').map(Number)
+    const [eh, em] = e.split(':').map(Number)
+    const diff = (eh * 60 + em) - (sh * 60 + sm)
+    if (diff <= 0) return ''
+    const h = Math.floor(diff / 60), m = diff % 60
+    if (m === 0) return `${h}시간`
+    if (h === 0) return `${m}분`
+    return `${h}시간 ${m}분`
+  }
+
+  function toggleMemo(id: string) {
+    setLinkedMemoIds((prev) => prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id])
+  }
+
+  async function handleSaveTemplate() {
+    if (!planTitle.trim()) return
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data } = await supabase.from('plan_templates').insert({
+      user_id: user?.id, title: planTitle.trim(), color,
+      start_time: isAllDay ? null : (startTime || null),
+      end_time: isAllDay ? null : (endTime || null),
+      is_all_day: isAllDay, linked_memo_ids: linkedMemoIds,
+    }).select().single()
+    if (data) setTemplates((prev) => [{
+      id: data.id, userId: data.user_id, title: data.title, color: data.color,
+      startTime: data.start_time ?? null, endTime: data.end_time ?? null,
+      isAllDay: data.is_all_day ?? true, linkedMemoIds: data.linked_memo_ids ?? [],
+    }, ...prev])
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    await supabase.from('plan_templates').delete().eq('id', id)
+    setTemplates((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  function applyTemplate(t: PlanTemplate) {
+    setPlanTitle(t.title); setColor(t.color); setIsAllDay(t.isAllDay)
+    if (!t.isAllDay) {
+      if (t.startTime) setStartTime(t.startTime.slice(0, 5))
+      if (t.endTime) setEndTime(t.endTime.slice(0, 5))
+    }
+    if (t.linkedMemoIds.length > 0) { setLinkedMemoIds(t.linkedMemoIds); setShowAdvanced(true) }
+    setShowTemplateDropdown(false)
+    titleInputRef.current?.blur()
+  }
 
   async function save() {
     if (saving) return
     setError(null)
     if (mode === 'memo') {
-      // 메모: 제목 또는 본문 둘 중 하나라도 있어야
-      if (!title.trim() && !memoBody.trim()) {
-        setError('제목 또는 본문을 입력해주세요')
-        return
-      }
+      if (!memoTitle.trim() && !memoBody.trim()) { setError('제목 또는 본문을 입력해주세요'); return }
       setSaving(true)
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) throw new Error('로그인이 필요합니다')
-
-        // 본문을 Tiptap JSON으로 변환 — 빈 줄은 별도 paragraph로 분리
         const paragraphs = memoBody.split('\n').map((line) =>
-          line
-            ? { type: 'paragraph', content: [{ type: 'text', text: line }] }
-            : { type: 'paragraph' }
+          line ? { type: 'paragraph', content: [{ type: 'text', text: line }] } : { type: 'paragraph' }
         )
-        const doc = {
-          type: 'doc',
-          content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }],
-        }
-
-        const { data: row, error } = await supabase
-          .from('memos')
-          .insert({
-            user_id: user.id,
-            title: title.trim() || '',
-            content: doc,
-            content_text: memoBody,
-            folder_id: folderId,
-          })
-          .select()
-          .single()
-        if (error) throw error
-
+        const doc = { type: 'doc', content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }] }
+        const { data: row, error: insertErr } = await supabase.from('memos').insert({
+          user_id: user.id, title: memoTitle.trim() || '',
+          content: doc, content_text: memoBody, folder_id: folderId,
+        }).select().single()
+        if (insertErr) throw insertErr
         const memo = toMemo(row)
         addMemoToStore(memo)
-        // React Query 캐시 prepend
         queryClient.setQueryData<unknown[]>(memoKeys.all(), (old) => [memo, ...(old ?? [])])
         queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-
         flashSuccess()
       } catch (err) {
         setError(err instanceof Error ? err.message : '저장 실패')
         setSaving(false)
       }
     } else {
-      // 플랜
-      if (!title.trim()) {
-        setError('제목을 입력해주세요')
-        return
+      if (!planTitle.trim()) { setError('제목을 입력해주세요'); return }
+      if (!isAllDay) {
+        const [sh, sm] = startTime.split(':').map(Number)
+        const [eh, em] = endTime.split(':').map(Number)
+        if (eh * 60 + em <= sh * 60 + sm) { setError('종료 시간은 시작 시간보다 늦어야 해요.'); return }
       }
       setSaving(true)
       try {
+        const baseDate = isRange ? startDate : singleDate
+        const rruleStr = buildRRule(recurrence, baseDate)
         await createPlan({
-          title: title.trim(),
-          color,
-          date: planDate,
-          isAllDay,
-          startTime: isAllDay ? null : startTime,
-          endTime: isAllDay ? null : endTime,
-          notifyEnabled: false,
-          notifyLeadMin: 10,
+          title: planTitle.trim(), description: description.trim(), color, isAllDay,
+          date: isRange ? null : singleDate,
+          startDate: isRange ? startDate : null,
+          endDate: isRange ? endDate : null,
+          startTime: isAllDay ? null : (startTime || null),
+          endTime: isAllDay ? null : (endTime || null),
+          rruleStr, repeatType: null,
+          repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
+          notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds,
         })
         flashSuccess()
       } catch (err) {
@@ -179,20 +298,16 @@ function QuickCaptureInner({
   }
 
   function flashSuccess() {
-    setSuccess(true)
-    setSaving(false)
-    setTimeout(() => {
-      setSuccess(false)
-      close()
-      // 입력 리셋은 모달 unmount로 자동 처리됨 (state 재초기화)
-    }, 700)
+    setSuccess(true); setSaving(false)
+    setTimeout(() => { setSuccess(false); close() }, 700)
   }
 
   function reset() {
-    setTitle('')
-    setMemoBody('')
-    setError(null)
+    setMemoTitle(''); setMemoBody(''); setPlanTitle(''); setError(null)
   }
+
+  const selectedFolder = folders.find((f) => f.id === folderId)
+  const activeFolders = folders.filter((f) => f.id !== '__trash__')
 
   return (
     <div
@@ -200,43 +315,30 @@ function QuickCaptureInner({
       onClick={close}
     >
       <div
-        className="w-full sm:max-w-lg bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full sm:max-w-lg bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 헤더 — 탭 + 닫기 */}
-        <div className="flex items-center justify-between px-3 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-3 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex gap-1">
-            <TabButton
-              active={mode === 'memo'}
-              onClick={() => { if (mode !== 'memo') { setMode(); reset() } }}
-              icon={<FileText size={13} />}
-              label="메모"
-            />
-            <TabButton
-              active={mode === 'plan'}
-              onClick={() => { if (mode !== 'plan') { setMode(); reset() } }}
-              icon={<Calendar size={13} />}
-              label="플랜"
-            />
+            <TabButton active={mode === 'memo'} onClick={() => { if (mode !== 'memo') { setMode(); reset() } }} icon={<FileText size={13} />} label="메모" />
+            <TabButton active={mode === 'plan'} onClick={() => { if (mode !== 'plan') { setMode(); reset() } }} icon={<Calendar size={13} />} label="플랜" />
           </div>
-          <button
-            onClick={close}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-            aria-label="닫기"
-          >
+          <button onClick={close} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
             <X size={15} />
           </button>
         </div>
 
-        {/* 본문 */}
-        <div className="px-4 py-4 space-y-3">
-          {mode === 'memo' ? (
+        {/* 스크롤 본문 */}
+        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-3">
+
+          {/* ───────────── 메모 탭 ───────────── */}
+          {mode === 'memo' && (
             <>
               <input
-                ref={titleRef}
                 type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={memoTitle}
+                onChange={(e) => setMemoTitle(e.target.value)}
                 placeholder="제목 (선택)"
                 className="w-full px-3 py-2 text-sm font-medium bg-gray-50 dark:bg-gray-800 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
               />
@@ -248,95 +350,535 @@ function QuickCaptureInner({
                 rows={6}
                 className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border-0 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 leading-relaxed"
               />
-              {folders.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-500 dark:text-gray-400 shrink-0">폴더</label>
-                  <select
-                    value={folderId ?? ''}
-                    onChange={(e) => setFolderId(e.target.value || null)}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-700 dark:text-gray-300"
-                  >
-                    <option value="">미분류</option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
+
+              {/* 폴더 — 커스텀 드롭다운 (색상 원형 + 이름) */}
+              {activeFolders.length > 0 && (
+                <div ref={folderDropdownRef} className="relative">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">폴더</span>
+                    <button
+                      type="button"
+                      onClick={() => setFolderOpen((v) => !v)}
+                      className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-violet-400 transition-colors text-left"
+                    >
+                      {selectedFolder ? (
+                        <>
+                          <span
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: `hsl(${selectedFolder.colorH},${selectedFolder.colorS}%,${selectedFolder.colorL}%)` }}
+                          />
+                          <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{selectedFolder.name}</span>
+                        </>
+                      ) : (
+                        <span className="flex-1 text-gray-400">미분류</span>
+                      )}
+                      <ChevronDown size={12} className={cn('text-gray-400 flex-shrink-0 transition-transform', folderOpen && 'rotate-180')} />
+                    </button>
+                  </div>
+
+                  {folderOpen && (
+                    <div className="absolute left-12 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => { setFolderId(null); setFolderOpen(false) }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors',
+                          !folderId
+                            ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                        )}
+                      >
+                        <span className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+                        미분류
+                      </button>
+                      {activeFolders.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => { setFolderId(f.id); setFolderOpen(false) }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 text-xs border-t border-gray-100 dark:border-gray-700/50 transition-colors',
+                            folderId === f.id
+                              ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                          )}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: `hsl(${f.colorH},${f.colorS}%,${f.colorL}%)` }}
+                          />
+                          <span className="truncate">{f.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
-          ) : (
-            <>
-              <input
-                ref={titleRef}
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="플랜 제목"
-                className="w-full px-3 py-2 text-sm font-medium bg-gray-50 dark:bg-gray-800 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
-              />
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 shrink-0">날짜</label>
-                <input
-                  type="date"
-                  value={planDate}
-                  onChange={(e) => setPlanDate(e.target.value)}
-                  className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-700 dark:text-gray-300"
-                />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isAllDay}
-                  onChange={(e) => setIsAllDay(e.target.checked)}
-                  className="w-4 h-4 accent-violet-600"
-                />
-                <span className="text-xs text-gray-700 dark:text-gray-300">종일</span>
-              </label>
-              {!isAllDay && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-700 dark:text-gray-300"
-                  />
-                  <span className="text-xs text-gray-400">~</span>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/30 text-gray-700 dark:text-gray-300"
-                  />
+          )}
+
+          {/* ───────────── 플랜 탭 ───────────── */}
+          {mode === 'plan' && (
+            <div className="space-y-3">
+              {/* 즐겨찾기 템플릿 */}
+              {templates.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">즐겨찾기</p>
+                  <div className="flex gap-1.5 flex-wrap items-center">
+                    {templates.slice(0, 3).map((t) => (
+                      <div key={t.id} className="group relative flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => applyTemplate(t)}
+                          className="flex items-center gap-1 pl-2 pr-1 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-400 text-gray-600 dark:text-gray-300 transition-colors"
+                          style={{ borderLeftColor: t.color, borderLeftWidth: 3 }}
+                        >
+                          <span>{t.title}</span>
+                          {!t.isAllDay && t.startTime && (
+                            <span className="text-gray-400 ml-0.5">{t.startTime.slice(0, 5)}</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(t.id)}
+                          className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-4 h-4 bg-gray-500 text-white rounded-full text-[10px] leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                    {templates.length > 3 && (
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                        +{templates.length - 3}개 · 제목 입력 시 자동완성
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {/* 제목 + 즐겨찾기 저장 버튼 + 자동완성 */}
+              <div className="relative">
+                <input
+                  ref={titleInputRef}
+                  type="search"
+                  value={planTitle}
+                  onChange={(e) => setPlanTitle(e.target.value)}
+                  onFocus={() => setShowTemplateDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowTemplateDropdown(false), 150)}
+                  placeholder="플랜 제목"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-form-type="other"
+                  name="plan-title-qc"
+                  className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent [&::-webkit-search-cancel-button]:hidden"
+                />
+                <button
+                  type="button"
+                  title="즐겨찾기에 저장"
+                  onClick={handleSaveTemplate}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-amber-400 transition-colors"
+                >
+                  <Bookmark size={14} />
+                </button>
+                {showTemplateDropdown && matchingTemplates.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                    {matchingTemplates.slice(0, 5).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); applyTemplate(t) }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-violet-50 dark:hover:bg-violet-950/20 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {!t.isAllDay && t.startTime ? (
+                              <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                                <Clock size={10} />
+                                {t.startTime.slice(0, 5)}{t.endTime ? `~${t.endTime.slice(0, 5)}` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-gray-400">종일</span>
+                            )}
+                            {t.linkedMemoIds.length > 0 && (
+                              <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                                <Paperclip size={10} />
+                                메모 {t.linkedMemoIds.length}개
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 색상 */}
               <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 shrink-0">색상</label>
-                <div className="flex gap-1.5">
-                  {COLORS.map((c) => (
+                <p className="text-xs text-gray-500 dark:text-gray-400 w-10 flex-shrink-0">색상</p>
+                <div className="flex gap-2">
+                  {PRESET_COLORS.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => setColor(c)}
-                      className={cn(
-                        'w-6 h-6 rounded-full border-2 transition-all',
-                        color === c ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent',
-                      )}
+                      className={cn('w-6 h-6 rounded-full transition-transform hover:scale-110', color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}
                       style={{ backgroundColor: c }}
-                      aria-label={c}
                     />
                   ))}
                 </div>
               </div>
-            </>
+
+              {/* 날짜 유형 + 종일 + 알림 */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                  <input type="checkbox" checked={isRange} onChange={(e) => setIsRange(e.target.checked)} className="accent-violet-600" />
+                  범위 플랜
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAllDay((v) => !v)}
+                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+                >
+                  <span className={cn('relative inline-flex h-4 w-7 items-center rounded-full transition-colors', isAllDay ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}>
+                    <span className={cn('absolute h-3 w-3 rounded-full bg-white shadow transition-transform', isAllDay ? 'translate-x-3.5' : 'translate-x-0.5')} />
+                  </span>
+                  종일
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifyEnabled((v) => !v)}
+                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+                >
+                  <span className={cn('relative inline-flex h-4 w-7 items-center rounded-full transition-colors', notifyEnabled ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}>
+                    <span className={cn('absolute h-3 w-3 rounded-full bg-white shadow transition-transform', notifyEnabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
+                  </span>
+                  {notifyEnabled ? <Bell size={11} className="text-violet-500" /> : <BellOff size={11} />}
+                  알림
+                </button>
+              </div>
+
+              {/* 알림 시점 */}
+              {notifyEnabled && (
+                <div className="flex items-center gap-1.5 flex-wrap pl-2">
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mr-1">
+                    <Bell size={10} className="text-violet-500" /> 시점
+                  </span>
+                  {[0, 5, 10, 30, 60].map((min) => (
+                    <button
+                      key={min}
+                      type="button"
+                      onClick={() => setNotifyLeadMin(min)}
+                      className={cn(
+                        'text-[11px] px-2 py-0.5 rounded-full border transition-colors',
+                        notifyLeadMin === min
+                          ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
+                      )}
+                    >
+                      {min === 0 ? '정시' : `${min}분 전`}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* 날짜 */}
+              {isRange ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">시작일</p>
+                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">종료일</p>
+                    <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">날짜</p>
+                  <input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
+                </div>
+              )}
+
+              {/* 시간 */}
+              {!isAllDay && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
+                    <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} />
+                  </div>
+                  {calcDuration(startTime, endTime) && (
+                    <p className="text-xs text-violet-500">소요 시간: {calcDuration(startTime, endTime)}</p>
+                  )}
+                </div>
+              )}
+
+              {/* 고급 설정 토글 */}
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                {showAdvanced ? '고급 설정 접기' : '고급 설정 (설명, 반복, D-day, 메모 연결)'}
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-4">
+                  {/* 설명 */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">설명</p>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="플랜에 대한 설명을 입력하세요..."
+                      rows={3}
+                      autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                      data-1p-ignore="true" data-lpignore="true" data-form-type="other" name="plan-desc-qc"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                    />
+                  </div>
+
+                  {/* 반복 */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {PRESET_CHIPS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setRecurrence((r) => ({ ...r, preset: opt.value }))}
+                          className={cn(
+                            'px-2.5 py-1 text-xs rounded-lg border transition-colors',
+                            recurrence.preset === opt.value
+                              ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
+                          )}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+
+                    {recurrence.preset === 'custom' && (
+                      <div className="mt-3 p-3 rounded-lg border border-violet-200 dark:border-violet-900/50 bg-violet-50/30 dark:bg-violet-950/10 space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">단위</span>
+                          <div className="flex gap-1">
+                            {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as CustomFreq[]).map((f) => (
+                              <button key={f} type="button"
+                                onClick={() => setRecurrence((r) => ({ ...r, custom: { ...r.custom, freq: f } }))}
+                                className={cn('px-2 py-0.5 text-[11px] rounded border transition-colors',
+                                  recurrence.custom.freq === f
+                                    ? 'border-violet-500 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400'
+                                    : 'border-gray-200 dark:border-gray-700 text-gray-500',
+                                )}
+                              >{({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[f]}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">간격</span>
+                          <input
+                            type="search" value={intervalStr} inputMode="numeric"
+                            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                            data-1p-ignore="true" data-lpignore="true" data-form-type="other" name="interval-qc"
+                            onChange={(e) => {
+                              const raw = e.target.value; setIntervalStr(raw)
+                              const n = parseInt(raw, 10)
+                              if (!isNaN(n) && n >= 1) setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: Math.min(365, n) } }))
+                            }}
+                            onBlur={() => {
+                              const n = parseInt(intervalStr, 10)
+                              const valid = isNaN(n) || n < 1 ? 1 : Math.min(365, n)
+                              setIntervalStr(String(valid))
+                              setRecurrence((r) => ({ ...r, custom: { ...r.custom, interval: valid } }))
+                            }}
+                            className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-search-cancel-button]:hidden"
+                          />
+                          <span className="text-[11px] text-gray-500">
+                            {({ DAILY: '일', WEEKLY: '주', MONTHLY: '월', YEARLY: '년' } as const)[recurrence.custom.freq]}마다
+                          </span>
+                        </div>
+                        {recurrence.custom.freq === 'WEEKLY' && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">요일</span>
+                            <div className="flex gap-1 flex-wrap">
+                              {WEEKDAY_LABELS.map((wd) => {
+                                const selected = recurrence.custom.byday.includes(wd.code)
+                                return (
+                                  <button key={wd.code} type="button"
+                                    onClick={() => setRecurrence((r) => ({ ...r, custom: { ...r.custom, byday: selected ? r.custom.byday.filter((b) => b !== wd.code) : [...r.custom.byday, wd.code] } }))}
+                                    className={cn('w-6 h-6 text-[10px] rounded-full transition-colors',
+                                      selected ? 'bg-violet-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700',
+                                    )}
+                                  >{wd.label}</button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {recurrence.preset !== 'none' && (
+                      <div className="mt-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">종료</span>
+                          <div className="flex gap-1">
+                            {(['forever', 'count', 'until'] as EndMode[]).map((m) => (
+                              <button key={m} type="button"
+                                onClick={() => setRecurrence((r) => ({ ...r, endMode: m }))}
+                                className={cn('px-2 py-0.5 text-[11px] rounded border transition-colors',
+                                  recurrence.endMode === m
+                                    ? 'border-violet-500 bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400'
+                                    : 'border-gray-200 dark:border-gray-700 text-gray-500',
+                                )}
+                              >{({ forever: '끝없음', count: '횟수', until: '날짜' } as const)[m]}</button>
+                            ))}
+                          </div>
+                        </div>
+                        {recurrence.endMode === 'count' && (
+                          <div className="flex items-center gap-2 pl-12">
+                            <input
+                              type="search" value={endCountStr} inputMode="numeric"
+                              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                              data-1p-ignore="true" data-lpignore="true" data-form-type="other" name="endcount-qc"
+                              onChange={(e) => {
+                                const raw = e.target.value; setEndCountStr(raw)
+                                const n = parseInt(raw, 10)
+                                if (!isNaN(n) && n >= 1) setRecurrence((r) => ({ ...r, endCount: Math.min(500, n) }))
+                              }}
+                              onBlur={() => {
+                                const n = parseInt(endCountStr, 10)
+                                const valid = isNaN(n) || n < 1 ? 1 : Math.min(500, n)
+                                setEndCountStr(String(valid))
+                                setRecurrence((r) => ({ ...r, endCount: valid }))
+                              }}
+                              className="w-14 px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-center [&::-webkit-search-cancel-button]:hidden"
+                            />
+                            <span className="text-[11px] text-gray-500">회 반복 후 종료</span>
+                          </div>
+                        )}
+                        {recurrence.endMode === 'until' && (
+                          <div className="flex items-center gap-2 pl-12">
+                            <input type="date" value={recurrence.endUntil ?? ''} min={isRange ? startDate : singleDate}
+                              onChange={(e) => setRecurrence((r) => ({ ...r, endUntil: e.target.value || null }))}
+                              className="px-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800" />
+                            <span className="text-[11px] text-gray-500">까지 반복</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* D-day */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                        <Target size={11} className="text-rose-500" /> D-day
+                      </p>
+                      {ddayTarget && (
+                        <button type="button" onClick={() => setDdayTarget(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">해제</button>
+                      )}
+                    </div>
+                    {ddayTarget ? (
+                      <div className="flex items-center gap-2">
+                        <input type="date" value={ddayTarget} onChange={(e) => setDdayTarget(e.target.value || null)}
+                          className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-rose-500" />
+                        <span className="text-xs font-medium text-rose-500 whitespace-nowrap">
+                          {(() => {
+                            const t2 = new Date(); t2.setHours(0, 0, 0, 0)
+                            const t = new Date(ddayTarget); t.setHours(0, 0, 0, 0)
+                            const diff = Math.round((t.getTime() - t2.getTime()) / 86400000)
+                            if (diff > 0) return `D-${diff}`
+                            if (diff === 0) return 'D-Day'
+                            return `D+${-diff}`
+                          })()}
+                        </span>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setDdayTarget(singleDate)}
+                        className="w-full px-3 py-2 text-xs text-rose-500 border border-dashed border-rose-200 dark:border-rose-900/50 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors">
+                        + 목표일 지정 (홈 화면에 카운트다운 표시)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 메모 연결 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">메모 연결</p>
+                      <button type="button"
+                        onClick={() => { const next = !showMemoPopup; setShowMemoPopup(next); if (!next) setMemoSearch('') }}
+                        className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                      >
+                        <Link2 size={11} />
+                        {linkedMemoIds.length > 0 ? `${linkedMemoIds.length}개 연결됨` : '메모 선택'}
+                      </button>
+                    </div>
+                    {showMemoPopup && (
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                          <Search size={12} className="text-gray-400 flex-shrink-0" />
+                          <input type="text" value={memoSearch} onChange={(e) => setMemoSearch(e.target.value)}
+                            placeholder="제목 · 내용 · #태그 · [[위키"
+                            className="flex-1 text-xs bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500" autoComplete="off" />
+                          {memoSearch && (
+                            <button type="button" onClick={() => setMemoSearch('')} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={11} /></button>
+                          )}
+                        </div>
+                        <div className="max-h-40 overflow-y-auto">
+                          {filteredMemos.length === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-4">{memoSearch ? '검색 결과가 없습니다' : '연결할 메모가 없습니다'}</p>
+                          ) : (
+                            filteredMemos.map((m) => {
+                              const linked = linkedMemoIds.includes(m.id)
+                              return (
+                                <button key={m.id} type="button" onClick={() => toggleMemo(m.id)}
+                                  className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs text-left border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors',
+                                    linked ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                  )}>
+                                  {linked ? <BookmarkCheck size={11} className="text-violet-500 flex-shrink-0" /> : <Bookmark size={11} className="text-gray-400 flex-shrink-0" />}
+                                  <span className="truncate flex-1">{m.title || '제목 없음'}</span>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {linkedMemoIds.length > 0 && !showMemoPopup && (
+                      <div className="flex flex-wrap gap-1">
+                        {linkedMemoIds.map((id) => {
+                          const m = activeMemos.find((m) => m.id === id)
+                          if (!m) return null
+                          return (
+                            <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 text-xs rounded-full border border-violet-200 dark:border-violet-800">
+                              {m.title || '제목 없음'}
+                              <button type="button" onClick={() => toggleMemo(id)} className="text-violet-400 hover:text-violet-600">×</button>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
-          {error && (
-            <div className="text-xs text-red-500 px-1">{error}</div>
-          )}
+          {error && <div className="text-xs text-red-500 px-1">{error}</div>}
         </div>
 
-        {/* 푸터 — 모바일은 단축키 힌트 숨김 (키보드 없음) */}
-        <div className="flex items-center justify-end sm:justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/30">
+        {/* 푸터 */}
+        <div className="flex items-center justify-end sm:justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/30 flex-shrink-0">
           <span className="hidden sm:inline text-[11px] text-gray-400 dark:text-gray-500">
             <kbd className="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded font-mono text-[10px]">Ctrl+Enter</kbd>
             {' '}저장 ·{' '}
@@ -348,9 +890,7 @@ function QuickCaptureInner({
             disabled={saving || success}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60',
-              success
-                ? 'bg-green-600 text-white'
-                : 'bg-violet-600 hover:bg-violet-700 text-white',
+              success ? 'bg-green-600 text-white' : 'bg-violet-600 hover:bg-violet-700 text-white',
             )}
           >
             {saving ? <Loader2 size={12} className="animate-spin" />
@@ -364,17 +904,13 @@ function QuickCaptureInner({
   )
 }
 
-function TabButton({
-  active, onClick, icon, label,
-}: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
     <button
       onClick={onClick}
       className={cn(
         'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
-        active
-          ? 'bg-violet-600 text-white'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
+        active ? 'bg-violet-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
       )}
     >
       {icon}
