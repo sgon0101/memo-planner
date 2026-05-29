@@ -559,6 +559,7 @@ export default function MemoList() {
     onRestore: (id: string) => restoreMemo(id).catch(console.error),
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
     onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
+    searchQuery: search,
   }
 
   return (
@@ -1435,7 +1436,7 @@ function WikiDropdown({
   )
 }
 
-function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, selectedTrashIds, onToggleSelect }: {
+function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, selectedTrashIds, onToggleSelect, searchQuery }: {
   memos: ReturnType<typeof useMemos>['memos']
   view: 'card' | 'list'
   cols?: 4 | 5 | 6
@@ -1450,8 +1451,9 @@ function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onStar, on
   onMoveToFolder?: (id: string, folderId: string | null) => void
   selectedTrashIds?: Set<string>
   onToggleSelect?: (id: string) => void
+  searchQuery?: string
 }) {
-  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, onToggleSelect }
+  const props = { view, isTrash, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, onToggleSelect, searchQuery }
   if (view === 'card') {
     // Tailwind는 동적 클래스를 인식하지 못하므로 완전한 클래스명을 나열
     const colClass = cols === 6
