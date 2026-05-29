@@ -21,16 +21,29 @@ function pickSrc(
 ): string {
   const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
   const effective = displayWidth * dpr
-  // 임계값을 이미지 해상도보다 낮게 설정 → 항상 다운스케일 보장
-  if (srcSm && effective <= 400) return srcSm   // 480w 이미지, 최대 400 effective px
-  if (srcMd && effective <= 800) return srcMd   // 960w 이미지, 최대 800 effective px
-  return srcFull                                // 1920w
+  if (srcSm && effective <= 400) return srcSm
+  if (srcMd && effective <= 800) return srcMd
+  return srcFull
 }
 
-export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
-  const [selected, setSelected] = useState(false)
+/**
+ * ResizableImageView — Tiptap 이미지 노드 뷰
+ *
+ * 주요 설계:
+ *  - `selected`는 Tiptap이 NodeViewProps로 내려주는 PM NodeSelection 상태 사용
+ *    → 로컬 useState 제거, PM과 selection 일관성 보장
+ *  - 클릭 시 `editor.commands.setNodeSelection(getPos())`로 명시적으로 노드 선택
+ *    → 이전에 stopPropagation 때문에 selection이 stale 상태로 남아 다른 위치로
+ *      scrollIntoView가 발화하던 버그 해결
+ *  - `setNaturalSize`는 prev ?? 패턴으로 1회만 기록
+ *    → src 동적 교체로 onLoad가 재발화해도 layout shift 없음
+ *  - 리사이즈 핸들/드래그는 PointerEvent로 마우스+터치 통합
+ *  - 모바일에서 핸들 크기 24px, 툴바 위치는 top 잘림 방지
+ */
+export function ResizableImageView({ node, updateAttributes, editor, getPos, selected }: NodeViewProps) {
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
   const [activeSrc, setActiveSrc] = useState(node.attrs.src as string)
+  const [toolbarBelow, setToolbarBelow] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const startRef = useRef({ x: 0, initW: 0 })
@@ -40,41 +53,58 @@ export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
   const srcMd = (node.attrs.srcMd as string | null) ?? null
   const srcSm = (node.attrs.srcSm as string | null) ?? null
 
-  // 실제 렌더 크기를 감시해 최적 해상도 URL을 동적으로 선택
+  // 실제 렌더 크기를 감시해 최적 해상도 URL 동적 선택
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-
     const observer = new ResizeObserver(([entry]) => {
       setActiveSrc(pickSrc(entry.contentRect.width, srcFull, srcMd, srcSm))
     })
     observer.observe(el)
-    // 마운트 직후 초기값 즉시 반영
     setActiveSrc(pickSrc(el.offsetWidth, srcFull, srcMd, srcSm))
-
     return () => observer.disconnect()
   }, [srcFull, srcMd, srcSm])
 
-  function startResize(e: React.MouseEvent) {
+  // 선택될 때 툴바가 화면 위로 잘리는지 측정 → 아래로 배치
+  useEffect(() => {
+    if (!selected) { setToolbarBelow(false); return }
+    const el = containerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    // 위로 띄울 공간이 32px 이하면 아래로
+    setToolbarBelow(rect.top < 40)
+  }, [selected])
+
+  // 클릭 시 명시적으로 PM에 NodeSelection 알림 — selection이 stale로 남는 버그 차단
+  function handleClick(e: React.MouseEvent) {
+    e.preventDefault()
+    const pos = typeof getPos === 'function' ? getPos() : null
+    if (typeof pos === 'number' && editor) {
+      editor.commands.setNodeSelection(pos)
+    }
+  }
+
+  // 리사이즈 — PointerEvent로 마우스+터치 통합
+  function startResize(e: React.PointerEvent) {
     e.preventDefault()
     e.stopPropagation()
     const img = imgRef.current
     if (!img) return
     startRef.current = { x: e.clientX, initW: img.offsetWidth }
 
-    function onMove(ev: MouseEvent) {
+    function onMove(ev: PointerEvent) {
       const dx = ev.clientX - startRef.current.x
       const newW = Math.max(60, startRef.current.initW + dx)
       updateAttributes({ width: `${Math.round(newW)}px` })
     }
-
     function onUp() {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
     }
-
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
   }
 
   function displaySize(): string {
@@ -89,43 +119,58 @@ export function ResizableImageView({ node, updateAttributes }: NodeViewProps) {
       as="div"
       className="relative inline-block max-w-full my-1"
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
-      onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelected((v) => !v) }}
+      onClick={handleClick}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={imgRef}
         src={activeSrc}
         alt={(node.attrs.alt as string) || ''}
-        style={{ width: '100%', display: 'block', outline: selected ? '2px solid #7C3AED' : 'none', borderRadius: 2 }}
+        style={{
+          width: '100%',
+          display: 'block',
+          outline: selected ? '2px solid #7C3AED' : 'none',
+          borderRadius: 2,
+        }}
         onLoad={() => {
           const img = imgRef.current
-          if (img) setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight })
+          if (!img) return
+          // prev ?? 패턴 — src 동적 교체로 onLoad 재발화해도 1회만 기록
+          // 자연 크기는 src에 관계없이 동일하므로 첫 측정값 유지
+          setNaturalSize((prev) => prev ?? { w: img.naturalWidth, h: img.naturalHeight })
         }}
         draggable={false}
       />
 
       {selected && (
         <>
-          {/* 우하단 리사이즈 핸들 */}
+          {/* 우하단 리사이즈 핸들 — 데스크탑 16px, 모바일 24px */}
           <div
-            className="absolute bottom-0 right-0 w-4 h-4 bg-violet-600 cursor-se-resize z-10"
+            className="absolute bottom-0 right-0 w-4 h-4 max-md:w-6 max-md:h-6 bg-violet-600 cursor-se-resize z-10 touch-none"
             style={{ borderRadius: '0 0 3px 0' }}
-            onMouseDown={startResize}
+            onPointerDown={startResize}
           />
 
-          {/* 프리셋 툴바 */}
-          <div className="absolute -top-8 left-0 flex items-center gap-1 bg-gray-900/85 rounded-md px-1.5 py-1 z-10">
+          {/* 프리셋 툴바 — 화면 위 공간 부족 시 이미지 안쪽 상단으로 자동 이동 */}
+          <div
+            className={
+              toolbarBelow
+                ? 'absolute top-2 left-2 flex items-center gap-1 bg-gray-900/85 rounded-md px-1.5 py-1 z-10 max-w-[calc(100%-1rem)] overflow-x-auto'
+                : 'absolute -top-8 left-0 flex items-center gap-1 bg-gray-900/85 rounded-md px-1.5 py-1 z-10 max-w-full overflow-x-auto'
+            }
+          >
             {PRESETS.map((p) => (
               <button
                 key={p.label}
                 onMouseDown={(e) => { e.preventDefault(); updateAttributes({ width: p.value }) }}
-                className="text-[10px] text-white px-1.5 py-0.5 rounded hover:bg-white/20 transition-colors"
+                onTouchStart={(e) => { e.preventDefault(); updateAttributes({ width: p.value }) }}
+                className="text-[10px] text-white px-1.5 py-0.5 rounded hover:bg-white/20 transition-colors whitespace-nowrap"
               >
                 {p.label} {p.value}
               </button>
             ))}
             {naturalSize && (
-              <span className="text-[10px] text-gray-400 ml-1">{displaySize()}</span>
+              <span className="text-[10px] text-gray-400 ml-1 whitespace-nowrap">{displaySize()}</span>
             )}
           </div>
         </>
