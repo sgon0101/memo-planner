@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
+import { highlight, getSnippet, matchesQuery } from '@/lib/memos/highlight'
 import type { Memo } from '@/types'
 
 
@@ -38,9 +39,11 @@ interface MemoCardProps {
   isTrash?: boolean
   isSelected?: boolean
   onToggleSelect?: (id: string) => void
+  /** 검색 활성 시 — 제목/본문/태그 매칭 부분에 <mark> 하이라이트, 본문은 매칭 주변 snippet으로 교체 */
+  searchQuery?: string
 }
 
-export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false, isSelected = false, onToggleSelect }: MemoCardProps) {
+export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false, isSelected = false, onToggleSelect, searchQuery }: MemoCardProps) {
   const router = useRouter()
   const { folders } = useFolderStore()
   const { setDraggingMemo } = useDragStore()
@@ -127,7 +130,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
           {memo.isLocked && <Lock size={13} className="text-amber-500 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
             <span className={cn('text-sm font-medium text-gray-800 dark:text-gray-200 truncate block', !memo.title && 'text-gray-400 dark:text-gray-500 italic')}>
-              {memo.title || '제목 없음'}
+              {memo.title ? highlight(memo.title, searchQuery) : '제목 없음'}
             </span>
             {currentFolder && (
               <span className="text-xs mt-0.5 flex items-center gap-0.5" style={{ color: `hsl(${currentFolder.colorH},${currentFolder.colorS}%,${currentFolder.colorL - 15}%)` }}>
@@ -137,11 +140,22 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             )}
             {!memo.isLocked && memeTags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
-                {memeTags.slice(0, 4).map((tag) => (
-                  <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/20 text-violet-500 dark:text-violet-400 border border-violet-200/50 dark:border-violet-700/40">
-                    #{tag}
-                  </span>
-                ))}
+                {memeTags.slice(0, 4).map((tag) => {
+                  const isMatch = matchesQuery(tag, searchQuery)
+                  return (
+                    <span
+                      key={tag}
+                      className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded-full border',
+                        isMatch
+                          ? 'bg-amber-100 dark:bg-amber-500/30 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-500/60 font-semibold'
+                          : 'bg-violet-50 dark:bg-violet-950/20 text-violet-500 dark:text-violet-400 border-violet-200/50 dark:border-violet-700/40',
+                      )}
+                    >
+                      #{tag}
+                    </span>
+                  )
+                })}
                 {memeTags.length > 4 && (
                   <span className="text-[10px] text-violet-400 opacity-70">+{memeTags.length - 4}</span>
                 )}
@@ -279,11 +293,11 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 'text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5 truncate',
                 !memo.title && 'text-gray-400 dark:text-gray-500 italic font-normal'
               )}>
-                {memo.title || '제목 없음'}
+                {memo.title ? highlight(memo.title, searchQuery) : '제목 없음'}
               </h3>
               {memo.contentText && (
                 <p className={cn('text-xs text-gray-500 dark:text-gray-400 leading-relaxed', thumbnail ? 'line-clamp-2' : 'line-clamp-3')}>
-                  {memo.contentText}
+                  {highlight(getSnippet(memo.contentText, searchQuery, 50), searchQuery)}
                 </p>
               )}
             </>
