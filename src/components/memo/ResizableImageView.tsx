@@ -75,12 +75,24 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     setToolbarBelow(rect.top < 40)
   }, [selected])
 
-  // 클릭 시 명시적으로 PM에 NodeSelection 알림 — selection이 stale로 남는 버그 차단
+  // mousedown을 PM에 전달하지 않음:
+  // PM의 mouseup 핸들러는 mousedown 기록이 없으면 tr.scrollIntoView()를 dispatch하지 않는다.
+  // e.preventDefault()로 브라우저 기본 포커스·커서 이동도 차단.
+  function handleMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  // click 시 NodeSelection을 명시적으로 설정 (scrollIntoView 없음).
+  // PM이 mousedown을 못 봤으므로 여기서 포커스도 직접 부여.
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
+    e.stopPropagation()
+    if (!editor) return
     const pos = typeof getPos === 'function' ? getPos() : null
-    if (typeof pos === 'number' && editor) {
+    if (typeof pos === 'number') {
       editor.commands.setNodeSelection(pos)
+      editor.view.dom.focus({ preventScroll: true })
     }
   }
 
@@ -119,6 +131,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       as="div"
       className="relative inline-block max-w-full my-1"
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
