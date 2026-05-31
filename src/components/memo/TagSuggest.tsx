@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useAllMemosMeta } from '@/hooks/useAllMemosMeta'
 
 interface Props {
@@ -10,9 +10,13 @@ interface Props {
   onClose: () => void
 }
 
+// 드롭다운 최대 높이 — max-h-56 + py-1 + border + 약간 여유
+const DROPDOWN_MAX_HEIGHT = 260
+
 export default function TagSuggest({ query, position, onSelect, onClose }: Props) {
   const { allTags } = useAllMemosMeta()
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [flipUp, setFlipUp] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   const q = query.toLowerCase()
@@ -21,6 +25,20 @@ export default function TagSuggest({ query, position, onSelect, onClose }: Props
   const totalItems = filtered.length + (showNew ? 1 : 0)
 
   useEffect(() => { setSelectedIndex(0) }, [query])
+
+  // viewport 가용 공간 측정 → 아래 부족하면 위로 flip
+  // resize 시에도 재계산
+  useLayoutEffect(() => {
+    function compute() {
+      if (typeof window === 'undefined') return
+      const spaceBelow = window.innerHeight - position.y
+      const spaceAbove = position.y
+      setFlipUp(spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > DROPDOWN_MAX_HEIGHT)
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [position.y, totalItems])
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -52,7 +70,13 @@ export default function TagSuggest({ query, position, onSelect, onClose }: Props
     <div
       ref={listRef}
       className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 w-52 max-h-56 overflow-y-auto"
-      style={{ left: position.x, top: position.y + 20 }}
+      style={
+        flipUp
+          // 위로 flip — top을 커서 바로 위 8px로 두고 자기 높이만큼 위로 이동
+          ? { left: position.x, top: position.y - 8, transform: 'translateY(-100%)' }
+          // 기본 — 커서 아래 20px
+          : { left: position.x, top: position.y + 20 }
+      }
     >
       {filtered.map((tag, i) => (
         <button
