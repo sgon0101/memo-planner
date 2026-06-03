@@ -208,6 +208,14 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           lastVersionSavedAtRef.current = now
           saveVersionRef.current(content, text, titleRef.current).catch(console.error)
         }
+
+        // 임베딩 fire-and-forget — 사용자 체감엔 영향 없음
+        // 저장 직후 호출이지만 OpenAI 호출은 비동기로 백그라운드 처리
+        void fetch('/api/embeddings/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memoId: id }),
+        }).catch(() => { /* 임베딩 실패는 silent */ })
       } else {
         const { data: { user } } = await supabase.auth.getUser()
         const { data, error } = await supabase
@@ -227,6 +235,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const newMemo = toMemo(data)
         createdIdRef.current = newMemo.id
         setCreatedId(newMemo.id)
+
+        // 새 메모 임베딩 fire-and-forget
+        void fetch('/api/embeddings/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memoId: newMemo.id }),
+        }).catch(() => { /* 임베딩 실패는 silent */ })
         setCurrentMemo(newMemo)
         addMemo(newMemo)
 
