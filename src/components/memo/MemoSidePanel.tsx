@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemos } from '@/hooks/useMemos'
+import RelatedMemosPanel from './RelatedMemosPanel'
 
 const SCROLL_KEY = 'memo-side-panel-scroll'
 
@@ -77,6 +78,9 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
           />
         </div>
       </div>
+
+      {/* 관련 메모 (의미 기반) */}
+      <RelatedMemosPanel memoId={currentMemoId} />
 
       {/* 목록 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
