@@ -53,7 +53,22 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
   }
 
   return (
-    <div className="flex flex-col w-56 flex-shrink-0 border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <>
+      {/* 모바일 백드롭 — 탭하면 닫힘. md 이상에서는 안 보임 */}
+      <button
+        type="button"
+        aria-label="패널 닫기"
+        onClick={onClose}
+        className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]"
+      />
+    <div className={cn(
+      // 공통
+      "flex flex-col border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900",
+      // 모바일 — 우측에서 슬라이드 오버레이, 백드롭 위에 떠 있음
+      "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-50 max-md:w-[82vw] max-md:max-w-[360px] max-md:shadow-2xl",
+      // 데스크탑 — 인라인 사이드 패널
+      "md:w-56 md:flex-shrink-0",
+    )}>
       {/* 헤더 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">메모 목록</span>
@@ -130,5 +145,6 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
         )}
       </div>
     </div>
+    </>
   )
 }
