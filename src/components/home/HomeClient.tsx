@@ -110,8 +110,8 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
     <div className="max-w-2xl mx-auto px-4 py-10 space-y-8">
       {/* 인사말 */}
       <div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 tracking-wide uppercase">{today}</p>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+        <p suppressHydrationWarning className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 tracking-wide uppercase">{today}</p>
+        <h1 suppressHydrationWarning className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
           {greeting(userName)}
         </h1>
       </div>
@@ -252,7 +252,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{m.contentText}</p>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0 mt-0.5">
+                <span suppressHydrationWarning className="text-xs text-gray-400 flex-shrink-0 mt-0.5">
                   {formatDistanceToNow(new Date(m.updatedAt), { addSuffix: true, locale: ko })}
                 </span>
               </button>
