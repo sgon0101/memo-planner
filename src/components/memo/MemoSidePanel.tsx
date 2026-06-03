@@ -52,6 +52,68 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
     onSelect(id)
   }
 
+  // ─────────────────────────────────────────────────
+  // 모바일 swipe-right 닫기 (PointerEvent 통합)
+  //  - 가로 이동이 세로보다 크면 활성화 (스크롤 보존)
+  //  - 우측으로 드래그하면 panel이 손가락 따라옴
+  //  - 100px+ 이동 시 onClose, 아니면 spring back
+  //  - md 이상에서는 무시
+  // ─────────────────────────────────────────────────
+  const [dragX, setDragX] = useState(0)
+  const dragRef = useRef<{ startX: number; startY: number; active: boolean }>({
+    startX: 0, startY: 0, active: false,
+  })
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) return
+    const target = e.target as HTMLElement
+    // 버튼/input/scrollable에서 시작한 경우는 native 동작 우선
+    if (target.closest('input, textarea, button')) return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, active: false }
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragRef.current.startX) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+
+    if (!dragRef.current.active) {
+      // 시작 임계값 — 5px 이내는 탭으로 간주
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+      // 세로 이동이 더 크면 스크롤 의도 — 드래그 취소
+      if (Math.abs(dy) > Math.abs(dx)) {
+        dragRef.current.startX = 0
+        return
+      }
+      // 가로 + 우측 방향이면 활성화 (왼쪽 드래그는 무시)
+      if (dx < 0) {
+        dragRef.current.startX = 0
+        return
+      }
+      dragRef.current.active = true
+    }
+
+    setDragX(Math.max(0, dx))
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    if (!dragRef.current.active) {
+      dragRef.current = { startX: 0, startY: 0, active: false }
+      setDragX(0)
+      return
+    }
+    const dx = e.clientX - dragRef.current.startX
+    dragRef.current = { startX: 0, startY: 0, active: false }
+    // 100px 이상 우측 드래그 → 닫힘
+    if (dx > 100) {
+      setDragX(0)
+      onClose()
+    } else {
+      // spring back
+      setDragX(0)
+    }
+  }
+
   return (
     <>
       {/* 모바일 백드롭 — 탭하면 닫힘. md 이상에서는 안 보임 */}
@@ -61,14 +123,24 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
         onClick={onClose}
         className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]"
       />
-    <div className={cn(
-      // 공통
-      "flex flex-col border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900",
-      // 모바일 — 우측에서 슬라이드 오버레이, 백드롭 위에 떠 있음
-      "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-50 max-md:w-[82vw] max-md:max-w-[360px] max-md:shadow-2xl",
-      // 데스크탑 — 인라인 사이드 패널
-      "md:w-56 md:flex-shrink-0",
-    )}>
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      style={{
+        transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
+        transition: dragRef.current.active ? 'none' : 'transform 0.18s ease-out',
+        touchAction: 'pan-y',
+      }}
+      className={cn(
+        // 공통
+        "flex flex-col border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900",
+        // 모바일 — 우측에서 슬라이드 오버레이, 백드롭 위에 떠 있음
+        "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-50 max-md:w-[82vw] max-md:max-w-[360px] max-md:shadow-2xl",
+        // 데스크탑 — 인라인 사이드 패널
+        "md:w-56 md:flex-shrink-0",
+      )}>
       {/* 헤더 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">메모 목록</span>
