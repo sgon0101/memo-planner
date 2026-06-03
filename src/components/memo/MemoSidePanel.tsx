@@ -63,12 +63,14 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
   const dragRef = useRef<{ startX: number; startY: number; active: boolean }>({
     startX: 0, startY: 0, active: false,
   })
+  // 드래그 직후 발생하는 button click을 차단하기 위한 플래그
+  const justDraggedRef = useRef(false)
 
   function onPointerDown(e: React.PointerEvent) {
     if (typeof window !== 'undefined' && window.innerWidth >= 768) return
     const target = e.target as HTMLElement
-    // 버튼/input/scrollable에서 시작한 경우는 native 동작 우선
-    if (target.closest('input, textarea, button')) return
+    // 타이핑 input만 제외 — 버튼은 드래그 가능해야 패널 전체에서 슬라이드 작동
+    if (target.closest('input, textarea')) return
     dragRef.current = { startX: e.clientX, startY: e.clientY, active: false }
   }
 
@@ -97,20 +99,30 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
   }
 
   function onPointerUp(e: React.PointerEvent) {
-    if (!dragRef.current.active) {
-      dragRef.current = { startX: 0, startY: 0, active: false }
+    const wasActive = dragRef.current.active
+    const dx = e.clientX - dragRef.current.startX
+    dragRef.current = { startX: 0, startY: 0, active: false }
+    if (!wasActive) {
       setDragX(0)
       return
     }
-    const dx = e.clientX - dragRef.current.startX
-    dragRef.current = { startX: 0, startY: 0, active: false }
+    // 드래그 직후 버튼 click 차단 (다음 click 이벤트 1회 무효)
+    justDraggedRef.current = true
+    setTimeout(() => { justDraggedRef.current = false }, 150)
     // 100px 이상 우측 드래그 → 닫힘
     if (dx > 100) {
       setDragX(0)
       onClose()
     } else {
-      // spring back
       setDragX(0)
+    }
+  }
+
+  // 드래그 직후 발생한 click 이벤트는 캡처 단계에서 차단
+  function onClickCapture(e: React.MouseEvent) {
+    if (justDraggedRef.current) {
+      e.preventDefault()
+      e.stopPropagation()
     }
   }
 
@@ -128,6 +140,7 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onClickCapture={onClickCapture}
       style={{
         transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
         transition: dragRef.current.active ? 'none' : 'transform 0.18s ease-out',
