@@ -1020,7 +1020,9 @@ export default function GraphView() {
           <div className="relative flex-1">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
-              type="text"
+              type="search"
+              inputMode="search"
+              name="graph-search-q"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -1032,7 +1034,10 @@ export default function GraphView() {
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
+              className="[&::-webkit-search-cancel-button]:hidden w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-1 focus:ring-violet-400"
             />
           </div>
           {search.trim() && (
