@@ -134,6 +134,7 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
               <Link
                 key={href}
                 href={href}
+                prefetch={false}
                 title={!sidebarOpen ? label : undefined}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => { if (isMobile()) setSidebarOpen(false) }}

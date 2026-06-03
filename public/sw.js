@@ -32,9 +32,14 @@ self.addEventListener('fetch', (event) => {
       caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(event.request)
         if (cached) return cached
-        const response = await fetch(event.request)
-        if (response.ok) cache.put(event.request, response.clone())
-        return response
+        try {
+          const response = await fetch(event.request)
+          if (response.ok) cache.put(event.request, response.clone())
+          return response
+        } catch (_e) {
+          // 네트워크 실패 → 503으로 graceful fallback (Response 미반환 시 TypeError 방지)
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
+        }
       })
     )
     return
@@ -51,17 +56,29 @@ self.addEventListener('fetch', (event) => {
       caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(event.request)
         if (cached) return cached
-        const response = await fetch(event.request)
-        if (response.ok) cache.put(event.request, response.clone())
-        return response
+        try {
+          const response = await fetch(event.request)
+          if (response.ok) cache.put(event.request, response.clone())
+          return response
+        } catch (_e) {
+          // 네트워크 실패 → 503으로 graceful fallback (Response 미반환 시 TypeError 방지)
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
+        }
       })
     )
     return
   }
 
   // HTML 페이지: Network-first (auth 상태·동적 콘텐츠 반영)
+  // 네트워크 실패 + 캐시 미스 시 503 Response 반환 (Response 미반환 시 TypeError 발생 방지)
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request)
+      .catch(() => caches.match(event.request))
+      .then((r) => r || new Response('Offline', {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      }))
   )
 })
 

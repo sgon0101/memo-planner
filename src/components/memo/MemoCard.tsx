@@ -170,7 +170,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                 {trashDaysLeft}일 후 삭제
               </span>
             )}
-            <span className="text-xs text-gray-400">{timeAgo}</span>
+            <span suppressHydrationWarning className="text-xs text-gray-400">{timeAgo}</span>
             <CardMenu
               memo={memo}
               isTrash={isTrash}
@@ -315,7 +315,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
                   <span className="text-xs truncate max-w-[80px]">{currentFolder.name}</span>
                 </div>
               )}
-              <span className="text-xs text-gray-400">{timeAgo}</span>
+              <span suppressHydrationWarning className="text-xs text-gray-400">{timeAgo}</span>
               {trashDaysLeft !== null && (
                 <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', trashDaysLeft <= 7 ? 'bg-red-100 dark:bg-red-950/30 text-red-500' : 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600')}>
                   {trashDaysLeft}일

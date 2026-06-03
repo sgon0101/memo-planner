@@ -40,14 +40,25 @@ export function readLocalCacheTs(): number {
 }
 
 export function writeLocalCache(memos: Memo[]) {
-  if (memos.length === 0) return
+  if (memos.length === 0) {
+    // 빈 배열은 fetch 실패 신호일 가능성 — 옛 캐시 유지
+    return
+  }
   try {
     // content(Tiptap JSON)는 저장 제외 — 에디터는 직접 DB fetch, 목록에는 불필요
     const stripped = memos.map((m) => ({ ...m, content: {} as Record<string, unknown> }))
-    localStorage.setItem(LS_KEY, JSON.stringify(stripped))
+    const json = JSON.stringify(stripped)
+    localStorage.setItem(LS_KEY, json)
     localStorage.setItem(LS_TS_KEY, String(Date.now()))
-  } catch {
-    // 용량 초과 시 무시 — 기능에는 영향 없음
+    if (typeof window !== 'undefined' && (window as unknown as { __WEAVE_DEBUG__?: boolean }).__WEAVE_DEBUG__) {
+      console.log(`[writeLocalCache] OK: ${memos.length} memos, ${(json.length / 1024).toFixed(1)} KB`)
+    }
+  } catch (e) {
+    // 캐시 실패는 디스크 quota / serialization 에러 가능
+    // 콘솔 에러로 노출해 디버그 가능하게 (성공 케이스에는 silent)
+    if (typeof window !== 'undefined') {
+      console.error('[writeLocalCache] FAILED:', e instanceof Error ? e.message : e)
+    }
   }
 }
 
@@ -68,12 +79,18 @@ export function useMemos(folderId: string | null | undefined) {
 
   // 전체 활성 메모 1회 fetch (폴더 무관)
   const fetchAll = useCallback(async (): Promise<Memo[]> => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('memos')
       .select(LIST_COLS)
       .eq('is_deleted', false)
       .order('is_pinned', { ascending: false })
       .order('updated_at', { ascending: false })
+    if (error) {
+      // throttling / quota 초과 / 네트워크 실패 모두 여기 떨어짐
+      // throw하면 React Query가 retry → 캐시 안 덮어쓰므로 옛 데이터 유지
+      console.error('[fetchAll] supabase error:', error)
+      throw error
+    }
     return (data ?? []).map(toMemo)
   }, [supabase])
 
