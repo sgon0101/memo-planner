@@ -93,9 +93,17 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
         return
       }
       dragRef.current.active = true
+      // 포인터 캡처 — 자식의 native 스크롤이 나머지 이벤트 가져가지 않게 강제로 패널이 받음
+      try {
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      } catch { /* 일부 브라우저 미지원 무시 */ }
     }
 
     setDragX(Math.max(0, dx))
+    // 드래그 활성 상태면 스크롤/클릭 방해 안 받게 default 차단
+    if (dragRef.current.active) {
+      e.preventDefault()
+    }
   }
 
   function onPointerUp(e: React.PointerEvent) {
@@ -183,7 +191,11 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
       <RelatedMemosPanel memoId={currentMemoId} />
 
       {/* 목록 */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ touchAction: 'pan-y' }}
+      >
         {showSkeleton ? (
           <div className="flex flex-col">
             {[...Array(5)].map((_, i) => (
