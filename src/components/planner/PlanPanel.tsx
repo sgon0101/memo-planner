@@ -100,32 +100,28 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
         onPointerUp={onSwipeEnd}
         onPointerCancel={onSwipeEnd}
         style={{ touchAction: 'none' }}
-        className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none"
+        className="flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing select-none"
+        aria-label="패널 닫기 그립 — 아래로 밀어 닫기"
       >
-        <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity" />
+        <div className="w-12 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 md:bg-gray-300 md:dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity plan-panel-grip-bounce" />
       </div>
 
-      {/* 헤더 — relative z-10으로 자체 stacking context 확보 (PlanItem이 X 버튼 위로 못 올라옴) */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-        <div>
+      {/* 헤더 — 모바일: 날짜 가운데, X 숨김 (스와이프-다운으로 닫음) / 데스크탑: 양쪽 정렬 + X */}
+      <div className="relative z-10 flex items-center justify-center md:justify-between px-4 py-2.5 md:py-3 border-b border-gray-200 dark:border-gray-800">
+        <div className="text-center md:text-left">
           <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
             {displayDate}
           </p>
-          {isToday && <p className="text-xs text-violet-500">오늘</p>}
+          {isToday && <p className="text-[11px] text-violet-500 leading-tight">오늘</p>}
         </div>
+        {/* X 버튼 — 데스크탑 전용 (모바일은 스와이프-다운으로 닫음) */}
         <button
           type="button"
           onClick={onClose}
-          onTouchEnd={(e) => {
-            // 일부 모바일 브라우저에서 click이 합성되지 않을 때 대비 — 직접 호출
-            e.preventDefault()
-            e.stopPropagation()
-            onClose()
-          }}
           aria-label="패널 닫기"
-          className="relative z-20 p-2 -m-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 touch-manipulation"
+          className="hidden md:inline-flex relative z-20 p-1.5 -m-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          <X size={16} />
+          <X size={15} />
         </button>
       </div>
 
@@ -316,3 +312,4 @@ function PlanItem({
     </li>
   )
 }
+                                                                                                                                                                                                                                                              
