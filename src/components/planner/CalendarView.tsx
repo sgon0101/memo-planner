@@ -414,11 +414,15 @@ export default function CalendarView() {
       {/* 플랜 패널 — 데스크탑: 사이드, 모바일: 바텀 시트 */}
       {panelOpen && (
         <>
-          {/* 모바일 오버레이 배경 */}
-          <div
-            className="fixed inset-0 z-30 bg-black/30 md:hidden"
-            onClick={() => selectDate('')}
-          />
+          {/* 모바일 오버레이 배경 — 일 뷰에서는 헤더의 chevron 버튼을 가려서
+              navigation을 막아버리는 버그 때문에 제외. 일 뷰는 day grid 자체가
+              주 뷰이고 panel은 보조 정보라 backdrop 없이 노출. 닫기는 swipe-down + X로. */}
+          {viewMode !== 'day' && (
+            <div
+              className="fixed inset-0 z-30 bg-black/30 md:hidden"
+              onClick={() => selectDate('')}
+            />
+          )}
           <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:flex-shrink-0">
             <PlanPanel
               date={selectedDate}
