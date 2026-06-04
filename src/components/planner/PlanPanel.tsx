@@ -105,8 +105,8 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
         <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity" />
       </div>
 
-      {/* 헤더 — touch-action 제한 없음, X 버튼 click 정상 동작 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+      {/* 헤더 — relative z-10으로 자체 stacking context 확보 (PlanItem이 X 버튼 위로 못 올라옴) */}
+      <div className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
             {displayDate}
@@ -114,11 +114,18 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
           {isToday && <p className="text-xs text-violet-500">오늘</p>}
         </div>
         <button
+          type="button"
           onClick={onClose}
+          onTouchEnd={(e) => {
+            // 일부 모바일 브라우저에서 click이 합성되지 않을 때 대비 — 직접 호출
+            e.preventDefault()
+            e.stopPropagation()
+            onClose()
+          }}
           aria-label="패널 닫기"
-          className="p-1.5 -m-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
+          className="relative z-20 p-2 -m-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 touch-manipulation"
         >
-          <X size={15} />
+          <X size={16} />
         </button>
       </div>
 
@@ -309,3 +316,4 @@ function PlanItem({
     </li>
   )
 }
+                                                                                                                                                                                                                                                              
