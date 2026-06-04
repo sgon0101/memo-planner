@@ -92,38 +92,34 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none"
       style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: 'none' } : { transition: 'transform 0.2s ease-out' }}
     >
-      {/* swipe-down 트리거 영역 (그립 + 헤더) — 마우스/터치 통합 */}
+      {/* 그립 핸들만 touch-action:none — X 버튼이 click 이벤트를 못 받는 버그 방지 */}
       <div
         ref={gripRef}
         onPointerDown={onSwipeStart}
         onPointerMove={onSwipeMove}
         onPointerUp={onSwipeEnd}
         onPointerCancel={onSwipeEnd}
-        style={{ touchAction: 'none' }}  // 데스크탑/모바일 둘 다 swipe 잡힘
+        style={{ touchAction: 'none' }}
+        className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none"
       >
-        {/* 그립 핸들 — 모바일·작은 화면에서 노출 (데스크탑 사이드 패널은 hover 시 옅게) */}
-        <div className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none">
-          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity" />
-        </div>
+        <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity" />
+      </div>
 
-        {/* 헤더 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-          <div>
-            <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
-              {displayDate}
-            </p>
-            {isToday && <p className="text-xs text-violet-500">오늘</p>}
-          </div>
-          <button
-            onClick={onClose}
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            aria-label="패널 닫기"
-            className="p-1.5 -m-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
-          >
-            <X size={15} />
-          </button>
+      {/* 헤더 — touch-action 제한 없음, X 버튼 click 정상 동작 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+        <div>
+          <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
+            {displayDate}
+          </p>
+          {isToday && <p className="text-xs text-violet-500">오늘</p>}
         </div>
+        <button
+          onClick={onClose}
+          aria-label="패널 닫기"
+          className="p-1.5 -m-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
+        >
+          <X size={15} />
+        </button>
       </div>
 
       {/* 플랜 목록 */}
