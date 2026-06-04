@@ -114,7 +114,13 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
             </p>
             {isToday && <p className="text-xs text-violet-500">오늘</p>}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button
+            onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            aria-label="패널 닫기"
+            className="p-1.5 -m-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
+          >
             <X size={15} />
           </button>
         </div>
