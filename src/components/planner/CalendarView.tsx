@@ -184,7 +184,24 @@ export default function CalendarView() {
     })
   }
 
-  const panelOpen = !!selectedDate
+  // panelDismissed — 일 뷰에서 panel만 숨기고 selectedDate는 유지하기 위한 별도 상태
+  // selectedDate가 바뀌면(네비게이션) 자동 reset → 새 날짜에서 panel 다시 열림
+  const [panelDismissed, setPanelDismissed] = useState(false)
+  useEffect(() => {
+    setPanelDismissed(false)
+  }, [selectedDate])
+
+  function handlePanelClose() {
+    if (viewMode === 'day') {
+      // 일 뷰: panel만 숨김 — selectedDate 유지 → DayView가 today로 안 돌아감
+      setPanelDismissed(true)
+    } else {
+      // 월/주 뷰: 기존대로 날짜 선택 해제
+      selectDate('')
+    }
+  }
+
+  const panelOpen = !!selectedDate && !panelDismissed
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -456,7 +473,7 @@ export default function CalendarView() {
           {viewMode !== 'day' && (
             <div
               className="fixed inset-0 z-30 bg-black/30 md:hidden"
-              onClick={() => selectDate('')}
+              onClick={handlePanelClose}
             />
           )}
           <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:flex-shrink-0">
@@ -464,7 +481,7 @@ export default function CalendarView() {
               date={selectedDate}
               onNewPlan={() => setFormState({ open: true, date: selectedDate })}
               onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
-              onClose={() => selectDate('')}
+              onClose={handlePanelClose}
             />
           </div>
         </>
