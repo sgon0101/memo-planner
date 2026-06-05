@@ -249,11 +249,13 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       }
     }
   }
-  function onPointerUpBlock() {
+  // 짧은 탭 (long-press 발화 전 손가락 뗌) → 상세 패널 열기
+  function onPointerUpBlock(_e: React.PointerEvent, plan: Plan) {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
       longPressStart.current = null
+      onEditPlan(plan)
     }
   }
 
@@ -366,7 +368,14 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                   }}
                   onPointerDown={(e) => onPointerDown(e, plan)}
                   onPointerMove={onPointerMoveBlock}
-                  onPointerUp={onPointerUpBlock}
+                  onPointerUp={(e) => onPointerUpBlock(e, plan)}
+                      onPointerCancel={() => {
+                        if (longPressTimer.current) {
+                          clearTimeout(longPressTimer.current)
+                          longPressTimer.current = null
+                          longPressStart.current = null
+                        }
+                      }}
                   onClick={(e) => e.stopPropagation()}
                   onContextMenu={(e) => e.preventDefault()}
                 >

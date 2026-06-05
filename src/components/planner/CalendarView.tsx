@@ -129,14 +129,13 @@ export default function CalendarView() {
     }
   }
 
-  // 모바일 첫 진입은 주 뷰 — 월 뷰는 칸이 좁아 가독성 떨어짐 (localStorage flag로 1회만)
+  // 모바일 기본 뷰는 주 — 새로고침마다 적용 (viewMode는 persist되지 않으므로 매 mount마다 검사)
+  // 사용자가 세션 중에 월로 바꿔도 새로고침하면 다시 주로 (사용자 명시 요구)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (localStorage.getItem('planner-mobile-default-applied') === '1') return
     if (window.innerWidth < 768 && viewMode === 'month') {
       setViewMode('week')
     }
-    localStorage.setItem('planner-mobile-default-applied', '1')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -376,22 +375,26 @@ export default function CalendarView() {
                           )}
                         </div>
                         {/* 모바일 dot 패턴 — 최대 4개 + 오버플로 +N (네이티브 캘린더 스타일) */}
-                        <div className="md:hidden flex items-center justify-center gap-1 pb-1.5 min-h-3">
+                        <div className="md:hidden flex items-center justify-center gap-1.5 pb-2 pt-0.5 min-h-4">
                           {dayPlans.slice(0, 4).map((plan) => (
                             <span
                               key={plan.id}
                               className={cn(
-                                'rounded-full transition-opacity',
-                                isToday ? 'w-2 h-2' : 'w-1.5 h-1.5',
+                                'rounded-full shadow-sm transition-opacity',
+                                isToday ? 'w-3 h-3' : 'w-2.5 h-2.5',
                                 plan.isCompleted && 'opacity-40',
                                 isSelected && 'ring-1 ring-offset-1 ring-violet-400 dark:ring-offset-violet-950',
                               )}
-                              style={{ backgroundColor: plan.color }}
+                              style={{
+                                backgroundColor: plan.color,
+                                // 어두운 배경에서 색이 더 또렷하게 — 내부 하이라이트
+                                boxShadow: `inset 0 0 0 1px ${plan.color}, 0 1px 2px rgba(0,0,0,0.3)`,
+                              }}
                               title={plan.title}
                             />
                           ))}
                           {dayPlans.length > 4 && (
-                            <span className="text-[9px] font-medium text-gray-400 leading-none ml-0.5">
+                            <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 leading-none ml-0.5">
                               +{dayPlans.length - 4}
                             </span>
                           )}
