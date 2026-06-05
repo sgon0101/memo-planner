@@ -129,6 +129,18 @@ export default function CalendarView() {
     }
   }
 
+  // 모바일 첫 진입은 주 뷰 — 월 뷰는 칸이 좁아 가독성 떨어짐 (localStorage flag로 1회만)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (localStorage.getItem('planner-mobile-default-applied') === '1') return
+    if (window.innerWidth < 768 && viewMode === 'month') {
+      setViewMode('week')
+    }
+    localStorage.setItem('planner-mobile-default-applied', '1')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+
   // 달력에 표시할 날짜 배열 (6주 × 7일)
   const { weeks } = useMemo(() => {
     const monthStart = startOfMonth(currentMonth)
@@ -339,8 +351,8 @@ export default function CalendarView() {
                           </span>
                         </div>
 
-                        {/* 단일일 플랜 */}
-                        <div className="px-1 pb-1 space-y-0.5 min-h-10">
+                        {/* 단일일 플랜 — 데스크탑: 텍스트 바 / 모바일: dot 패턴 */}
+                        <div className="hidden md:block px-1 pb-1 space-y-0.5 min-h-10">
                           {dayPlans.slice(0, 3).map((plan) => (
                             <div
                               key={plan.id}
@@ -361,6 +373,27 @@ export default function CalendarView() {
                           ))}
                           {dayPlans.length > 3 && (
                             <div className="text-xs text-gray-400 px-1">+{dayPlans.length - 3} 더보기</div>
+                          )}
+                        </div>
+                        {/* 모바일 dot 패턴 — 최대 4개 + 오버플로 +N (네이티브 캘린더 스타일) */}
+                        <div className="md:hidden flex items-center justify-center gap-1 pb-1.5 min-h-3">
+                          {dayPlans.slice(0, 4).map((plan) => (
+                            <span
+                              key={plan.id}
+                              className={cn(
+                                'rounded-full transition-opacity',
+                                isToday ? 'w-2 h-2' : 'w-1.5 h-1.5',
+                                plan.isCompleted && 'opacity-40',
+                                isSelected && 'ring-1 ring-offset-1 ring-violet-400 dark:ring-offset-violet-950',
+                              )}
+                              style={{ backgroundColor: plan.color }}
+                              title={plan.title}
+                            />
+                          ))}
+                          {dayPlans.length > 4 && (
+                            <span className="text-[9px] font-medium text-gray-400 leading-none ml-0.5">
+                              +{dayPlans.length - 4}
+                            </span>
                           )}
                         </div>
                       </div>

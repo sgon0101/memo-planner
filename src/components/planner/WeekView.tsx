@@ -88,11 +88,32 @@ export default function WeekView({
         && !p.isAllDay && p.startTime && p.endTime,
     )
   }
-  function getAllDayPlans(dayStr: string): Plan[] {
+  // 단일일 all-day (범위 제외) — 셀당 박스로 렌더
+  function getSingleAllDayPlans(dayStr: string): Plan[] {
     return plans.filter(
-      (p) => (p.date === dayStr || (p.startDate && p.startDate <= dayStr && p.endDate && p.endDate >= dayStr))
-        && (p.isAllDay || !p.startTime),
+      (p) => p.date === dayStr && !p.startDate && !p.endDate && (p.isAllDay || !p.startTime),
     )
+  }
+
+  // 주 범위 플랜 (startCol/endCol/slot) — spanning bar 오버레이로 1회만 렌더
+  function getWeekRangePlans() {
+    const dayStrs = days.map((d) => format(d, 'yyyy-MM-dd'))
+    const weekStart = dayStrs[0]
+    const weekEnd = dayStrs[6]
+    const overlapping = plans
+      .filter((p) => p.startDate && p.endDate)
+      .filter((p) => p.startDate! <= weekEnd && p.endDate! >= weekStart)
+    const slotEnds: string[] = []
+    return overlapping.slice(0, 6).map((plan) => {
+      const visStart = plan.startDate! < weekStart ? weekStart : plan.startDate!
+      const visEnd = plan.endDate! > weekEnd ? weekEnd : plan.endDate!
+      const startCol = dayStrs.indexOf(visStart)
+      const endCol = dayStrs.indexOf(visEnd)
+      let slot = slotEnds.findIndex((end) => end < visStart)
+      if (slot === -1) slot = slotEnds.length
+      slotEnds[slot] = visEnd
+      return { plan, startCol, endCol, slot }
+    })
   }
 
   function measureColWidth(): number {
@@ -321,31 +342,69 @@ export default function WeekView({
         })}
       </div>
 
-      {/* 종일 영역 */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 min-h-8">
-        <div className="w-14 flex-shrink-0 flex items-center justify-end pr-2">
-          <span className="text-xs text-gray-400">종일</span>
-        </div>
-        {days.map((day, i) => {
-          const dayStr = format(day, 'yyyy-MM-dd')
-          const allDay = getAllDayPlans(dayStr)
-          return (
-            <div key={i} className="flex-1 border-l border-gray-100 dark:border-gray-800 py-0.5 px-0.5 space-y-0.5">
-              {allDay.slice(0, 2).map((plan) => (
-                <div
-                  key={plan.id}
-                  className="text-xs px-1 py-0.5 rounded truncate cursor-pointer"
-                  style={{ backgroundColor: plan.color + '22', borderLeft: `2px solid ${plan.color}`, color: plan.color }}
-                  onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
-                >
-                  {plan.title}
-                </div>
-              ))}
-              {allDay.length > 2 && <div className="text-xs text-gray-400 px-1">+{allDay.length - 2}</div>}
+      {/* 종일 영역 — 단일일 plans는 셀당, 범위 plans는 spanning overlay (Saturday 빈칸 버그 fix) */}
+      {(() => {
+        const rangePlans = getWeekRangePlans()
+        const rangeSlotCount = rangePlans.reduce((m, r) => Math.max(m, r.slot + 1), 0)
+        const rangeBarHeight = rangeSlotCount > 0 ? rangeSlotCount * 22 + 4 : 0
+        return (
+          <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 min-h-8">
+            <div className="w-14 flex-shrink-0 flex items-start justify-end pr-2 pt-1.5" style={{ paddingTop: `${Math.max(6, rangeBarHeight + 4)}px` }}>
+              <span className="text-xs text-gray-400">종일</span>
             </div>
-          )
-        })}
-      </div>
+            <div className="flex-1 grid grid-cols-7 relative">
+              {days.map((day, i) => {
+                const dayStr = format(day, 'yyyy-MM-dd')
+                const single = getSingleAllDayPlans(dayStr)
+                return (
+                  <div
+                    key={i}
+                    className="border-l border-gray-100 dark:border-gray-800 px-0.5 pb-0.5 space-y-0.5"
+                    style={{ paddingTop: `${rangeBarHeight + 2}px` }}
+                  >
+                    {single.slice(0, 2).map((plan) => (
+                      <div
+                        key={plan.id}
+                        className="text-xs px-1 py-0.5 rounded truncate cursor-pointer"
+                        style={{ backgroundColor: plan.color + '22', borderLeft: `2px solid ${plan.color}`, color: plan.color }}
+                        onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
+                      >
+                        {plan.title}
+                      </div>
+                    ))}
+                    {single.length > 2 && <div className="text-xs text-gray-400 px-1">+{single.length - 2}</div>}
+                  </div>
+                )
+              })}
+              {/* 범위 플랜 spanning 오버레이 */}
+              {rangePlans.map(({ plan, startCol, endCol, slot }) => {
+                const span = endCol - startCol + 1
+                return (
+                  <div
+                    key={`range-${plan.id}`}
+                    onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
+                    title={plan.title}
+                    className={cn(
+                      'absolute h-5 text-xs flex items-center px-1.5 truncate cursor-pointer transition-opacity hover:opacity-80 z-10 rounded',
+                      plan.isCompleted && 'opacity-50 line-through',
+                    )}
+                    style={{
+                      top: `${2 + slot * 22}px`,
+                      left: `calc(${startCol} / 7 * 100% + 1px)`,
+                      width: `calc(${span} / 7 * 100% - 2px)`,
+                      backgroundColor: plan.color + '28',
+                      borderLeft: `3px solid ${plan.color}`,
+                      color: plan.color,
+                    }}
+                  >
+                    {plan.title}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 시간 그리드 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
