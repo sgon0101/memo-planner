@@ -296,12 +296,14 @@ export default function WeekView({
     }
   }
 
-  // long-press 대기 중에 떼면 timer 취소 (drag 시작 안 됨, click도 별도)
-  function onPointerUpBlock() {
+  // long-press 대기 중 → 짧은 탭으로 판정해 상세 열기 (timer 만료 전 손가락 떼면)
+  function onPointerUpBlock(_e: React.PointerEvent, plan: Plan) {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
       longPressStart.current = null
+      // 짧은 탭 — drag로 인계되지 않았으므로 onEditPlan으로 상세 모달
+      onEditPlan(plan)
     }
   }
 
@@ -498,7 +500,14 @@ export default function WeekView({
                       }}
                       onPointerDown={(e) => onPointerDown(e, plan)}
                       onPointerMove={onPointerMoveBlock}
-                      onPointerUp={onPointerUpBlock}
+                      onPointerUp={(e) => onPointerUpBlock(e, plan)}
+                      onPointerCancel={() => {
+                        if (longPressTimer.current) {
+                          clearTimeout(longPressTimer.current)
+                          longPressTimer.current = null
+                          longPressStart.current = null
+                        }
+                      }}
                       onClick={(e) => e.stopPropagation()}
                       onContextMenu={(e) => e.preventDefault()}
                     >
