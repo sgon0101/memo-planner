@@ -1,39 +1,31 @@
 'use client'
 
 /**
- * 텍스트 선택 시 떠오르는 BubbleMenu — 자체 구현 (외부 extension 미사용).
+ * 텍스트 선택 시 떠오르는 BubbleMenu — 자체 구현
  *
- * 모바일에서 텍스트를 선택하면 OS 네이티브 메뉴(잘라내기/복사 등)가 뜨면서
- * 우리 에디터 툴바를 가리는 문제가 있어, 선택된 텍스트 바로 옆에 작은 액션 바를
- * 띄워 글자색/형광/굵게 등을 즉시 적용할 수 있게 한다.
+ * 모바일 텍스트 선택 시 OS 네이티브 메뉴가 우리 툴바를 가리는 문제 해결.
+ * 선택된 텍스트 근처에 작은 액션 바를 띄워 색·형광·굵게 즉시 적용.
  *
- * - tiptap의 selection 이벤트로 표시/위치 갱신
- * - 선택이 비어있으면 숨김
- * - 선택 좌표는 getBoundingClientRect로 계산 (위쪽 우선, 공간 부족하면 아래)
+ * 트리거 — 다중:
+ *  1. editor.on('selectionUpdate') / 'transaction'  (ProseMirror 내부)
+ *  2. document 'selectionchange'  (브라우저 전역 — 모바일에서 가장 안정)
+ *
+ * 위치 — window.getSelection().getRangeAt(0).getBoundingClientRect() 사용
+ *  (ProseMirror coordsAtPos는 모바일에서 부정확한 경우가 있어 브라우저 range 우선)
  */
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import { Bold, Italic, Underline as UnderlineIcon, Highlighter, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const QUICK_COLORS = [
-  '#EF4444', // 빨강
-  '#F97316', // 주황
-  '#EAB308', // 노랑
-  '#22C55E', // 초록
-  '#3B82F6', // 파랑
-  '#8B5CF6', // 보라
-  '#000000', // 검정
+  '#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#8B5CF6', '#000000',
 ]
 
 const QUICK_HIGHLIGHTS = [
-  '#FEF08A', // 노란
-  '#BBF7D0', // 초록
-  '#BAE6FD', // 하늘
-  '#DDD6FE', // 보라
-  '#FBCFE8', // 분홍
+  '#FEF08A', '#BBF7D0', '#BAE6FD', '#DDD6FE', '#FBCFE8',
 ]
 
 interface Props {
@@ -45,61 +37,77 @@ export default function EditorBubbleMenu({ editor }: Props) {
   const [mode, setMode] = useState<'main' | 'color' | 'highlight'>('main')
   const menuRef = useRef<HTMLDivElement>(null)
 
+  const recompute = useCallback(() => {
+    if (!editor) return
+    // ProseMirror selection 비어있으면 숨김
+    const pmSel = editor.state.selection
+    if (pmSel.empty) {
+      setCoords(null)
+      setMode('main')
+      return
+    }
+    // 브라우저 선택도 함께 확인 (모바일에서 더 정확)
+    const winSel = typeof window !== 'undefined' ? window.getSelection() : null
+    if (!winSel || winSel.rangeCount === 0) {
+      setCoords(null)
+      return
+    }
+    const text = winSel.toString()
+    if (!text.trim()) {
+      setCoords(null)
+      return
+    }
+    const range = winSel.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) {
+      setCoords(null)
+      return
+    }
+
+    const menuW = menuRef.current?.offsetWidth ?? 280
+    const menuH = menuRef.current?.offsetHeight ?? 44
+
+    // 기본: 선택 위쪽
+    let top = rect.top - menuH - 10
+    if (top < 60) {
+      // 위 공간 부족 → 아래
+      top = rect.bottom + 12
+    }
+    // 가운데 정렬 + viewport clamp
+    let left = rect.left + rect.width / 2 - menuW / 2
+    const margin = 8
+    if (left < margin) left = margin
+    if (left + menuW > window.innerWidth - margin) {
+      left = window.innerWidth - menuW - margin
+    }
+    // 화면 아래로도 안 넘치게
+    if (top + menuH > window.innerHeight - margin) {
+      top = window.innerHeight - menuH - margin
+    }
+    setCoords({ top, left })
+  }, [editor])
+
   useEffect(() => {
     if (!editor) return
 
-    function update() {
-      if (!editor) return
-      const { state } = editor
-      const { from, to, empty } = state.selection
-      // 선택 없거나 빈 경우 숨김
-      if (empty || from === to) {
-        setCoords(null)
-        setMode('main')
-        return
-      }
-      // 에디터 dom에서 선택 영역의 bounding rect
-      try {
-        const view = editor.view
-        const startCoords = view.coordsAtPos(from)
-        const endCoords = view.coordsAtPos(to)
-        const top = Math.min(startCoords.top, endCoords.top)
-        const left = (startCoords.left + endCoords.right) / 2
-        // 메뉴 폭 추정 (조정은 마운트 후)
-        const menuW = menuRef.current?.offsetWidth ?? 220
-        const menuH = menuRef.current?.offsetHeight ?? 40
-        let placeTop = top - menuH - 10
-        // 위 공간 부족하면 아래로 (선택 영역 끝 + 12)
-        if (placeTop < 60) {
-          placeTop = Math.max(startCoords.bottom, endCoords.bottom) + 12
-        }
-        // 좌측 정렬 — 가운데 정렬 후 viewport 안으로 clamp
-        let placeLeft = left - menuW / 2
-        const margin = 8
-        if (placeLeft < margin) placeLeft = margin
-        if (placeLeft + menuW > window.innerWidth - margin) {
-          placeLeft = window.innerWidth - menuW - margin
-        }
-        setCoords({ top: placeTop, left: placeLeft })
-      } catch {
-        setCoords(null)
-      }
-    }
+    editor.on('selectionUpdate', recompute)
+    editor.on('transaction', recompute)
+    // 브라우저 selection 변화 — 모바일 long-press 선택 안정성 ↑
+    document.addEventListener('selectionchange', recompute)
+    window.addEventListener('resize', recompute)
+    window.addEventListener('scroll', recompute, true)
 
-    editor.on('selectionUpdate', update)
-    editor.on('transaction', update)
-    // 초기 + 외부 스크롤 보정
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
+    // 초기 한 번
+    recompute()
 
     return () => {
-      editor.off('selectionUpdate', update)
-      editor.off('transaction', update)
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
+      editor.off('selectionUpdate', recompute)
+      editor.off('transaction', recompute)
+      document.removeEventListener('selectionchange', recompute)
+      window.removeEventListener('resize', recompute)
+      window.removeEventListener('scroll', recompute, true)
     }
-  }, [editor])
+  }, [editor, recompute])
 
   if (!editor || !coords || typeof window === 'undefined') return null
 
@@ -111,8 +119,10 @@ export default function EditorBubbleMenu({ editor }: Props) {
   return createPortal(
     <div
       ref={menuRef}
+      // 선택 해제 방지 — mousedown/touchstart로 발화되는 선택 해제 막음
       onMouseDown={(e) => e.preventDefault()}
-      className="fixed z-[300] flex items-center gap-0.5 px-1.5 py-1 bg-gray-900 dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-700/30"
+      onTouchStart={(e) => { /* 선택 유지 */ e.stopPropagation() }}
+      className="fixed z-[300] flex items-center gap-0.5 px-1.5 py-1 bg-gray-900 dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-700/40"
       style={{ top: coords.top, left: coords.left }}
       role="toolbar"
       aria-label="텍스트 서식"

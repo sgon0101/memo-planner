@@ -74,6 +74,72 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
   const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
   const swipeCaptured = useRef(false)
   const [dragX, setDragX] = useState(0)
+  const asideRef = useRef<HTMLElement>(null)
+
+  // ★ Fallback: React PointerEvent가 모바일 일부에서 미발화 → native touch 이벤트로 백업
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const el = asideRef.current
+    if (!el) return
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) return
+
+    let startX = 0
+    let startY = 0
+    let startT = 0
+    let active = false
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      startX = t.clientX
+      startY = t.clientY
+      startT = Date.now()
+      active = false
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (!active) {
+        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+          active = true
+        } else if (Math.abs(dy) > 10) {
+          return
+        } else {
+          return
+        }
+      }
+      if (active && dx < 0) {
+        setDragX(Math.max(dx, -240))
+        e.preventDefault()  // 브라우저 가로 swipe 가로채기 차단
+      }
+    }
+    function onTouchEnd(e: TouchEvent) {
+      const t = e.changedTouches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      const dt = Date.now() - startT
+      const wasActive = active
+      active = false
+      setDragX(0)
+      if (wasActive && dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 600) {
+        setSidebarOpen(false)
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [sidebarOpen, setSidebarOpen])
 
   function onSwipeStart(e: React.PointerEvent) {
     if (!sidebarOpen) return
@@ -130,6 +196,7 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
       )}
 
       <aside
+        ref={asideRef}
         role="dialog"
         aria-modal="true"
         aria-label="네비게이션 메뉴"
