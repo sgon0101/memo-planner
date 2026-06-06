@@ -44,6 +44,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
 /**
  * Portal-based dropdown — 툴바 overflow:auto 안에 있는 dropdown이
  * 메모 본문 뒤로 가려지는 문제를 해결. document.body에 z-[200]로 띄움.
+ * 추가: 패널 크기 측정 후 viewport 경계 벗어나면 좌/상으로 자동 시프트.
  */
 function PortalDropdown({
   anchorRef, open, onClose, className, children,
@@ -55,17 +56,43 @@ function PortalDropdown({
   children: React.ReactNode
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number; ready: boolean } | null>(null)
 
   const update = useCallback(() => {
-    const r = anchorRef.current?.getBoundingClientRect()
-    if (!r) return
-    setCoords({ top: r.bottom + 4, left: r.left })
+    const a = anchorRef.current?.getBoundingClientRect()
+    if (!a) return
+    const margin = 8
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    // 패널 크기 — 마운트 직후엔 panelRef가 있으면 측정값, 없으면 0 (1차 렌더)
+    const panel = panelRef.current?.getBoundingClientRect()
+    const pw = panel?.width ?? 0
+    const ph = panel?.height ?? 0
+
+    // 좌측 시프트: 오른쪽 경계 넘으면 왼쪽으로 당김
+    let left = a.left
+    if (pw > 0 && left + pw > vw - margin) {
+      left = vw - pw - margin
+    }
+    if (left < margin) left = margin
+
+    // 상하 위치: 기본은 anchor 아래. 하단 overflow 시 anchor 위로 flip
+    let top = a.bottom + 4
+    if (ph > 0 && top + ph > vh - margin) {
+      const above = a.top - ph - 4
+      top = above > margin ? above : Math.max(margin, vh - ph - margin)
+    }
+
+    setCoords({ top, left, ready: pw > 0 })
   }, [anchorRef])
 
   useEffect(() => {
     if (!open) return
+    // 1차 렌더 — 패널이 마운트되도록 임시 좌표
     update()
+    // 패널 마운트 직후 2차 렌더 — 실제 크기 측정해 정확한 위치로 (1프레임 내)
+    const id = requestAnimationFrame(update)
     function onDown(e: MouseEvent | TouchEvent) {
       const t = e.target as Node
       if (anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return
@@ -79,12 +106,19 @@ function PortalDropdown({
     document.addEventListener('keydown', onKey)
     window.addEventListener('resize', update)
     window.addEventListener('scroll', update, true)
+
+    // 패널 크기 변화 추적 (콘텐츠가 동적으로 바뀌는 케이스)
+    const ro = panelRef.current ? new ResizeObserver(() => update()) : null
+    if (ro && panelRef.current) ro.observe(panelRef.current)
+
     return () => {
+      cancelAnimationFrame(id)
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('touchstart', onDown)
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', update)
       window.removeEventListener('scroll', update, true)
+      ro?.disconnect()
     }
   }, [open, anchorRef, onClose, update])
 
@@ -93,7 +127,14 @@ function PortalDropdown({
     <div
       ref={panelRef}
       className={cn('fixed z-[200]', className)}
-      style={{ top: coords.top, left: coords.left }}
+      style={{
+        top: coords.top,
+        left: coords.left,
+        // 1차 렌더 시(아직 panel 크기 모를 때) 화면 밖에서 시프트 측정 — 깜빡임 방지
+        opacity: coords.ready ? 1 : 0,
+        // 모바일 좁은 화면 대비 — 패널이 viewport보다 넓지 않도록 최대 너비 제한
+        maxWidth: `calc(100vw - 16px)`,
+      }}
     >
       {children}
     </div>,
