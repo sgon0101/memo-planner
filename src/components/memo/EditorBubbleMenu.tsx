@@ -38,26 +38,31 @@ export default function EditorBubbleMenu({ editor }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   const recompute = useCallback(() => {
-    if (!editor) return
-    // ProseMirror selection 비어있으면 숨김
-    const pmSel = editor.state.selection
-    if (pmSel.empty) {
-      setCoords(null)
-      setMode('main')
-      return
-    }
-    // 브라우저 선택도 함께 확인 (모바일에서 더 정확)
-    const winSel = typeof window !== 'undefined' ? window.getSelection() : null
+    if (!editor || typeof window === 'undefined') return
+    // ★ 모바일 long-press 선택은 ProseMirror가 empty로 인식하는 경우가 많아
+    //   브라우저 selection을 1차 진실로 사용 (ProseMirror 체크 제거)
+    const winSel = window.getSelection()
     if (!winSel || winSel.rangeCount === 0) {
       setCoords(null)
+      setMode('main')
       return
     }
     const text = winSel.toString()
     if (!text.trim()) {
       setCoords(null)
+      setMode('main')
       return
     }
     const range = winSel.getRangeAt(0)
+    // 선택 영역이 에디터 안에 있는지 확인 — 밖이면 무시
+    const editorEl = editor.view.dom
+    const container = range.commonAncestorContainer
+    const containerEl = container.nodeType === Node.ELEMENT_NODE ? (container as Element) : container.parentElement
+    if (!editorEl.contains(containerEl)) {
+      setCoords(null)
+      setMode('main')
+      return
+    }
     const rect = range.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) {
       setCoords(null)
