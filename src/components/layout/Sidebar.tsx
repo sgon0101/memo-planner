@@ -72,28 +72,30 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
   // ── 모바일 swipe-left 닫기 ─────────────────────────────────────────
   // PointerEvent로 마우스/터치 통합. swipe 중에는 시각 피드백(translateX) 따라옴.
   const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
-  const [dragX, setDragX] = useState(0)  // 음수만 — 좌측으로 끌리는 거리
+  const swipeCaptured = useRef(false)
+  const [dragX, setDragX] = useState(0)
 
   function onSwipeStart(e: React.PointerEvent) {
     if (!sidebarOpen) return
-    // 데스크탑(md+)에선 swipe 무시 — 데스크탑은 항상 보이는 사이드
     if (typeof window !== 'undefined' && window.innerWidth >= 768) return
-    const target = e.target as HTMLElement
-    // 버튼/링크 위에서 시작하면 swipe 보류 (탭으로 인식)
-    if (target.closest('button, a, input, textarea, select')) return
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+    // 시작 좌표만 기록 — setPointerCapture는 수평 이동 감지 후 지연 호출
+    // (즉시 capture 하면 nav 링크 탭이 모두 막힘)
     swipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now(), pointerId: e.pointerId }
+    swipeCaptured.current = false
   }
 
   function onSwipeMove(e: React.PointerEvent) {
     if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) return
     const dx = e.clientX - swipeStart.current.x
     const dy = e.clientY - swipeStart.current.y
-    // 좌측 swipe만 시각 피드백 — 세로보다 가로 이동이 우세할 때만
+    // 수평 이동 10px 초과 + 가로 우세일 때 비로소 capture → 링크 탭은 정상 동작
+    if (!swipeCaptured.current && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+      swipeCaptured.current = true
+    }
     if (dx < 0 && Math.abs(dx) > Math.abs(dy)) {
       setDragX(Math.max(dx, -240))
     } else if (dx > 0) {
-      // 우측은 무시(이미 열린 상태라)
       setDragX(0)
     }
   }
@@ -102,13 +104,15 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
     if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) {
       setDragX(0); return
     }
-    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+    if (swipeCaptured.current) {
+      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+    }
     const dx = e.clientX - swipeStart.current.x
     const dy = e.clientY - swipeStart.current.y
     const dt = Date.now() - swipeStart.current.t
     swipeStart.current = null
+    swipeCaptured.current = false
     setDragX(0)
-    // 좌측 70px 이상 + 가로 우세 + 600ms 이내 → 닫기
     if (dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 600) {
       setSidebarOpen(false)
     }
