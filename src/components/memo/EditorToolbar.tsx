@@ -187,55 +187,81 @@ function TextColorPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
         title="글자 색상"
         className="flex flex-col items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 leading-none">A</span>
         <span className="w-4 h-1 rounded-sm mt-0.5" style={{ background: currentColor }} />
       </button>
-      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2.5 w-52">
-          <div className="flex flex-wrap gap-1 mb-2">
-            {TEXT_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  editor.chain().focus().setColor(c).run()
-                  setOpen(false)
-                }}
-                className="w-6 h-6 rounded border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
-                style={{ background: c }}
-                title={c}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <input
-              type="color"
-              value={customColor}
-              onChange={(e) => setCustomColor(e.target.value)}
-              className="w-7 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600 p-0.5 bg-transparent"
+      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-3 w-64">
+        <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">기본 색상</p>
+        <div className="grid grid-cols-4 gap-1.5 mb-3">
+          {TEXT_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().setColor(c).run()
+                setOpen(false)
+              }}
+              className={cn(
+                'w-full aspect-square rounded-lg border-2 transition-all hover:scale-105 active:scale-95',
+                currentColor.toLowerCase() === c.toLowerCase()
+                  ? 'border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700'
+                  : 'border-gray-200 dark:border-gray-700',
+              )}
+              style={{ background: c }}
+              title={c}
+              aria-label={`색상 ${c}`}
             />
+          ))}
+        </div>
+        <div className="border-t border-gray-100 dark:border-gray-700 pt-2.5">
+          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">커스텀</p>
+          <div className="flex items-center gap-1.5">
+            <label className="relative w-9 h-9 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 cursor-pointer flex-shrink-0" style={{ background: customColor }}>
+              <input
+                type="color"
+                value={customColor}
+                onChange={(e) => setCustomColor(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="커스텀 색상 선택기"
+              />
+            </label>
             <input
               type="text"
               value={customColor}
               onChange={(e) => setCustomColor(e.target.value)}
               placeholder="#000000"
-              className="flex-1 text-xs px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500"
+              className="flex-1 min-w-0 text-sm font-mono px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500"
             />
             <button
-              onMouseDown={(e) => {
-                e.preventDefault()
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
                 editor.chain().focus().setColor(customColor).run()
                 setOpen(false)
               }}
-              className="text-xs px-2 py-1 bg-violet-600 text-white rounded hover:bg-violet-700"
+              className="text-xs font-medium px-3 py-1.5 bg-violet-600 text-white rounded-md hover:bg-violet-700 whitespace-nowrap flex-shrink-0"
             >
               적용
             </button>
           </div>
+        </div>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            editor.chain().focus().unsetColor().run()
+            setOpen(false)
+          }}
+          className="w-full mt-2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md py-1.5 transition-colors"
+        >
+          색상 제거
+        </button>
       </PortalDropdown>
     </>
   )
@@ -252,7 +278,8 @@ function HighlightPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
         title="형광펜"
         className={cn(
           'flex items-center gap-0.5 h-7 px-1 rounded transition-colors',
@@ -264,36 +291,36 @@ function HighlightPicker({ editor }: { editor: Editor }) {
         <Highlighter size={13} />
         <ChevronDown size={10} />
       </button>
-      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
-          {HIGHLIGHT_OPTIONS.map((opt) => (
-            <button
-              key={opt.color}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                editor.chain().focus().setHighlight({ color: opt.color }).run()
-                setOpen(false)
-              }}
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-700 dark:text-gray-300"
-            >
-              <span className="w-4 h-4 rounded flex-shrink-0" style={{ background: opt.color }} />
-              {opt.label}
-            </button>
-          ))}
-          <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                editor.chain().focus().unsetHighlight().run()
-                setOpen(false)
-              }}
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-400"
-            >
-              <span className="w-4 h-4 rounded border border-dashed border-gray-300 dark:border-gray-600 flex-shrink-0" />
-              형광펜 제거
-            </button>
-          </div>
+      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1.5 w-40">
+        {HIGHLIGHT_OPTIONS.map((opt) => (
+          <button
+            key={opt.color}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              editor.chain().focus().setHighlight({ color: opt.color }).run()
+              setOpen(false)
+            }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-700 dark:text-gray-300"
+          >
+            <span className="w-5 h-5 rounded flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ background: opt.color }} />
+            {opt.label}
+          </button>
+        ))}
+        <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              editor.chain().focus().unsetHighlight().run()
+              setOpen(false)
+            }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-400"
+          >
+            <span className="w-5 h-5 rounded border border-dashed border-gray-300 dark:border-gray-600 flex-shrink-0" />
+            형광펜 제거
+          </button>
+        </div>
       </PortalDropdown>
     </>
   )
