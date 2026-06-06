@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { type Editor } from '@tiptap/react'
 import {
   Bold, Italic, Underline, Strikethrough, Code,
@@ -40,6 +41,66 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
   }, [ref, handler])
 }
 
+/**
+ * Portal-based dropdown — 툴바 overflow:auto 안에 있는 dropdown이
+ * 메모 본문 뒤로 가려지는 문제를 해결. document.body에 z-[200]로 띄움.
+ */
+function PortalDropdown({
+  anchorRef, open, onClose, className, children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>
+  open: boolean
+  onClose: () => void
+  className?: string
+  children: React.ReactNode
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+
+  const update = useCallback(() => {
+    const r = anchorRef.current?.getBoundingClientRect()
+    if (!r) return
+    setCoords({ top: r.bottom + 4, left: r.left })
+  }, [anchorRef])
+
+  useEffect(() => {
+    if (!open) return
+    update()
+    function onDown(e: MouseEvent | TouchEvent) {
+      const t = e.target as Node
+      if (anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      onClose()
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open, anchorRef, onClose, update])
+
+  if (!open || !coords || typeof window === 'undefined') return null
+  return createPortal(
+    <div
+      ref={panelRef}
+      className={cn('fixed z-[200]', className)}
+      style={{ top: coords.top, left: coords.left }}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
 function ToolBtn({
   onClick, active, disabled, title, children,
 }: {
@@ -75,14 +136,14 @@ function Divider() {
 function TextColorPicker({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   const [customColor, setCustomColor] = useState('#000000')
-  const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const currentColor = (editor.getAttributes('textStyle').color as string | undefined) ?? '#000000'
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
         title="글자 색상"
@@ -91,8 +152,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 leading-none">A</span>
         <span className="w-4 h-1 rounded-sm mt-0.5" style={{ background: currentColor }} />
       </button>
-      {open && (
-        <div className="absolute top-8 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2.5 w-44">
+      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2.5 w-44">
           <div className="flex flex-wrap gap-1 mb-2">
             {TEXT_COLORS.map((c) => (
               <button
@@ -134,22 +194,21 @@ function TextColorPicker({ editor }: { editor: Editor }) {
               적용
             </button>
           </div>
-        </div>
-      )}
-    </div>
+      </PortalDropdown>
+    </>
   )
 }
 
 function HighlightPicker({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const isActive = editor.isActive('highlight')
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
         title="형광펜"
@@ -163,8 +222,7 @@ function HighlightPicker({ editor }: { editor: Editor }) {
         <Highlighter size={13} />
         <ChevronDown size={10} />
       </button>
-      {open && (
-        <div className="absolute top-8 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
+      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
           {HIGHLIGHT_OPTIONS.map((opt) => (
             <button
               key={opt.color}
@@ -194,9 +252,8 @@ function HighlightPicker({ editor }: { editor: Editor }) {
               형광펜 제거
             </button>
           </div>
-        </div>
-      )}
-    </div>
+      </PortalDropdown>
+    </>
   )
 }
 
@@ -206,7 +263,6 @@ function TablePicker({ onInsert }: { onInsert: (rows: number, cols: number) => v
   const [manualRows, setManualRows] = useState('')
   const [manualCols, setManualCols] = useState('')
   const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
 
   const MAX = 8
 
@@ -229,8 +285,7 @@ function TablePicker({ onInsert }: { onInsert: (rows: number, cols: number) => v
           <line x1="15" y1="3" x2="15" y2="21" />
         </svg>
       </ToolBtn>
-      {open && (
-        <div className="absolute top-8 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-3">
+      <PortalDropdown anchorRef={ref} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-3">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 min-w-[120px]">
             {hovered.row > 0 && hovered.col > 0
               ? `${hovered.row} × ${hovered.col} 표`
@@ -286,8 +341,7 @@ function TablePicker({ onInsert }: { onInsert: (rows: number, cols: number) => v
               삽입
             </button>
           </div>
-        </div>
-      )}
+      </PortalDropdown>
     </div>
   )
 }
@@ -297,7 +351,6 @@ function TablePicker({ onInsert }: { onInsert: (rows: number, cols: number) => v
 function HeadingPicker({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
 
   const activeLevel =
     editor.isActive('heading', { level: 1 }) ? 1 :
@@ -320,8 +373,7 @@ function HeadingPicker({ editor }: { editor: Editor }) {
         <span className="text-xs font-bold">H{activeLevel ?? ''}</span>
         <ChevronDown size={10} />
       </button>
-      {open && (
-        <div className="absolute top-9 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-32">
+      <PortalDropdown anchorRef={ref} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-32">
           {([1, 2, 3] as const).map((level) => {
             const isActive = editor.isActive('heading', { level })
             const Icon = level === 1 ? Heading1 : level === 2 ? Heading2 : Heading3
@@ -349,8 +401,7 @@ function HeadingPicker({ editor }: { editor: Editor }) {
               </button>
             )
           })}
-        </div>
-      )}
+      </PortalDropdown>
     </div>
   )
 }
@@ -358,7 +409,6 @@ function HeadingPicker({ editor }: { editor: Editor }) {
 function TextStylePicker({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
 
   const isItalic = editor.isActive('italic')
   const isUnderline = editor.isActive('underline')
@@ -389,8 +439,7 @@ function TextStylePicker({ editor }: { editor: Editor }) {
         <TriggerIcon size={14} />
         <ChevronDown size={10} />
       </button>
-      {open && (
-        <div className="absolute top-9 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
+      <PortalDropdown anchorRef={ref} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
           {options.map(({ key, label, Icon, action, isActive }) => (
             <button
               key={key}
@@ -407,8 +456,7 @@ function TextStylePicker({ editor }: { editor: Editor }) {
               {isActive && <span className="text-violet-500 text-xs">✓</span>}
             </button>
           ))}
-        </div>
-      )}
+      </PortalDropdown>
     </div>
   )
 }
@@ -416,7 +464,6 @@ function TextStylePicker({ editor }: { editor: Editor }) {
 function ListPicker({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false))
 
   const isActiveBullet   = editor.isActive('bulletList')
   const isActiveOrdered  = editor.isActive('orderedList')
@@ -447,8 +494,7 @@ function ListPicker({ editor }: { editor: Editor }) {
         <ActiveIcon size={14} />
         <ChevronDown size={10} />
       </button>
-      {open && (
-        <div className="absolute top-9 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
+      <PortalDropdown anchorRef={ref} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1 w-36">
           {options.map(({ type, label, Icon, action, isActive }) => (
             <button
               key={type}
@@ -465,8 +511,7 @@ function ListPicker({ editor }: { editor: Editor }) {
               {isActive && <span className="text-violet-500 text-xs">✓</span>}
             </button>
           ))}
-        </div>
-      )}
+      </PortalDropdown>
     </div>
   )
 }
