@@ -413,10 +413,10 @@ function CardMenu({
     <div className="relative">
       <button
         ref={btnRef}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-opacity"
+        className="md:opacity-0 md:group-hover:opacity-100 p-2 -m-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-opacity"
         onClick={handleToggle}
       >
-        <MoreVertical size={13} />
+        <MoreVertical size={16} />
       </button>
       {open && menuCoords && (
         <>
