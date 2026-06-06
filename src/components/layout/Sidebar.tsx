@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -69,6 +69,51 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
     setSidebarOpen(false)
   }
 
+  // ── 모바일 swipe-left 닫기 ─────────────────────────────────────────
+  // PointerEvent로 마우스/터치 통합. swipe 중에는 시각 피드백(translateX) 따라옴.
+  const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
+  const [dragX, setDragX] = useState(0)  // 음수만 — 좌측으로 끌리는 거리
+
+  function onSwipeStart(e: React.PointerEvent) {
+    if (!sidebarOpen) return
+    // 데스크탑(md+)에선 swipe 무시 — 데스크탑은 항상 보이는 사이드
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) return
+    const target = e.target as HTMLElement
+    // 버튼/링크 위에서 시작하면 swipe 보류 (탭으로 인식)
+    if (target.closest('button, a, input, textarea, select')) return
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+    swipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now(), pointerId: e.pointerId }
+  }
+
+  function onSwipeMove(e: React.PointerEvent) {
+    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) return
+    const dx = e.clientX - swipeStart.current.x
+    const dy = e.clientY - swipeStart.current.y
+    // 좌측 swipe만 시각 피드백 — 세로보다 가로 이동이 우세할 때만
+    if (dx < 0 && Math.abs(dx) > Math.abs(dy)) {
+      setDragX(Math.max(dx, -240))
+    } else if (dx > 0) {
+      // 우측은 무시(이미 열린 상태라)
+      setDragX(0)
+    }
+  }
+
+  function onSwipeEnd(e: React.PointerEvent) {
+    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) {
+      setDragX(0); return
+    }
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+    const dx = e.clientX - swipeStart.current.x
+    const dy = e.clientY - swipeStart.current.y
+    const dt = Date.now() - swipeStart.current.t
+    swipeStart.current = null
+    setDragX(0)
+    // 좌측 70px 이상 + 가로 우세 + 600ms 이내 → 닫기
+    if (dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 600) {
+      setSidebarOpen(false)
+    }
+  }
+
   return (
     <>
       {/* 배경 딤 — 모바일에서 드로어 열릴 때만 표시 */}
@@ -84,11 +129,16 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
         role="dialog"
         aria-modal="true"
         aria-label="네비게이션 메뉴"
+        onPointerDown={onSwipeStart}
+        onPointerMove={onSwipeMove}
+        onPointerUp={onSwipeEnd}
+        onPointerCancel={onSwipeEnd}
+        style={dragX < 0 ? { transform: `translateX(${dragX}px)`, transition: 'none' } : undefined}
         className={cn(
           'flex flex-col fixed left-0 top-0 h-full z-50',
           'bg-white dark:bg-gray-950',
           'border-r border-gray-100 dark:border-gray-800',
-          'transition-all duration-200 ease-out',
+          dragX < 0 ? '' : 'transition-all duration-200 ease-out',
           // 모바일: 고정 너비, transform으로 슬라이드 인/아웃
           'w-64 max-w-[85vw]',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
