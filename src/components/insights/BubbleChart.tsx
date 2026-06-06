@@ -158,9 +158,9 @@ export default function BubbleChart() {
 
             <div className="flex flex-wrap gap-3 items-end">
               {interests.map((item, i) => {
-                // 모바일: 28~80px / 데스크톱: 40~120px
+                // 모바일: 40~100px (Apple HIG 터치 최소 44px 권장 반영) / 데스크톱: 40~120px
                 const size = isMobile
-                  ? 28 + (item.count / maxCount) * 52
+                  ? 40 + (item.count / maxCount) * 60
                   : 40 + (item.count / maxCount) * 80
                 const color = colorFor(item.category, categoryColorIndex[item.category])
                 const isSelected = selectedCategory === item.category
@@ -181,7 +181,7 @@ export default function BubbleChart() {
                       backgroundColor: color + '22',
                       border: `2px solid ${color}`,
                       color,
-                      fontSize: Math.max(10, size / 5),
+                      fontSize: Math.max(12, size / 5),
                       fontWeight: 600,
                       ringColor: color,
                     } as React.CSSProperties}
