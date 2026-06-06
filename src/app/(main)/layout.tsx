@@ -7,6 +7,7 @@ import DarkModeProvider from '@/components/layout/DarkModeProvider'
 import SidebarSpacer from '@/components/layout/SidebarSpacer'
 import KeyboardShortcuts from '@/components/layout/KeyboardShortcuts'
 import NotificationScheduler from '@/components/layout/NotificationScheduler'
+import AutofillBlocker from '@/components/layout/AutofillBlocker'
 import QueryProvider from '@/components/providers/QueryProvider'
 import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
 import QuickCaptureFAB from '@/components/quick-capture/QuickCaptureFAB'
@@ -42,6 +43,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
         <MobileNav />
         <KeyboardShortcuts />
+        <AutofillBlocker />
         <NotificationScheduler />
         <QuickCaptureFAB />
         <QuickCaptureModal />

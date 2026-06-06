@@ -17,59 +17,26 @@ const MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50].map((m) => ({
 
 interface TimePickerProps {
   label: string
-  value: string        // "HH:MM" 형식
+  value: string
   onChange: (value: string) => void
   className?: string
 }
 
-/**
- * 시간 / 분 선택 — 커스텀 dropdown (네이티브 select 미사용)
- *
- * 네이티브 <select>를 쓰면 Samsung One UI 등 OS picker UI가 떠서 행마다
- * 라디오 위치가 일관성 없게 보이는 문제가 발생함. 직접 그리는 dropdown으로
- * 모든 플랫폼에서 동일한 UX 보장.
- */
-export default function TimePicker({ label, value, onChange, className }: TimePickerProps) {
-  const parts = value ? value.split(':').map(Number) : [9, 0]
-  const hour = isNaN(parts[0]) ? 9 : parts[0]
-  const minute = isNaN(parts[1]) ? 0 : Math.round(parts[1] / 10) * 10
-
-  function emit(h: number, m: number) {
-    onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-  }
-
-  return (
-    <div className={className}>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <div className="flex items-center gap-1.5">
-        <Picker
-          value={hour}
-          options={HOUR_OPTIONS}
-          onChange={(h) => emit(h, minute)}
-          ariaLabel={`${label} 시간`}
-        />
-        <span className="text-gray-500 font-medium">:</span>
-        <Picker
-          value={minute}
-          options={MINUTE_OPTIONS}
-          onChange={(m) => emit(hour, m)}
-          ariaLabel={`${label} 분`}
-        />
-      </div>
-    </div>
-  )
+interface Option {
+  value: number
+  label: string
 }
 
 interface PickerProps {
   value: number
-  options: { value: number; label: string }[]
+  options: Option[]
   onChange: (v: number) => void
   ariaLabel: string
 }
 
 function Picker({ value, options, onChange, ariaLabel }: PickerProps) {
   const [open, setOpen] = useState(false)
-  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number; maxH: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const selected = options.find((o) => o.value === value) ?? options[0]
@@ -77,7 +44,22 @@ function Picker({ value, options, onChange, ariaLabel }: PickerProps) {
   const updateCoords = useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect()
     if (!b) return
-    setCoords({ top: b.bottom + 4, left: b.left, width: Math.max(b.width, 76) })
+    const margin = 8
+    const vh = window.innerHeight
+    const desiredH = 240  // max-h-60
+    // 아래 공간 충분하면 아래로, 부족하면 위로 flip
+    const spaceBelow = vh - b.bottom - margin
+    const spaceAbove = b.top - margin
+    let top: number
+    let maxH: number
+    if (spaceBelow >= 120 || spaceBelow >= spaceAbove) {
+      top = b.bottom + 4
+      maxH = Math.min(desiredH, spaceBelow - 4)
+    } else {
+      maxH = Math.min(desiredH, spaceAbove - 4)
+      top = b.top - maxH - 4
+    }
+    setCoords({ top, left: b.left, width: Math.max(b.width, 76), maxH })
   }, [])
 
   useEffect(() => {
@@ -91,22 +73,21 @@ function Picker({ value, options, onChange, ariaLabel }: PickerProps) {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false)
     }
-    function onScrollOrResize() { updateCoords() }
+    function onWin() { updateCoords() }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('touchstart', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', onScrollOrResize)
-    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onWin)
+    window.addEventListener('scroll', onWin, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('touchstart', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('resize', onScrollOrResize)
-      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onWin)
+      window.removeEventListener('scroll', onWin, true)
     }
   }, [open, updateCoords])
 
-  // 선택된 행이 자동으로 보이도록 panel 열릴 때 스크롤
   useEffect(() => {
     if (!open || !panelRef.current) return
     const el = panelRef.current.querySelector<HTMLButtonElement>('[data-selected="true"]')
@@ -138,8 +119,8 @@ function Picker({ value, options, onChange, ariaLabel }: PickerProps) {
           ref={panelRef}
           role="listbox"
           aria-label={ariaLabel}
-          className="fixed z-[200] max-h-60 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1"
-          style={{ top: coords.top, left: coords.left, width: coords.width }}
+          className="fixed z-[200] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1"
+          style={{ top: coords.top, left: coords.left, width: coords.width, maxHeight: coords.maxH }}
         >
           {options.map((o) => {
             const isSel = o.value === value
@@ -165,5 +146,26 @@ function Picker({ value, options, onChange, ariaLabel }: PickerProps) {
         document.body,
       )}
     </>
+  )
+}
+
+export default function TimePicker({ label, value, onChange, className }: TimePickerProps) {
+  const parts = value ? value.split(':').map(Number) : [9, 0]
+  const hour = isNaN(parts[0]) ? 9 : parts[0]
+  const minute = isNaN(parts[1]) ? 0 : Math.round(parts[1] / 10) * 10
+
+  function emit(h: number, m: number) {
+    onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+
+  return (
+    <div className={className}>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <div className="flex items-center gap-1.5">
+        <Picker value={hour} options={HOUR_OPTIONS} onChange={(h) => emit(h, minute)} ariaLabel={`${label} 시간`} />
+        <span className="text-gray-500 font-medium">:</span>
+        <Picker value={minute} options={MINUTE_OPTIONS} onChange={(m) => emit(hour, m)} ariaLabel={`${label} 분`} />
+      </div>
+    </div>
   )
 }
