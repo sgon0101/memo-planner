@@ -23,11 +23,103 @@ export default function QuickCaptureFAB() {
   const open = useUIStore((s) => s.openQuickCapture)
   const modalOpen = useUIStore((s) => s.quickCaptureOpen)
   const [expanded, setExpanded] = useState(false)
+  // FAB이 텍스트 위에 있는지 — 실시간 감지 (스크롤 무관)
+  const [overText, setOverText] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const fabBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (modalOpen && expanded) setExpanded(false)
   }, [modalOpen, expanded])
+
+  // FAB 뒤에 텍스트가 있는지 감지 — 있으면 반투명, 없으면 불투명
+  // elementsFromPoint로 FAB 아래 스택을 보고, 텍스트성 element가 있는지 확인
+  useEffect(() => {
+    let rafId: number | null = null
+    let postTimer: ReturnType<typeof setTimeout> | null = null
+
+    const TEXT_TAGS = new Set([
+      'P', 'SPAN', 'A', 'LI', 'TD', 'TH', 'BUTTON', 'LABEL',
+      'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'EM', 'B', 'I', 'CODE', 'BLOCKQUOTE', 'MARK',
+    ])
+
+    function elementHasVisibleText(el: Element): boolean {
+      // 자기 자신 또는 가까운 조상이 텍스트 태그이고 textContent 있으면 true
+      let cur: Element | null = el
+      let depth = 0
+      while (cur && depth < 5) {
+        if (TEXT_TAGS.has(cur.tagName)) {
+          const txt = (cur.textContent ?? '').trim()
+          if (txt.length > 0) return true
+        }
+        cur = cur.parentElement
+        depth++
+      }
+      return false
+    }
+
+    function check() {
+      const fab = fabBtnRef.current
+      if (!fab) { setOverText(false); return }
+      const r = fab.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) { setOverText(false); return }
+
+      // FAB 영역의 5점 샘플링 (가운데 + 모서리 안쪽)
+      const pad = 6
+      const points: [number, number][] = [
+        [r.left + r.width / 2, r.top + r.height / 2],
+        [r.left + pad,         r.top + pad],
+        [r.right - pad,        r.top + pad],
+        [r.left + pad,         r.bottom - pad],
+        [r.right - pad,        r.bottom - pad],
+      ]
+
+      for (const [x, y] of points) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue
+        const stack = typeof document.elementsFromPoint === 'function'
+          ? document.elementsFromPoint(x, y)
+          : []
+        // FAB과 그 자식들 제외하고 첫 element가 텍스트성인지 확인
+        const underneath = stack.find((el) => el !== fab && !fab.contains(el) && !wrapperRef.current?.contains(el))
+        if (underneath && elementHasVisibleText(underneath)) {
+          setOverText(true)
+          return
+        }
+      }
+      setOverText(false)
+    }
+
+    function schedule() {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        check()
+      })
+    }
+
+    // 초기 진입 후 1프레임 늦게 — 레이아웃 안정화
+    requestAnimationFrame(check)
+    // 스크롤 끝난 직후에도 한 번 더 확인 (rAF가 마지막 위치 못 잡을 수 있어서)
+    function onScroll() {
+      schedule()
+      if (postTimer) clearTimeout(postTimer)
+      postTimer = setTimeout(check, 120)
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
+    window.addEventListener('resize', schedule)
+    // pathname 변화 등은 SPA navigation으로 layout 변경 → MutationObserver로 body 변화 감지
+    const mo = new MutationObserver(() => schedule())
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true })
+
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', schedule)
+      mo.disconnect()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      if (postTimer) clearTimeout(postTimer)
+    }
+  }, [])
 
   useEffect(() => {
     if (!expanded) return
@@ -84,11 +176,14 @@ export default function QuickCaptureFAB() {
         </div>
 
         <button
+          ref={fabBtnRef}
           onClick={() => setExpanded((v) => !v)}
           className={cn(
-            'flex items-center justify-center rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/30 transition-all active:scale-95',
+            'flex items-center justify-center rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/30 transition-all duration-300 active:scale-95',
             'w-14 h-14 md:w-12 md:h-12',
             expanded && 'rotate-45',
+            // FAB 뒤에 텍스트가 있으면 반투명 → 글씨가 비침. 펼치거나 hover/active 시 즉시 복원.
+            overText && !expanded && 'opacity-40 hover:opacity-100 focus-visible:opacity-100 active:opacity-100',
           )}
           aria-label={expanded ? '캡처 메뉴 닫기' : '빠른 캡처 (메모/플랜)'}
           aria-expanded={expanded}
