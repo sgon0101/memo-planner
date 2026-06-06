@@ -28,6 +28,21 @@ type ViewMode = 'card' | 'list' | 'timeline'
 export default function MemoList() {
   const router = useRouter()
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
+  // 모바일 폴더 dropdown용 메모 갯수 (FolderPanel과 동일 queryKey로 캐시 공유)
+  const { data: folderCountRows } = useQuery({
+    queryKey: ['memo-folder-counts'],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data } = await supabase.from('memos').select('folder_id').eq('is_deleted', false)
+      return data ?? []
+    },
+    staleTime: 15_000,
+  })
+  const folderMemoCount = (folderCountRows ?? []).reduce<Map<string, number>>((acc, row) => {
+    const fid = (row as { folder_id: string | null }).folder_id
+    if (fid) acc.set(fid, (acc.get(fid) ?? 0) + 1)
+    return acc
+  }, new Map<string, number>())
   const { createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder } = useFolders()
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
   const folderDropdownRef = useRef<HTMLDivElement>(null)
@@ -692,8 +707,15 @@ export default function MemoList() {
                                   if (e.key === 'Enter') { e.preventDefault(); void commitEdit(parent.id) }
                                   if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
                                 }}
-                                className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
+                                className="flex-1 bg-transparent outline-none text-base border-b border-violet-400"
                                 onClick={(e) => e.stopPropagation()}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                data-1p-ignore="true"
+                                data-lpignore="true"
+                                data-form-type="other"
+                                name="folder-name-edit"
                               />
                             </div>
                           ) : (
@@ -705,11 +727,16 @@ export default function MemoList() {
                                 <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${parent.colorH}, ${parent.colorS}%, ${parent.colorL}%)` }} />
                                 <span className="truncate">{parent.name}</span>
                               </button>
+                              {folderMemoCount.get(parent.id) ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                  {folderMemoCount.get(parent.id)}
+                                </span>
+                              ) : null}
                               <button
                                 onClick={(e) => { e.stopPropagation(); openMenu(parent.id) }}
-                                className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                                className="flex-shrink-0 p-1.5 mr-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
                               >
-                                <MoreHorizontal size={14} />
+                                <MoreHorizontal size={16} />
                               </button>
                             </>
                           )}
@@ -754,8 +781,15 @@ export default function MemoList() {
                                         if (e.key === 'Enter') { e.preventDefault(); void commitEdit(child.id) }
                                         if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
                                       }}
-                                      className="flex-1 bg-transparent outline-none text-xs border-b border-violet-400"
+                                      className="flex-1 bg-transparent outline-none text-base border-b border-violet-400"
                                       onClick={(e) => e.stopPropagation()}
+                                      autoComplete="off"
+                                      autoCorrect="off"
+                                      spellCheck={false}
+                                      data-1p-ignore="true"
+                                      data-lpignore="true"
+                                      data-form-type="other"
+                                      name="folder-name-edit"
                                     />
                                   </div>
                                 ) : (
@@ -767,11 +801,16 @@ export default function MemoList() {
                                       <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: `hsl(${child.colorH}, ${child.colorS}%, ${child.colorL}%)` }} />
                                       <span className="truncate">{child.name}</span>
                                     </button>
+                                    {folderMemoCount.get(child.id) ? (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                        {folderMemoCount.get(child.id)}
+                                      </span>
+                                    ) : null}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); openMenu(child.id) }}
-                                      className="flex-shrink-0 p-1 mr-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                                      className="flex-shrink-0 p-1.5 mr-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
                                     >
-                                      <MoreHorizontal size={14} />
+                                      <MoreHorizontal size={16} />
                                     </button>
                                   </>
                                 )}
