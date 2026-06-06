@@ -695,7 +695,15 @@ export default function GraphView() {
     dragStartRef.current = { x: mx, y: my }
     isDraggingRef.current = false
     const n = hitNode(mx, my)
-    if (n) { dragNodeRef.current = n; wake(0.3) }
+
+    // hub(tag/wiki) 노드가 활성 상태일 때: 활성 노드 외 다른 노드는 drag 대상에서 제외
+    // → 비활성 노드를 만져도 캔버스 pan으로 빠짐 → 연결된 메모 둘러보기 자유로워짐
+    // (tap-to-navigate는 onTouchEnd/onMouseUp에서 hitNode fallback으로 그대로 작동)
+    const activeNode = selectedNodeId ? simRef.current?.nodes().find((node) => node.id === selectedNodeId) : null
+    const hubActive = !!activeNode && (activeNode.type === 'wiki' || activeNode.type === 'tag')
+    const allowNodeDrag = !!n && (!hubActive || n.id === selectedNodeId)
+
+    if (allowNodeDrag) { dragNodeRef.current = n; wake(0.3) }
     else canvasDragRef.current = { sx: mx, sy: my, px: transformRef.current.x, py: transformRef.current.y }
     e.preventDefault()
   }
