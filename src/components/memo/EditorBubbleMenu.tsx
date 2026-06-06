@@ -71,23 +71,38 @@ export default function EditorBubbleMenu({ editor }: Props) {
 
     const menuW = menuRef.current?.offsetWidth ?? 280
     const menuH = menuRef.current?.offsetHeight ?? 44
+    const isMobile = window.innerWidth < 768
 
-    // 기본: 선택 위쪽
-    let top = rect.top - menuH - 10
-    if (top < 60) {
-      // 위 공간 부족 → 아래
-      top = rect.bottom + 12
-    }
-    // 가운데 정렬 + viewport clamp
-    let left = rect.left + rect.width / 2 - menuW / 2
-    const margin = 8
-    if (left < margin) left = margin
-    if (left + menuW > window.innerWidth - margin) {
-      left = window.innerWidth - menuW - margin
-    }
-    // 화면 아래로도 안 넘치게
-    if (top + menuH > window.innerHeight - margin) {
-      top = window.innerHeight - menuH - margin
+    let top: number
+    let left: number
+
+    if (isMobile) {
+      // ★ 모바일: 화면 하단 고정 — OS 네이티브 선택 메뉴(잘라내기/복사 등)는
+      //   선택 위에 뜨므로, 우리 메뉴를 아래로 분리해 시각적 충돌 완전 해소.
+      //   visualViewport 사용 → 키보드 올라오면 키보드 위에 자동 위치.
+      const vv = window.visualViewport
+      const vh = vv ? vv.height : window.innerHeight
+      const vTop = vv ? vv.offsetTop : 0
+      top = vTop + vh - menuH - 16
+      left = (window.innerWidth - menuW) / 2
+      const margin = 8
+      if (left < margin) left = margin
+      if (left + menuW > window.innerWidth - margin) {
+        left = window.innerWidth - menuW - margin
+      }
+    } else {
+      // 데스크탑: 선택 위에 (기존 동작)
+      top = rect.top - menuH - 10
+      if (top < 60) top = rect.bottom + 12
+      left = rect.left + rect.width / 2 - menuW / 2
+      const margin = 8
+      if (left < margin) left = margin
+      if (left + menuW > window.innerWidth - margin) {
+        left = window.innerWidth - menuW - margin
+      }
+      if (top + menuH > window.innerHeight - margin) {
+        top = window.innerHeight - menuH - margin
+      }
     }
     setCoords({ top, left })
   }, [editor])
@@ -101,6 +116,11 @@ export default function EditorBubbleMenu({ editor }: Props) {
     document.addEventListener('selectionchange', recompute)
     window.addEventListener('resize', recompute)
     window.addEventListener('scroll', recompute, true)
+    // 모바일 키보드 올라오면 visualViewport 변경 → 메뉴 위치 갱신
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', recompute)
+      window.visualViewport.addEventListener('scroll', recompute)
+    }
 
     // 초기 한 번
     recompute()
@@ -111,6 +131,10 @@ export default function EditorBubbleMenu({ editor }: Props) {
       document.removeEventListener('selectionchange', recompute)
       window.removeEventListener('resize', recompute)
       window.removeEventListener('scroll', recompute, true)
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', recompute)
+        window.visualViewport.removeEventListener('scroll', recompute)
+      }
     }
   }, [editor, recompute])
 
