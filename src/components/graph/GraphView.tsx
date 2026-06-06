@@ -125,6 +125,33 @@ export default function GraphView() {
     tag: string
     memos: Array<{ id: string; label: string; createdAt?: string }>
   } | null>(null)
+
+  // 모바일 bottom sheet swipe-down 닫기 (PlanPanel과 동일 패턴)
+  const tagSheetGripRef = useRef<HTMLDivElement>(null)
+  const tagSheetSwipeStart = useRef<{ y: number; t: number; pointerId: number } | null>(null)
+  const [tagSheetDragY, setTagSheetDragY] = useState(0)
+  function onTagSheetSwipeStart(e: React.PointerEvent) {
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input')) return
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+    tagSheetSwipeStart.current = { y: e.clientY, t: Date.now(), pointerId: e.pointerId }
+  }
+  function onTagSheetSwipeMove(e: React.PointerEvent) {
+    if (!tagSheetSwipeStart.current || tagSheetSwipeStart.current.pointerId !== e.pointerId) return
+    const dy = e.clientY - tagSheetSwipeStart.current.y
+    if (dy > 0) setTagSheetDragY(Math.min(dy, 160))
+  }
+  function onTagSheetSwipeEnd(e: React.PointerEvent) {
+    if (!tagSheetSwipeStart.current || tagSheetSwipeStart.current.pointerId !== e.pointerId) {
+      setTagSheetDragY(0); return
+    }
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+    const dy = e.clientY - tagSheetSwipeStart.current.y
+    const dt = Date.now() - tagSheetSwipeStart.current.t
+    tagSheetSwipeStart.current = null
+    setTagSheetDragY(0)
+    if (dy > 70 && dt < 600) setSelectedTagPanel(null)
+  }
   const [isMobile, setIsMobile] = useState(false)
 
   // 모바일 감지
@@ -1080,40 +1107,99 @@ export default function GraphView() {
 
       {/* 메인 영역 */}
       <div className="flex flex-1 min-h-0">
-        {/* 태그 패널 */}
+        {/* 태그 패널 — 데스크탑: 좌측 사이드 / 모바일: bottom sheet (PlanPanel 패턴) */}
         {selectedTagPanel && (
-          <div className="w-64 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden animate-slide-in-left">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-              <div className="min-w-0">
-                <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 truncate block">#{selectedTagPanel.tag}</span>
-                <span className="text-xs text-gray-400">{selectedTagPanel.memos.length}개의 메모</span>
+          <>
+            {/* 데스크탑 */}
+            <div className="hidden md:flex w-64 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex-col overflow-hidden animate-slide-in-left">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 truncate block">#{selectedTagPanel.tag}</span>
+                  <span className="text-xs text-gray-400">{selectedTagPanel.memos.length}개의 메모</span>
+                </div>
+                <button
+                  onClick={() => setSelectedTagPanel(null)}
+                  className="ml-2 flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
+                  aria-label="태그 패널 닫기"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
+              <div className="flex-1 overflow-y-auto py-1">
+                {selectedTagPanel.memos.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">메모가 없습니다</p>
+                ) : (
+                  selectedTagPanel.memos.map((memo) => (
+                    <button
+                      key={memo.id}
+                      onClick={() => router.push(`/memo/${memo.id}?from=graph`)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-b border-gray-50 dark:border-gray-800/50 last:border-0"
+                    >
+                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{memo.label}</p>
+                      {memo.createdAt && (
+                        <p className="text-xs text-gray-400 mt-0.5">{format(new Date(memo.createdAt), 'yyyy.MM.dd')}</p>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* 모바일 bottom sheet — 캔버스 위에 떠 있어 그래프가 가려지지 않음 */}
+            <div className="md:hidden">
+              <div
+                className="fixed inset-0 z-30 bg-black/30"
                 onClick={() => setSelectedTagPanel(null)}
-                className="ml-2 flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
+                aria-label="배경 탭으로 닫기"
+              />
+              <div
+                className="fixed bottom-16 left-0 right-0 z-40 max-h-[55vh] bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col overflow-hidden"
+                style={tagSheetDragY > 0
+                  ? { transform: `translateY(${tagSheetDragY}px)`, transition: 'none' }
+                  : { transition: 'transform 0.25s ease-out' }}
               >
-                <X size={14} />
-              </button>
+                {/* 그립 — swipe-down 트리거 */}
+                <div
+                  ref={tagSheetGripRef}
+                  onPointerDown={onTagSheetSwipeStart}
+                  onPointerMove={onTagSheetSwipeMove}
+                  onPointerUp={onTagSheetSwipeEnd}
+                  onPointerCancel={onTagSheetSwipeEnd}
+                  style={{ touchAction: 'none' }}
+                  className="flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing select-none"
+                  aria-label="아래로 밀어 닫기"
+                >
+                  <div className="w-12 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500" />
+                </div>
+                {/* 헤더 — X 없이 가운데 정렬 */}
+                <div className="flex items-center justify-center px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                  <div className="text-center">
+                    <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">#{selectedTagPanel.tag}</span>
+                    <span className="text-[11px] text-gray-400 leading-tight block">{selectedTagPanel.memos.length}개의 메모</span>
+                  </div>
+                </div>
+                {/* 메모 목록 — 모바일은 폰트 ↑ + 터치 영역 ↑ */}
+                <div className="flex-1 overflow-y-auto py-1">
+                  {selectedTagPanel.memos.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-6">메모가 없습니다</p>
+                  ) : (
+                    selectedTagPanel.memos.map((memo) => (
+                      <button
+                        key={memo.id}
+                        onClick={() => router.push(`/memo/${memo.id}?from=graph`)}
+                        className="w-full text-left px-4 py-3 active:bg-gray-100 dark:active:bg-gray-800 transition-colors border-b border-gray-50 dark:border-gray-800/50 last:border-0"
+                      >
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{memo.label}</p>
+                        {memo.createdAt && (
+                          <p className="text-xs text-gray-400 mt-0.5">{format(new Date(memo.createdAt), 'yyyy.MM.dd')}</p>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto py-1">
-              {selectedTagPanel.memos.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-6">메모가 없습니다</p>
-              ) : (
-                selectedTagPanel.memos.map((memo) => (
-                  <button
-                    key={memo.id}
-                    onClick={() => router.push(`/memo/${memo.id}?from=graph`)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-b border-gray-50 dark:border-gray-800/50 last:border-0"
-                  >
-                    <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{memo.label}</p>
-                    {memo.createdAt && (
-                      <p className="text-xs text-gray-400 mt-0.5">{format(new Date(memo.createdAt), 'yyyy.MM.dd')}</p>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+          </>
         )}
 
         {/* 캔버스 */}
