@@ -125,6 +125,8 @@ export default function GraphView() {
     tag: string
     memos: Array<{ id: string; label: string; createdAt?: string }>
   } | null>(null)
+  // Drawer open state — selectedTagPanel과 분리해 touch 이벤트 완료 후 열리도록 지연
+  const [tagDrawerOpen, setTagDrawerOpen] = useState(false)
 
 
   const [isMobile, setIsMobile] = useState(false)
@@ -751,6 +753,7 @@ export default function GraphView() {
         // 검색 없음 + 선택 중: 첫 탭은 선택 해제
         setSelectedNode(null)
         setSelectedTagPanel(null)
+        setTagDrawerOpen(false)
       } else {
         // 검색 없음 + 선택 없음: 노드 활성화
         if (clickedNode) {
@@ -767,6 +770,10 @@ export default function GraphView() {
               sLinks.some((l) => (l.source as GraphNode).id === node.id && (l.target as GraphNode).id === tagNodeId)
             )
             setSelectedTagPanel({ tag: clickedNode.label.replace(/^#/, ''), memos: tagMemos })
+            // 모바일: touch 이벤트 완전 종료 후 drawer 열기 — vaul 외부탭 감지 충돌 방지
+            if (isMobileRef.current) {
+              setTimeout(() => setTagDrawerOpen(true), 50)
+            }
           } else {
             setSelectedTagPanel(null)
           }
@@ -1180,8 +1187,11 @@ export default function GraphView() {
         {/* 모바일: 태그 패널 Bottom Sheet — GraphSettings와 동일한 vaul 패턴 */}
         {isMobile && (
           <Drawer.Root
-            open={!!selectedTagPanel}
-            onOpenChange={(open) => { if (!open) setSelectedTagPanel(null) }}
+            open={tagDrawerOpen}
+            onOpenChange={(open) => {
+              setTagDrawerOpen(open)
+              if (!open) setSelectedTagPanel(null)
+            }}
             shouldScaleBackground={false}
           >
             <Drawer.Portal>
