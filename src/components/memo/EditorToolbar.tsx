@@ -187,8 +187,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
+        onPointerDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
         title="글자 색상"
         className="flex flex-col items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
@@ -202,8 +201,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             <button
               key={c}
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
+              onPointerDown={(e) => {
+                e.preventDefault()
                 editor.chain().focus().setColor(c).run()
                 setOpen(false)
               }}
@@ -240,8 +239,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             />
             <button
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
+              onPointerDown={(e) => {
+                e.preventDefault()
                 editor.chain().focus().setColor(customColor).run()
                 setOpen(false)
               }}
@@ -253,8 +252,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         </div>
         <button
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
+          onPointerDown={(e) => {
+            e.preventDefault()
             editor.chain().focus().unsetColor().run()
             setOpen(false)
           }}
@@ -278,8 +277,7 @@ function HighlightPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
+        onPointerDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
         title="형광펜"
         className={cn(
           'flex items-center gap-0.5 h-7 px-1 rounded transition-colors',
@@ -296,8 +294,8 @@ function HighlightPicker({ editor }: { editor: Editor }) {
           <button
             key={opt.color}
             type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
+            onPointerDown={(e) => {
+              e.preventDefault()
               editor.chain().focus().setHighlight({ color: opt.color }).run()
               setOpen(false)
             }}
@@ -310,8 +308,8 @@ function HighlightPicker({ editor }: { editor: Editor }) {
         <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
           <button
             type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
+            onPointerDown={(e) => {
+              e.preventDefault()
               editor.chain().focus().unsetHighlight().run()
               setOpen(false)
             }}
