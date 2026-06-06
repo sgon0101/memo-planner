@@ -219,6 +219,25 @@ export function useMemos(folderId: string | null | undefined) {
       }
     )
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+
+    // ★ 홈 페이지 최근 메모 캐시도 즉시 제거 + invalidate
+    queryClient.setQueryData<{ recentMemos: Array<{ id: string }> } | undefined>(
+      ['home-memos'],
+      (old) => old ? { ...old, recentMemos: old.recentMemos.filter((m) => m.id !== id) } : old,
+    )
+    queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+    // localStorage 캐시(다음 진입 시 stale data 표시 방지)도 정리
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('home-memos-cache')
+        if (raw) {
+          const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
+          const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== id) }
+          localStorage.setItem('home-memos-cache', JSON.stringify(next))
+          localStorage.setItem('home-memos-cache-ts', String(Date.now()))
+        }
+      } catch { /* ignore */ }
+    }
   }, [patchCache, queryClient, supabase, deleteMemo])
 
   const lockMemo = useCallback(async (
@@ -264,6 +283,7 @@ export function useMemos(folderId: string | null | undefined) {
     // 전체 메모 캐시 무효화 → 복원된 메모가 포함된 최신 목록 fetch
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+    queryClient.invalidateQueries({ queryKey: ['home-memos'] })
   }, [patchCache, queryClient, supabase, deleteMemo])
 
   const bulkRestore = useCallback(async (ids: string[]) => {
@@ -276,6 +296,7 @@ export function useMemos(folderId: string | null | undefined) {
     ids.forEach((id) => deleteMemo(id))
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+    queryClient.invalidateQueries({ queryKey: ['home-memos'] })
   }, [patchCache, queryClient, supabase, deleteMemo])
 
   const permanentDelete = useCallback(async (id: string) => {
