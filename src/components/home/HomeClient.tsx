@@ -262,7 +262,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
       </section>
 
       {/* 이번 주 플랜 */}
-      <section className="pb-10">
+      <section className="pb-24 md:pb-10">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">이번 주 플랜</h2>
           <button

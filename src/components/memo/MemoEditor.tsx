@@ -18,7 +18,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
-import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, ChevronRight, Network, Trash2 } from 'lucide-react'
+import { History, Save, Star, Pin, ArrowLeft, PanelRight, Folder, ChevronDown, ChevronRight, Network, Trash2, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
@@ -130,6 +130,21 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [isPinned, setIsPinned] = useState(initialIsPinned)
   const [folderId, setFolderId] = useState<string | null>(initialFolderId)
   const [showFolderDropdown, setShowFolderDropdown] = useState(false)
+  // 모바일 더보기 메뉴 — 휴지통/저장/패널/이력 통합
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!showMoreMenu) return
+    function onDown(e: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setShowMoreMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [showMoreMenu])
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
     // useState 초기화 시 folders가 빈 배열일 수 있어 useEffect로 보완
     return new Set<string>()
@@ -699,30 +714,30 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               />
             </button>
 
-            {/* 휴지통 버튼 */}
+            {/* 휴지통 버튼 — 데스크탑만 (모바일은 더보기 메뉴) */}
             {createdId && (
               <button
                 onClick={handleDelete}
                 title="휴지통으로 이동"
-                className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+                className="hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
               >
                 <Trash2 size={12} />
                 <span className="hidden md:inline">삭제</span>
               </button>
             )}
 
-            {/* 수동 저장 버튼 */}
+            {/* 수동 저장 버튼 — 데스크탑만 (모바일은 더보기 메뉴) */}
             <button
               onClick={handleManualSave}
               disabled={saveStatus === 'saving' || saveStatus === 'saved' || saveStatus === 'idle'}
               title="저장 (Ctrl+S)"
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-default"
+              className="hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-default"
             >
               <Save size={12} />
               <span className="hidden md:inline">저장</span>
             </button>
 
-            {/* 메모 목록 패널 토글 */}
+            {/* 메모 목록 패널 토글 — 데스크탑만 */}
             <button
               onClick={() => setShowSidePanel((v) => {
                 const next = !v
@@ -731,7 +746,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               })}
               title="메모 목록 패널"
               className={cn(
-                'p-1.5 rounded transition-colors',
+                'hidden md:inline-flex p-1.5 rounded transition-colors',
                 showSidePanel
                   ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
                   : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -745,7 +760,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 onClick={() => setShowHistory((v) => !v)}
                 title="버전 이력"
                 className={cn(
-                  'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
+                  'hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
                   showHistory
                     ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -755,6 +770,56 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
                 <span className="hidden md:inline">이력</span>
               </button>
             )}
+
+            {/* 모바일 전용 더보기 메뉴 — 휴지통/저장/패널/이력 통합 */}
+            <div className="md:hidden relative" ref={moreMenuRef}>
+              <button
+                onClick={() => setShowMoreMenu((v) => !v)}
+                title="더보기"
+                aria-label="더보기"
+                className={cn(
+                  'p-2 rounded transition-colors',
+                  showMoreMenu
+                    ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                )}
+              >
+                <MoreVertical size={16} />
+              </button>
+              {showMoreMenu && (
+                <div className="absolute top-full right-0 mt-1 w-44 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-30 py-1">
+                  <button
+                    onClick={() => { setShowMoreMenu(false); handleManualSave() }}
+                    disabled={saveStatus === 'saving' || saveStatus === 'saved' || saveStatus === 'idle'}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
+                  >
+                    <Save size={14} className="text-gray-400" />
+                    저장
+                  </button>
+                  {createdId && (
+                    <button
+                      onClick={() => { setShowMoreMenu(false); setShowHistory((v) => !v) }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <History size={14} className="text-gray-400" />
+                      버전 이력
+                    </button>
+                  )}
+                  {createdId && (
+                    <>
+                      <div className="h-px bg-gray-100 dark:bg-gray-800 my-1" />
+                      <button
+                        onClick={() => { setShowMoreMenu(false); handleDelete() }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                        휴지통으로 이동
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

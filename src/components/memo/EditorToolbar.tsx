@@ -588,7 +588,7 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
   }
 
   return (
-    <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 flex-wrap">
+    <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 flex-nowrap overflow-x-auto md:flex-wrap md:overflow-x-visible scrollbar-thin">
       {/* file input — 한 번만 정의 */}
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
 
