@@ -26,6 +26,7 @@ import { useFolders } from '@/hooks/useFolders'
 import { extractFirstImage } from '@/lib/memos/shared'
 import { useVersions } from '@/hooks/useVersions'
 import EditorToolbar from './EditorToolbar'
+import EditorBubbleMenu from './EditorBubbleMenu'
 import VersionHistory from './VersionHistory'
 import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
@@ -301,7 +302,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       CustomEnterExtension,
       Underline,
       TextStyle,
-      Color,
+      Color.configure({ types: ['textStyle'] }),
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       Image.extend({
@@ -943,6 +944,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
         {/* 툴바 */}
         {editor && <EditorToolbar editor={editor} />}
+        <EditorBubbleMenu editor={editor} />
 
         {/* 에디터 */}
         <div
