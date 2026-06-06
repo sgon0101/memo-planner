@@ -65,10 +65,11 @@ function PortalDropdown({
     const vw = window.innerWidth
     const vh = window.innerHeight
 
-    // 패널 크기 — 마운트 직후엔 panelRef가 있으면 측정값, 없으면 0 (1차 렌더)
+    // 패널 크기 — getBoundingClientRect는 박스 크기만 반환.
+    // 내부 콘텐츠가 박스 밖으로 overflow되는 경우 scrollWidth로 실제 너비 보정.
     const panel = panelRef.current?.getBoundingClientRect()
-    const pw = panel?.width ?? 0
-    const ph = panel?.height ?? 0
+    const pw = Math.max(panel?.width ?? 0, panelRef.current?.scrollWidth ?? 0)
+    const ph = Math.max(panel?.height ?? 0, panelRef.current?.scrollHeight ?? 0)
 
     // 좌측 시프트: 오른쪽 경계 넘으면 왼쪽으로 당김
     let left = a.left
@@ -193,7 +194,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 leading-none">A</span>
         <span className="w-4 h-1 rounded-sm mt-0.5" style={{ background: currentColor }} />
       </button>
-      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2.5 w-44">
+      <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2.5 w-52">
           <div className="flex flex-wrap gap-1 mb-2">
             {TEXT_COLORS.map((c) => (
               <button
