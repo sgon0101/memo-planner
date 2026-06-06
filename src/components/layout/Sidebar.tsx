@@ -137,7 +137,11 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
         onPointerMove={onSwipeMove}
         onPointerUp={onSwipeEnd}
         onPointerCancel={onSwipeEnd}
-        style={dragX < 0 ? { transform: `translateX(${dragX}px)`, transition: 'none' } : undefined}
+        style={{
+          // 세로 스크롤 허용, 가로 스와이프는 우리가 처리 — 브라우저 기본 처리(pull-to-refresh 등) 차단
+          touchAction: 'pan-y',
+          ...(dragX < 0 ? { transform: `translateX(${dragX}px)`, transition: 'none' } : {}),
+        }}
         className={cn(
           'flex flex-col fixed left-0 top-0 h-full z-50',
           'bg-white dark:bg-gray-950',

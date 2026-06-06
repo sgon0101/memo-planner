@@ -42,9 +42,8 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
 }
 
 /**
- * Portal-based dropdown — 툴바 overflow:auto 안에 있는 dropdown이
- * 메모 본문 뒤로 가려지는 문제를 해결. document.body에 z-[200]로 띄움.
- * 추가: 패널 크기 측정 후 viewport 경계 벗어나면 좌/상으로 자동 시프트.
+ * Portal-based dropdown — overflow:auto 안에서 가려지는 dropdown을 body에 portal로 띄움.
+ * 단순화: opacity 0 트릭 제거, onClose는 ref로 안정화해 useEffect 재실행 방지.
  */
 function PortalDropdown({
   anchorRef, open, onClose, className, children,
@@ -56,74 +55,71 @@ function PortalDropdown({
   children: React.ReactNode
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState<{ top: number; left: number; ready: boolean } | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
-  const update = useCallback(() => {
+  // 초기 좌표 — anchor 위치만 (panel 마운트 전에는 패널 크기 모름)
+  const [coords, setCoords] = useState<{ top: number; left: number }>(() => {
+    if (typeof window === 'undefined') return { top: 0, left: 0 }
     const a = anchorRef.current?.getBoundingClientRect()
-    if (!a) return
-    const margin = 8
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-
-    // 패널 크기 — getBoundingClientRect는 박스 크기만 반환.
-    // 내부 콘텐츠가 박스 밖으로 overflow되는 경우 scrollWidth로 실제 너비 보정.
-    const panel = panelRef.current?.getBoundingClientRect()
-    const pw = Math.max(panel?.width ?? 0, panelRef.current?.scrollWidth ?? 0)
-    const ph = Math.max(panel?.height ?? 0, panelRef.current?.scrollHeight ?? 0)
-
-    // 좌측 시프트: 오른쪽 경계 넘으면 왼쪽으로 당김
-    let left = a.left
-    if (pw > 0 && left + pw > vw - margin) {
-      left = vw - pw - margin
-    }
-    if (left < margin) left = margin
-
-    // 상하 위치: 기본은 anchor 아래. 하단 overflow 시 anchor 위로 flip
-    let top = a.bottom + 4
-    if (ph > 0 && top + ph > vh - margin) {
-      const above = a.top - ph - 4
-      top = above > margin ? above : Math.max(margin, vh - ph - margin)
-    }
-
-    setCoords({ top, left, ready: pw > 0 })
-  }, [anchorRef])
+    return a ? { top: a.bottom + 4, left: a.left } : { top: 0, left: 0 }
+  })
 
   useEffect(() => {
     if (!open) return
-    // 1차 렌더 — 패널이 마운트되도록 임시 좌표
-    update()
-    // 패널 마운트 직후 2차 렌더 — 실제 크기 측정해 정확한 위치로 (1프레임 내)
-    const id = requestAnimationFrame(update)
+
+    function adjust() {
+      const a = anchorRef.current?.getBoundingClientRect()
+      const p = panelRef.current?.getBoundingClientRect()
+      if (!a) return
+      const margin = 8
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const pw = p?.width ?? 0
+      const ph = p?.height ?? 0
+
+      let left = a.left
+      if (pw > 0 && left + pw > vw - margin) left = vw - pw - margin
+      if (left < margin) left = margin
+
+      let top = a.bottom + 4
+      if (ph > 0 && top + ph > vh - margin) {
+        const above = a.top - ph - 4
+        top = above > margin ? above : Math.max(margin, vh - ph - margin)
+      }
+      setCoords({ top, left })
+    }
+
+    // 마운트 직후 1프레임에 panel 크기 측정해 위치 보정
+    const rafId = requestAnimationFrame(adjust)
+
     function onDown(e: MouseEvent | TouchEvent) {
       const t = e.target as Node
       if (anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return
-      onClose()
+      onCloseRef.current()
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
     }
+
     document.addEventListener('mousedown', onDown)
     document.addEventListener('touchstart', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-
-    // 패널 크기 변화 추적 (콘텐츠가 동적으로 바뀌는 케이스)
-    const ro = panelRef.current ? new ResizeObserver(() => update()) : null
-    if (ro && panelRef.current) ro.observe(panelRef.current)
+    window.addEventListener('resize', adjust)
+    window.addEventListener('scroll', adjust, true)
 
     return () => {
-      cancelAnimationFrame(id)
+      cancelAnimationFrame(rafId)
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('touchstart', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-      ro?.disconnect()
+      window.removeEventListener('resize', adjust)
+      window.removeEventListener('scroll', adjust, true)
     }
-  }, [open, anchorRef, onClose, update])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  if (!open || !coords || typeof window === 'undefined') return null
+  if (!open || typeof window === 'undefined') return null
   return createPortal(
     <div
       ref={panelRef}
@@ -131,10 +127,7 @@ function PortalDropdown({
       style={{
         top: coords.top,
         left: coords.left,
-        // 1차 렌더 시(아직 panel 크기 모를 때) 화면 밖에서 시프트 측정 — 깜빡임 방지
-        opacity: coords.ready ? 1 : 0,
-        // 모바일 좁은 화면 대비 — 패널이 viewport보다 넓지 않도록 최대 너비 제한
-        maxWidth: `calc(100vw - 16px)`,
+        maxWidth: 'calc(100vw - 16px)',
       }}
     >
       {children}
@@ -187,7 +180,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onPointerDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
         title="글자 색상"
         className="flex flex-col items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
@@ -201,9 +195,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             <button
               key={c}
               type="button"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                editor.chain().focus().setColor(c).run()
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {                editor.chain().focus().setColor(c).run()
                 setOpen(false)
               }}
               className={cn(
@@ -239,9 +232,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             />
             <button
               type="button"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                editor.chain().focus().setColor(customColor).run()
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {                editor.chain().focus().setColor(customColor).run()
                 setOpen(false)
               }}
               className="text-xs font-medium px-3 py-1.5 bg-violet-600 text-white rounded-md hover:bg-violet-700 whitespace-nowrap flex-shrink-0"
@@ -252,11 +244,10 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         </div>
         <button
           type="button"
-          onPointerDown={(e) => {
-            e.preventDefault()
-            editor.chain().focus().unsetColor().run()
-            setOpen(false)
-          }}
+          onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {            editor.chain().focus().unsetColor().run()
+                setOpen(false)
+              }}
           className="w-full mt-2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md py-1.5 transition-colors"
         >
           색상 제거
@@ -277,7 +268,8 @@ function HighlightPicker({ editor }: { editor: Editor }) {
       <button
         ref={btnRef}
         type="button"
-        onPointerDown={(e) => { e.preventDefault(); setOpen((v) => !v) }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
         title="형광펜"
         className={cn(
           'flex items-center gap-0.5 h-7 px-1 rounded transition-colors',
@@ -294,11 +286,10 @@ function HighlightPicker({ editor }: { editor: Editor }) {
           <button
             key={opt.color}
             type="button"
-            onPointerDown={(e) => {
-              e.preventDefault()
-              editor.chain().focus().setHighlight({ color: opt.color }).run()
-              setOpen(false)
-            }}
+            onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {              editor.chain().focus().setHighlight({ color: opt.color }).run()
+                setOpen(false)
+              }}
             className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-700 dark:text-gray-300"
           >
             <span className="w-5 h-5 rounded flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ background: opt.color }} />
@@ -308,11 +299,10 @@ function HighlightPicker({ editor }: { editor: Editor }) {
         <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
           <button
             type="button"
-            onPointerDown={(e) => {
-              e.preventDefault()
-              editor.chain().focus().unsetHighlight().run()
-              setOpen(false)
-            }}
+            onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {              editor.chain().focus().unsetHighlight().run()
+                setOpen(false)
+              }}
             className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-400"
           >
             <span className="w-5 h-5 rounded border border-dashed border-gray-300 dark:border-gray-600 flex-shrink-0" />
