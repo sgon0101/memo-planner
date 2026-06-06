@@ -135,7 +135,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const moreMenuRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!showMoreMenu) return
-    function onDown(e: MouseEvent) {
+    function onDown(e: MouseEvent | TouchEvent) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setShowMoreMenu(false)
     }
     document.addEventListener('mousedown', onDown)
