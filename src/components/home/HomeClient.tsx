@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, CheckSquare, Sparkles, Star, Pin, Plus, ArrowRight, Target } from 'lucide-react'
+import { FileText, CheckSquare, Sparkles, Star, Pin, Plus, ArrowRight, Target, Check } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -54,6 +54,28 @@ function greeting(name: string): string {
 }
 
 export default function HomeClient({ userName, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
+  // 플랜 완료 토글 — 로컬 즉시 반영 (optimistic) + Supabase 갱신
+  const [localPlans, setLocalPlans] = useState(weekPlans)
+  // weekPlans prop이 바뀌면 동기화
+  if (localPlans !== weekPlans && localPlans.length === 0) setLocalPlans(weekPlans)
+  const supabaseClient = createClient()
+  async function toggleComplete(id: string, current: boolean) {
+    setLocalPlans((prev) => prev.map((p) => p.id === id ? { ...p, isCompleted: !current } : p))
+    try {
+      await supabaseClient.from('plans').update({ is_completed: !current }).eq('id', id)
+    } catch {
+      // 실패 시 롤백
+      setLocalPlans((prev) => prev.map((p) => p.id === id ? { ...p, isCompleted: current } : p))
+    }
+  }
+  function openPlanInPlanner(plan: { id: string; date: string | null; startDate: string | null }) {
+    const d = plan.date ?? plan.startDate
+    const qs = new URLSearchParams()
+    if (d) qs.set('date', d)
+    qs.set('focus', plan.id)
+    router.push(`/planner?${qs.toString()}`)
+  }
+
   const router = useRouter()
   const { addMemo } = useMemoStore()
   const [quickTitle, setQuickTitle] = useState('')
@@ -280,29 +302,48 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
           />
         ) : (
           <div className="space-y-1.5">
-            {weekPlans.map((p) => (
+            {localPlans.map((p) => (
               <div
                 key={p.id}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800',
-                  p.isCompleted && 'opacity-50',
+                  'flex items-center gap-3 px-3 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 transition-colors',
+                  p.isCompleted && 'opacity-60',
+                  'hover:border-violet-200 dark:hover:border-violet-800 active:bg-gray-50 dark:active:bg-gray-800',
                 )}
               >
-                {/* 컬러 스트립 */}
-                <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                <div className="flex-1 min-w-0">
-                  <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate block', p.isCompleted && 'line-through')}>
+                {/* 완료 체크박스 — 색상 스트립 대신 */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleComplete(p.id, p.isCompleted) }}
+                  aria-label={p.isCompleted ? '완료 해제' : '완료'}
+                  className={cn(
+                    'flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
+                    p.isCompleted
+                      ? 'border-transparent'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-violet-400',
+                  )}
+                  style={p.isCompleted ? { backgroundColor: p.color } : { borderColor: p.color + '80' }}
+                >
+                  {p.isCompleted && <Check size={14} className="text-white" />}
+                </button>
+                {/* 본문 — 탭하면 플래너 상세 */}
+                <button
+                  type="button"
+                  onClick={() => openPlanInPlanner(p)}
+                  className="flex-1 min-w-0 text-left flex items-center gap-2 cursor-pointer"
+                >
+                  <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate block flex-1', p.isCompleted && 'line-through text-gray-400')}>
                     {p.title}
                   </span>
-                </div>
-                {(p.date || p.startDate) && (
-                  <span className="text-xs text-gray-400 flex-shrink-0 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded">
-                    {p.date
-                      ? format(new Date(p.date), 'M/d (E)', { locale: ko })
-                      : `${format(new Date(p.startDate!), 'M/d', { locale: ko })}~${format(new Date(p.endDate!), 'M/d', { locale: ko })}`
-                    }
-                  </span>
-                )}
+                  {(p.date || p.startDate) && (
+                    <span className="text-xs text-gray-400 flex-shrink-0 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded">
+                      {p.date
+                        ? format(new Date(p.date), 'M/d (E)', { locale: ko })
+                        : `${format(new Date(p.startDate!), 'M/d', { locale: ko })}~${format(new Date(p.endDate!), 'M/d', { locale: ko })}`
+                      }
+                    </span>
+                  )}
+                </button>
               </div>
             ))}
           </div>

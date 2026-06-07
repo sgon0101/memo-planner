@@ -26,6 +26,27 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
   const [detailPlan, setDetailPlan] = useState<Plan | null>(null)
   const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null)
 
+  // 홈 화면 "이번 주 플랜" → /planner?focus=ID 진입 시 자동 PlanDetailPanel 오픈
+  useEffect(() => {
+    function onFocus(e: Event) {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (!id) return
+      const plan = expandedPlans.find((p) => p.id === id || p.originalPlanId === id)
+      if (plan) setDetailPlan(plan)
+    }
+    // mount 시 sessionStorage에 남아있으면 즉시 처리
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('planner-focus-plan')
+      if (stored) {
+        sessionStorage.removeItem('planner-focus-plan')
+        const plan = expandedPlans.find((p) => p.id === stored || p.originalPlanId === stored)
+        if (plan) setDetailPlan(plan)
+      }
+    }
+    window.addEventListener('planner:focus-plan', onFocus)
+    return () => window.removeEventListener('planner:focus-plan', onFocus)
+  }, [expandedPlans])
+
   const dayPlans = expandedPlans.filter((p) => {
     if (p.date === date) return true
     if (p.startDate && p.endDate) {

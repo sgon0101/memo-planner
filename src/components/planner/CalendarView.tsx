@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
@@ -50,6 +51,30 @@ export default function CalendarView() {
 
   // store 동기화 — PlanPanel이 store에서 expandedPlans를 읽으므로 항상 최신값 유지
   useEffect(() => { setExpandedPlans(expandedPlans) }, [expandedPlans])
+
+  // ?date=&focus= URL 파라미터 → 해당 날짜로 이동 + PlanDetailPanel 자동 오픈
+  // 홈 화면 "이번 주 플랜" 카드에서 진입할 때 사용
+  const searchParams = useSearchParams()
+  const focusedAppliedRef = useRef(false)
+  useEffect(() => {
+    if (focusedAppliedRef.current) return
+    const date = searchParams.get('date')
+    const focus = searchParams.get('focus')
+    if (!date && !focus) return
+    if (expandedPlans.length === 0) return  // 플랜 로드 후 처리
+    focusedAppliedRef.current = true
+    if (date) {
+      selectDate(date)
+      setViewMode('day')
+    }
+    // focus가 있으면 그 plan의 상세를 자동 오픈하기 위해 sessionStorage에 저장
+    // (PlanPanel이 이를 읽어 PlanDetailPanel 오픈)
+    if (focus && typeof window !== 'undefined') {
+      sessionStorage.setItem('planner-focus-plan', focus)
+      // 트리거 이벤트로 PlanPanel이 즉시 반응하도록
+      window.dispatchEvent(new CustomEvent('planner:focus-plan', { detail: { id: focus } }))
+    }
+  }, [expandedPlans, searchParams, selectDate, setViewMode])
 
   const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string }>({
     open: false, date: '',
