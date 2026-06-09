@@ -209,12 +209,24 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
       {/* 빠른 메모 입력 */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
         <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-3 tracking-wide">빠른 메모</p>
-        <form onSubmit={handleQuickMemo} className="flex gap-2">
+        <form
+          onSubmit={handleQuickMemo}
+          className="flex gap-2"
+          autoComplete="off"
+          data-form-type="other"
+        >
           <input
             type="text"
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+            name={`quick-memo-${Math.random().toString(36).slice(2, 8)}`}
             className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
           />
           <button

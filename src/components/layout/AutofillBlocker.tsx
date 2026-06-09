@@ -48,8 +48,16 @@ export default function AutofillBlocker() {
       }
     }
 
+    function hardenForm(form: HTMLFormElement) {
+      if (form.dataset.autofillBlocked === '1') return
+      form.dataset.autofillBlocked = '1'
+      form.setAttribute('autocomplete', 'off')
+      form.setAttribute('data-form-type', 'other')
+    }
+
     // 초기 적용
     document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach(harden)
+    document.querySelectorAll<HTMLFormElement>('form').forEach(hardenForm)
 
     // 동적 추가 감지
     const mo = new MutationObserver((mutations) => {
@@ -58,8 +66,11 @@ export default function AutofillBlocker() {
           if (!(n instanceof HTMLElement)) return
           if (n.matches?.('input, textarea')) {
             harden(n as HTMLInputElement | HTMLTextAreaElement)
+          } else if (n.matches?.('form')) {
+            hardenForm(n as HTMLFormElement)
           }
           n.querySelectorAll?.<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach(harden)
+          n.querySelectorAll?.<HTMLFormElement>('form').forEach(hardenForm)
         })
       }
     })
