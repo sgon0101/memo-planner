@@ -96,20 +96,26 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     }
   }
 
-  // 리사이즈 — PointerEvent로 마우스+터치 통합
+  // 리사이즈 — PointerEvent로 마우스+터치 통합 + setPointerCapture로 화면 밖 손가락 추적
   function startResize(e: React.PointerEvent) {
     e.preventDefault()
     e.stopPropagation()
     const img = imgRef.current
     if (!img) return
+    const target = e.currentTarget as HTMLElement
+    try { target.setPointerCapture(e.pointerId) } catch { /* ignore */ }
     startRef.current = { x: e.clientX, initW: img.offsetWidth }
+    const pointerId = e.pointerId
 
     function onMove(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return
       const dx = ev.clientX - startRef.current.x
       const newW = Math.max(60, startRef.current.initW + dx)
       updateAttributes({ width: `${Math.round(newW)}px` })
     }
-    function onUp() {
+    function onUp(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return
+      try { target.releasePointerCapture(pointerId) } catch { /* ignore */ }
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerup', onUp)
       document.removeEventListener('pointercancel', onUp)
@@ -129,10 +135,23 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     <NodeViewWrapper
       ref={containerRef}
       as="div"
-      className="relative inline-block max-w-full my-1"
+      className="relative inline-block max-w-full my-3 align-middle"
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      // 모바일 터치 폴백 — onClick 합성 실패 케이스 대비
+      onTouchEnd={(e) => {
+        if (!editor) return
+        // 리사이즈 핸들/툴바 위 탭은 무시
+        const target = e.target as HTMLElement
+        if (target.closest('button') || target.dataset.resizeHandle === '1') return
+        e.preventDefault()
+        const pos = typeof getPos === 'function' ? getPos() : null
+        if (typeof pos === 'number') {
+          editor.commands.setNodeSelection(pos)
+          editor.view.dom.focus({ preventScroll: true })
+        }
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -159,9 +178,11 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
         <>
           {/* 우하단 리사이즈 핸들 — 데스크탑 16px, 모바일 24px */}
           <div
+            data-resize-handle="1"
             className="absolute bottom-0 right-0 w-4 h-4 max-md:w-6 max-md:h-6 bg-violet-600 cursor-se-resize z-10 touch-none"
             style={{ borderRadius: '0 0 3px 0' }}
             onPointerDown={startResize}
+            aria-label="이미지 크기 조정"
           />
 
           {/* 프리셋 툴바 — 화면 위 공간 부족 시 이미지 안쪽 상단으로 자동 이동 */}
@@ -175,9 +196,10 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
             {PRESETS.map((p) => (
               <button
                 key={p.label}
-                onMouseDown={(e) => { e.preventDefault(); updateAttributes({ width: p.value }) }}
-                onTouchStart={(e) => { e.preventDefault(); updateAttributes({ width: p.value }) }}
-                className="text-[10px] text-white px-1.5 py-0.5 rounded hover:bg-white/20 transition-colors whitespace-nowrap"
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.stopPropagation(); updateAttributes({ width: p.value }) }}
+                className="text-[10px] text-white px-1.5 py-0.5 rounded hover:bg-white/20 active:bg-white/30 transition-colors whitespace-nowrap touch-manipulation"
               >
                 {p.label} {p.value}
               </button>
