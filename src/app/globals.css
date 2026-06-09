@@ -437,3 +437,13 @@ aside {
 @media (prefers-reduced-motion: reduce) {
   .plan-panel-grip-bounce { animation: none; }
 }
+
+/* 메모 에디터 이미지 — 일관된 간격과 정렬 (NodeView 래퍼 my-3와 별도로 raw img 대비) */
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.tiptap .ProseMirror-selectednode img {
+  outline: 2px solid #7C3AED;
+}
