@@ -67,6 +67,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
 
   // 선택될 때 툴바가 화면 위로 잘리는지 측정 → 아래로 배치
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 선택 해제 시 리셋 (의도된 패턴)
     if (!selected) { setToolbarBelow(false); return }
     const el = containerRef.current
     if (!el) return
@@ -205,6 +206,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
               </button>
             ))}
             {naturalSize && (
+              // eslint-disable-next-line react-hooks/refs -- 리사이즈 실측 표시 (widthAttr 변경마다 리렌더되므로 최신값 보장)
               <span className="text-[10px] text-gray-400 ml-1 whitespace-nowrap">{displaySize()}</span>
             )}
           </div>

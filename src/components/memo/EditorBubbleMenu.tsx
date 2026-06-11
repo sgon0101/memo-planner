@@ -123,6 +123,7 @@ export default function EditorBubbleMenu({ editor }: Props) {
     }
 
     // 초기 한 번
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 직후 위치 1회 계산 (측정 기반 배치)
     recompute()
 
     return () => {

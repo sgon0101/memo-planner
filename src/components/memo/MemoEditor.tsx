@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { memoKeys, useMemos } from '@/hooks/useMemos'
@@ -167,13 +167,14 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   const hasUnsavedRef = useRef(false)
   const folderIdRef = useRef<string | null>(initialFolderId ?? null)
-  folderIdRef.current = folderId
   const titleRef = useRef(initialTitle)
-  // eslint-disable-next-line react-hooks/refs
-  titleRef.current = title
   const createdIdRef = useRef<string | null>(isNew ? null : memoId)
-  // eslint-disable-next-line react-hooks/refs
-  createdIdRef.current = createdId
+  // 최신 상태를 ref에 동기화 — render 중 ref 갱신 대신 layout effect (이벤트/인터벌에서만 읽음)
+  useLayoutEffect(() => {
+    folderIdRef.current = folderId
+    titleRef.current = title
+    createdIdRef.current = createdId
+  })
   const lastVersionSavedAtRef = useRef<number>(0)
   const savedDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const newMemoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

@@ -45,6 +45,7 @@ export default function UserProfile() {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 프로필 로더 (loading 상태 동기 설정)
   useEffect(() => { loadProfile() }, [loadProfile])
 
   async function runAnalysis() {

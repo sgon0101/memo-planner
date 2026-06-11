@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { type Editor } from '@tiptap/react'
 import {
@@ -56,9 +56,10 @@ function PortalDropdown({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  useLayoutEffect(() => { onCloseRef.current = onClose })
 
   // 초기 좌표 — anchor 위치만 (panel 마운트 전에는 패널 크기 모름)
+  // eslint-disable-next-line react-hooks/refs -- 초기 1회 anchor 실측 (마운트 시점에 ref 보장됨)
   const [coords, setCoords] = useState<{ top: number; left: number }>(() => {
     if (typeof window === 'undefined') return { top: 0, left: 0 }
     const a = anchorRef.current?.getBoundingClientRect()
