@@ -210,6 +210,7 @@ export default function MemoList() {
   }, [search, allTags, allWikis])
 
   // 자동완성 후보가 바뀌면 강조 인덱스 초기화
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 의존값 변경 시 상태 리셋 (의도된 패턴)
   useEffect(() => { setAutocompleteIdx(-1) }, [autocompleteItems])
 
   const showAutocomplete = searchFocused && autocompleteItems.length > 0
@@ -1317,6 +1318,7 @@ function useFloatingDropdown(
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 닫힘 시 좌표 리셋 (의도된 패턴)
     if (!open) { setCoords(null); return }
     function update() {
       const trigger = triggerRef.current

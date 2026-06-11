@@ -65,6 +65,7 @@ export default function AIChatLayout() {
     setLoadingRooms(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 비동기 로더 (loading 상태 동기 설정)
   useEffect(() => { loadRooms() }, [loadRooms])
 
   useEffect(() => {

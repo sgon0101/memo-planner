@@ -45,6 +45,7 @@ export default function GapAnalysis() {
   }, [])
 
   // 마운트 시 캐시 결과 자동 로드 (API 비용 없음 — DB 캐시 반환)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 캐시 로더 (loading 상태 동기 설정)
   useEffect(() => { load() }, [load])
 
   function scoreColor(score: number) {

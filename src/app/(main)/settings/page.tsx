@@ -62,6 +62,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!isNotifSupported()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 브라우저 지원 여부 1회 동기 설정
       setNotifPerm('unsupported')
       return
     }
@@ -207,6 +208,7 @@ export default function SettingsPage() {
         setNickname((data.user.user_metadata?.display_name as string | undefined) ?? '')
       }
     })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 비동기 로더 호출 (로더가 loading 상태를 동기 설정)
     fetchIntegrationStatus()
     fetchBackupSettings()
     supabase.auth.getUser().then(async ({ data }) => {

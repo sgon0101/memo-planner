@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, CheckSquare, Sparkles, Star, Pin, Plus, ArrowRight, Target, Check } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -54,6 +54,8 @@ function greeting(name: string): string {
 }
 
 export default function HomeClient({ userName, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
+  // autofill 차단용 비결정 name — useId는 render-safe (Math.random 대체)
+  const autofillBlockId = useId()
   // 플랜 완료 토글 — 로컬 즉시 반영 (optimistic) + Supabase 갱신
   const [localPlans, setLocalPlans] = useState(weekPlans)
   // weekPlans prop이 바뀌면 동기화
@@ -226,7 +228,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
             data-1p-ignore="true"
             data-lpignore="true"
             data-form-type="other"
-            name={`quick-memo-${Math.random().toString(36).slice(2, 8)}`}
+            name={`quick-memo-${autofillBlockId}`}
             className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
           />
           <button

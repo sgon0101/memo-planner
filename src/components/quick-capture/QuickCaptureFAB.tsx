@@ -29,6 +29,7 @@ export default function QuickCaptureFAB() {
   const fabBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 모달 열림 시 FAB 접기 (의도된 패턴)
     if (modalOpen && expanded) setExpanded(false)
   }, [modalOpen, expanded])
 

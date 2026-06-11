@@ -41,6 +41,7 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       if (stored) {
         sessionStorage.removeItem('planner-focus-plan')
         const plan = expandedPlans.find((p) => p.id === stored || p.originalPlanId === stored)
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 sessionStorage 복원 1회 (홈 → 플래너 focus 진입)
         if (plan) setDetailPlan(plan)
       }
     }

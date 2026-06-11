@@ -200,6 +200,7 @@ function QuickCaptureInner({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') { e.preventDefault(); close(); return }
+      // eslint-disable-next-line react-hooks/immutability -- save는 함수 선언(호이스팅)이라 안전
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save() }
     }
     window.addEventListener('keydown', onKey)

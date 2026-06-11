@@ -199,6 +199,7 @@ export default function CalendarView() {
   // selectedDate가 바뀌면(네비게이션) 자동 reset → 새 날짜에서 panel 다시 열림
   const [panelDismissed, setPanelDismissed] = useState(false)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 날짜 변경 시 panel 닫힘 상태 리셋 (의도된 패턴)
     setPanelDismissed(false)
   }, [selectedDate])
 
