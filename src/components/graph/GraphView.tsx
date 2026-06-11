@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useGraphData } from '@/hooks/useGraphData'
+import { GRAPH_COLORS, nodeColor } from '@/lib/graph/colors'
 import GraphSettings from './GraphSettings'
 import GraphTooltip from './GraphTooltip'
 import { Drawer } from 'vaul'
@@ -16,18 +17,6 @@ import { Drawer } from 'vaul'
 const toCharge         = (v: number) => -(v * 30)   // -30 – -300
 const toDistance       = (v: number) => v * 20       // 20 – 200 px
 const toCenterStrength = (v: number) => v * 0.01     // 0.01 – 0.1
-
-// 노드 색상 계산
-function nodeColor(n: GraphNode): string {
-  if (n.type === 'wiki') return '#1D9E75'
-  if (n.type === 'tag')  return '#378ADD'
-  const c = n.linkCount
-  if (c === 0)   return '#B4B2A9'
-  if (c <= 2)  return '#CECBF6'
-  if (c <= 4)  return '#AFA9EC'
-  if (c <= 6)  return '#7F77DD'
-  return '#534AB7'
-}
 
 function nodeRadius(n: GraphNode, nodeSize: number, isMobile = false): number {
   const mobileScale = isMobile ? 0.7 : 1
@@ -252,9 +241,9 @@ export default function GraphView() {
       ctx.beginPath(); ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2)
       ctx.fillStyle = nodeColor(n); ctx.fill()
 
-      if (n.type === 'wiki') { ctx.strokeStyle = '#0F6E56'; ctx.lineWidth = 1.5; ctx.stroke() }
-      else if (n.type === 'tag') { ctx.strokeStyle = '#185FA5'; ctx.lineWidth = 1.5; ctx.stroke() }
-      else if (n.isStarred) { ctx.strokeStyle = '#EF9F27'; ctx.lineWidth = 2; ctx.stroke() }
+      if (n.type === 'wiki') { ctx.strokeStyle = GRAPH_COLORS.wikiBorder; ctx.lineWidth = 1.5; ctx.stroke() }
+      else if (n.type === 'tag') { ctx.strokeStyle = GRAPH_COLORS.tagBorder; ctx.lineWidth = 1.5; ctx.stroke() }
+      else if (n.isStarred) { ctx.strokeStyle = GRAPH_COLORS.starred; ctx.lineWidth = 2; ctx.stroke() }
       else if (n.linkCount === 0) {
         ctx.setLineDash([3, 2]); ctx.strokeStyle = '#E24B4A'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([])
       }

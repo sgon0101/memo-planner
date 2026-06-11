@@ -50,13 +50,16 @@ export async function POST(req: NextRequest) {
   // 최근 메시지 시간순 정렬
   const historyMessages = (history ?? []).reverse()
 
-  // 사용자 메시지 즉시 저장
-  await supabase.from('chat_messages').insert({
-    room_id: roomId,
-    user_id: user.id,
-    role: 'user',
-    content: message,
-  })
+  // 사용자 메시지 저장 — 스트림 시작을 막지 않도록 백그라운드로 시작
+  // (assistant 메시지 저장 전에 await → created_at 순서 보장)
+  const userInsertPromise = Promise.resolve(
+    supabase.from('chat_messages').insert({
+      room_id: roomId,
+      user_id: user.id,
+      role: 'user',
+      content: message,
+    })
+  )
 
   const systemPrompt = profileChatSystemPrompt(profile, recentMemos ?? [], roomData.summary)
 
@@ -90,6 +93,7 @@ export async function POST(req: NextRequest) {
 
         // assistant 메시지 저장 (텍스트가 있을 때만)
         if (fullText) {
+          await userInsertPromise // user 메시지가 먼저 저장되도록 보장
           await supabase.from('chat_messages').insert({
             room_id: roomId,
             user_id: user.id,

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemoStore } from '@/store/memoStore'
 import { createClient } from '@/lib/supabase/client'
+import Modal from '@/components/ui/Modal'
 import TimePicker from './TimePicker'
 import {
   type RepeatPreset, type EndMode, type CustomFreq,
@@ -345,11 +346,12 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:w-[420px] max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      ariaLabel={plan ? '플랜 수정' : '새 플랜'}
+      sheetOnMobile
+      panelClassName="rounded-t-2xl sm:rounded-2xl w-full sm:w-[420px] max-h-[90vh] overflow-y-auto"
+    >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -975,7 +977,6 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
             {loading ? '저장 중...' : plan ? '수정' : '추가'}
           </button>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }

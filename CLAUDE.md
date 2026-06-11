@@ -107,6 +107,8 @@ memo-planner/
 │   │   └── lock.ts                 # AES-256 암호화/복호화
 │   ├── notifications/
 │   │   └── scheduler.ts            # 브라우저 Notification + setTimeout 스케줄러
+│   ├── graph/
+│   │   └── colors.ts               # 그래프 노드 색상 단일 출처
 │   ├── planner/
 │   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
 │   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
@@ -125,6 +127,7 @@ memo-planner/
 ├── hooks/
 │   ├── useMemos.ts
 │   ├── usePlanner.ts
+│   ├── useSwipeGesture.ts          # swipe 제스처 통합 훅 (pointer+touch)
 │   ├── useAI.ts
 │   └── useOfflineSync.ts
 ├── public/
@@ -547,6 +550,12 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-05-24 | #8 후속 픽스 | 반복 인스턴스 완료 해제 시 인스턴스 사라지던 버그(`is_completed=false`가 skip과 의미 충돌) — `toggleRecurringComplete`를 완료시 row delete 패턴으로 · `PlanDetailPanel` stale prop 픽스(zustand 직접 구독으로 fresh isCompleted) · `stopRecurringFromDate`가 `rrule_str` 내부 UNTIL도 갱신(`setUntilOnRRule` 헬퍼) · "이 일정 및 이후 모두 삭제" → "이 일정부터 반복 종료" 라벨 변경 · PlanFormModal autofill bar 차단(data-1p-ignore/form-type/name) | 100% |
 | 2026-05-24 | #7 캘린더 드래그 | WeekView/DayView 블록을 Pointer Events로 드래그 — 시간 이동(15분 snap) + 요일 이동(WeekView) + 상하단 8px 핸들 리사이즈(`resize-top`/`resize-bottom`, 최소 15분) · 데스크탑 즉시, 모바일 long-press 450ms 후 진동 · document 레벨 pointer listener(setPointerCapture 모바일 실패 대응) · drag 중 body+scrollRef overflow lock + touchmove preventDefault · Android long-press contextmenu/selection 차단(`e.preventDefault`, `WebkitTouchCallout`, `onContextMenu`) · 시각 피드백: top+height 동적, translateX(요일), violet ring · `lib/planner/dragHelpers.ts` 신규 | 100% |
 | 2026-05-24 | #9 Postgres FTS 검색 | `memos.search_vec` tsvector 컬럼 + GIN 인덱스 + 자동 갱신 트리거(title/content_text/tags/wiki_links를 weight A/B로) · `/api/memos/search` route(websearch_to_tsquery, 폴더 필터) · `useMemoSearch` hook(debounce 300ms + React Query 30s 캐시) · MemoList 검색을 client substring → 서버 FTS로 교체 · 검색 중 Search 아이콘 violet pulse · prefix(#태그/[[위키)는 서버에서 정리해 본문 매칭 | 100% |
+| 2026-06-11 | 개선 1단계 | `useSwipeGesture` 통합 훅 — Sidebar/PlanPanel/CalendarView swipe를 pointer+touch 단일 파이프라인으로 통합(200ms dedupe, 축 잠금 후 capture), 파일 끝 null 바이트 정리 | 100% |
+| 2026-06-11 | 개선 2단계 | 홈 캐시 — home-stats staleTime 0→5분, usePlanner mutation들이 home-stats/home-dday invalidate, AI chat user 메시지 insert 비동기화(스트림 시작 지연 제거) | 100% |
+| 2026-06-11 | 개선 3단계 | 공통 `ui/Modal`(포커스 트랩+Escape+portal+body 스크롤 잠금) — Lock/ColorWheel/PlanForm/QuickCapture/KeyboardShortcuts 모달 마이그레이션, z-index 토큰 실사용 값으로 재정의(modal 100/toast 300), Toast 토큰 적용 | 100% |
+| 2026-06-11 | 개선 4단계 | useMemos.softDelete 버그 수정 — 캐시 제거 후 folderId 조회로 폴더 카운트가 null 버킷에서 차감되던 문제(제거 전 확보로 변경) | 100% |
+| 2026-06-11 | 개선 5단계 | `lib/graph/colors.ts` 색상 단일 출처 — GraphView/GraphCanvas/GraphSettings의 중복 nodeColor/hex 제거 | 100% |
+| 2026-06-11 | 개선 6단계 | useGraphData O(n²) 제거 — simLink 검증 memos.some→Set, 허브 linkCount links.filter→사전 집계 Map | 100% |
 
 ---
 

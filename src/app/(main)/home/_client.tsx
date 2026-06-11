@@ -190,8 +190,8 @@ export default function HomePageClient() {
 
       return { completedPlans: completedPlans ?? 0, weekPlans }
     },
-    staleTime: 0,
-    refetchOnMount: 'always',
+    // usePlanner mutation들이 ['home-stats']를 invalidate하므로 매 방문 refetch 불필요
+    staleTime: HOME_STALE,
     initialData: readStatsCache,
     initialDataUpdatedAt: readStatsCacheTs,
   })

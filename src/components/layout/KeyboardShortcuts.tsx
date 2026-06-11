@@ -18,6 +18,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { X } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
+import Modal from '@/components/ui/Modal'
 
 type Shortcut = {
   keys: string[]      // 표시용
@@ -141,14 +142,11 @@ export default function KeyboardShortcuts() {
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-      onClick={() => setOpen(false)}
+    <Modal
+      onClose={() => setOpen(false)}
+      ariaLabel="키보드 단축키 안내"
+      panelClassName="shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto"
     >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">키보드 단축키</h3>
           <button
@@ -182,7 +180,6 @@ export default function KeyboardShortcuts() {
           💡 <kbd className="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded font-mono">G</kbd>{' '}
           누른 뒤 0.7초 안에 다른 키를 누르면 페이지 이동
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

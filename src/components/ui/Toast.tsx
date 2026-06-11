@@ -80,7 +80,10 @@ interface ToastContainerProps {
 export function ToastContainer({ toasts, onClose }: ToastContainerProps) {
   if (toasts.length === 0) return null
   return (
-    <div className="fixed bottom-20 md:bottom-6 right-4 z-50 flex flex-col gap-2 items-end">
+    <div
+      className="fixed bottom-20 md:bottom-6 right-4 flex flex-col gap-2 items-end"
+      style={{ zIndex: 'var(--z-toast)' as unknown as number }}
+    >
       {toasts.map((t) => (
         <Toast key={t.id} {...t} onClose={onClose} />
       ))}
