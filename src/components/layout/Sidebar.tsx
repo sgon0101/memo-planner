@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/uiStore'
+import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 
 const NAV_ITEMS = [
   { href: '/home',     label: '홈',          icon: Home },
@@ -70,119 +71,15 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
   }
 
   // ── 모바일 swipe-left 닫기 ─────────────────────────────────────────
-  // PointerEvent로 마우스/터치 통합. swipe 중에는 시각 피드백(translateX) 따라옴.
-  const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
-  const swipeCaptured = useRef(false)
-  const [dragX, setDragX] = useState(0)
-  const asideRef = useRef<HTMLElement>(null)
-
-  // ★ Fallback: React PointerEvent가 모바일 일부에서 미발화 → native touch 이벤트로 백업
-  useEffect(() => {
-    if (!sidebarOpen) return
-    const el = asideRef.current
-    if (!el) return
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) return
-
-    let startX = 0
-    let startY = 0
-    let startT = 0
-    let active = false
-
-    function onTouchStart(e: TouchEvent) {
-      if (e.touches.length !== 1) return
-      const t = e.touches[0]
-      startX = t.clientX
-      startY = t.clientY
-      startT = Date.now()
-      active = false
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (e.touches.length !== 1) return
-      const t = e.touches[0]
-      const dx = t.clientX - startX
-      const dy = t.clientY - startY
-      if (!active) {
-        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-          active = true
-        } else if (Math.abs(dy) > 10) {
-          return
-        } else {
-          return
-        }
-      }
-      if (active && dx < 0) {
-        setDragX(Math.max(dx, -240))
-        e.preventDefault()  // 브라우저 가로 swipe 가로채기 차단
-      }
-    }
-    function onTouchEnd(e: TouchEvent) {
-      const t = e.changedTouches[0]
-      const dx = t.clientX - startX
-      const dy = t.clientY - startY
-      const dt = Date.now() - startT
-      const wasActive = active
-      active = false
-      setDragX(0)
-      if (wasActive && dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 600) {
-        setSidebarOpen(false)
-      }
-    }
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: false })
-    el.addEventListener('touchend', onTouchEnd, { passive: true })
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-      el.removeEventListener('touchcancel', onTouchEnd)
-    }
-  }, [sidebarOpen, setSidebarOpen])
-
-  function onSwipeStart(e: React.PointerEvent) {
-    if (!sidebarOpen) return
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) return
-    // 시작 좌표만 기록 — setPointerCapture는 수평 이동 감지 후 지연 호출
-    // (즉시 capture 하면 nav 링크 탭이 모두 막힘)
-    swipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now(), pointerId: e.pointerId }
-    swipeCaptured.current = false
-  }
-
-  function onSwipeMove(e: React.PointerEvent) {
-    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) return
-    const dx = e.clientX - swipeStart.current.x
-    const dy = e.clientY - swipeStart.current.y
-    // 수평 이동 10px 초과 + 가로 우세일 때 비로소 capture → 링크 탭은 정상 동작
-    if (!swipeCaptured.current && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
-      swipeCaptured.current = true
-    }
-    if (dx < 0 && Math.abs(dx) > Math.abs(dy)) {
-      setDragX(Math.max(dx, -240))
-    } else if (dx > 0) {
-      setDragX(0)
-    }
-  }
-
-  function onSwipeEnd(e: React.PointerEvent) {
-    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) {
-      setDragX(0); return
-    }
-    if (swipeCaptured.current) {
-      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
-    }
-    const dx = e.clientX - swipeStart.current.x
-    const dy = e.clientY - swipeStart.current.y
-    const dt = Date.now() - swipeStart.current.t
-    swipeStart.current = null
-    swipeCaptured.current = false
-    setDragX(0)
-    if (dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 600) {
-      setSidebarOpen(false)
-    }
-  }
+  // useSwipeGesture: PointerEvent + touch fallback 통합 파이프라인 (시각 피드백 dragX 포함)
+  const { ref: asideRef, drag: dragX } = useSwipeGesture<HTMLElement>({
+    axis: 'x',
+    enabled: sidebarOpen,
+    mobileOnly: true,
+    dragClamp: [-240, 0],
+    preventScroll: true, // 브라우저 가로 swipe(뒤로가기 등) 가로채기 차단
+    onSwipeLeft: () => setSidebarOpen(false),
+  })
 
   return (
     <>
@@ -200,10 +97,6 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
         role="dialog"
         aria-modal="true"
         aria-label="네비게이션 메뉴"
-        onPointerDown={onSwipeStart}
-        onPointerMove={onSwipeMove}
-        onPointerUp={onSwipeEnd}
-        onPointerCancel={onSwipeEnd}
         style={{
           // 세로 스크롤 허용, 가로 스와이프는 우리가 처리 — 브라우저 기본 처리(pull-to-refresh 등) 차단
           touchAction: 'pan-y',

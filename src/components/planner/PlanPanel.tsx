@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
@@ -58,55 +59,16 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
   const displayDate = format(parseISO(date), 'M월 d일 (EEE)', { locale: ko })
   const isToday = date === format(new Date(), 'yyyy-MM-dd')
 
-  // 헤더(+ 그립) 아래로 드래그 시 닫기 — 마우스/터치 통합 (PointerEvent)
-  const swipeStart = useRef<{ x: number; y: number; t: number; pointerId: number } | null>(null)
-  const gripRef = useRef<HTMLDivElement>(null)
-  const [dragY, setDragY] = useState(0)  // 시각적 피드백용 따라오는 거리
-
-  // 모바일 pull-to-refresh 차단 — React synthetic 핸들러는 passive라 네이티브로 부착
-  useEffect(() => {
-    const el = gripRef.current
-    if (!el) return
-    const blockPullToRefresh = (e: TouchEvent) => {
-      if (!swipeStart.current || e.touches.length !== 1) return
-      const dy = e.touches[0].clientY - swipeStart.current.y
-      const dx = e.touches[0].clientX - swipeStart.current.x
-      if (dy > 0 && dy > Math.abs(dx)) e.preventDefault()
-    }
-    el.addEventListener('touchmove', blockPullToRefresh, { passive: false })
-    return () => el.removeEventListener('touchmove', blockPullToRefresh)
-  }, [])
-
-  function onSwipeStart(e: React.PointerEvent) {
-    // 헤더 안 X 버튼/링크 등에서 시작하면 패널 자체 드래그 제외
-    const target = e.target as HTMLElement
-    if (target.closest('button, a, input, textarea')) return
-    const handle = e.currentTarget as HTMLElement
-    try { handle.setPointerCapture(e.pointerId) } catch { /* ignore */ }
-    swipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now(), pointerId: e.pointerId }
-  }
-  function onSwipeMove(e: React.PointerEvent) {
-    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) return
-    const dy = e.clientY - swipeStart.current.y
-    // 아래로 드래그할 때만 시각적 피드백 (위로 끌면 무시)
-    if (dy > 0) setDragY(Math.min(dy, 160))
-  }
-  function onSwipeEnd(e: React.PointerEvent) {
-    if (!swipeStart.current || swipeStart.current.pointerId !== e.pointerId) {
-      setDragY(0); return
-    }
-    const handle = e.currentTarget as HTMLElement
-    try { handle.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
-    const dx = e.clientX - swipeStart.current.x
-    const dy = e.clientY - swipeStart.current.y
-    const dt = Date.now() - swipeStart.current.t
-    swipeStart.current = null
-    setDragY(0)
-    // 아래로 70px 이상 + 세로가 가로보다 1.5배 우세 + 600ms 이내 → 닫기
-    if (dy > 70 && dy > Math.abs(dx) * 1.5 && dt < 600) {
-      onClose()
-    }
-  }
+  // 헤더(+ 그립) 아래로 드래그 시 닫기 — useSwipeGesture 통합 파이프라인
+  // 아래로 70px 이상 + 세로 1.5배 우세 + 600ms 이내 → 닫기 (X 버튼 등에서 시작하면 제외)
+  const { ref: gripRef, drag: dragY } = useSwipeGesture<HTMLDivElement>({
+    axis: 'y',
+    dragClamp: [0, 160], // 아래로 드래그할 때만 시각적 피드백 (위로 끌면 무시)
+    dominance: 1.5,
+    preventScroll: true, // 모바일 pull-to-refresh 차단
+    ignoreFrom: 'button, a, input, textarea',
+    onSwipeDown: onClose,
+  })
 
   return (
     <div
@@ -116,10 +78,6 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       {/* 그립 핸들만 touch-action:none — X 버튼이 click 이벤트를 못 받는 버그 방지 */}
       <div
         ref={gripRef}
-        onPointerDown={onSwipeStart}
-        onPointerMove={onSwipeMove}
-        onPointerUp={onSwipeEnd}
-        onPointerCancel={onSwipeEnd}
         style={{ touchAction: 'none' }}
         className="flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing select-none"
         aria-label="패널 닫기 그립 — 아래로 밀어 닫기"
