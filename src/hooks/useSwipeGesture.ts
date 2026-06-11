@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * useSwipeGesture — 터치/포인터 swipe 제스처 통합 훅
@@ -64,7 +64,7 @@ export function useSwipeGesture<T extends HTMLElement = HTMLElement>(options: Sw
 
   // 항상 최신 옵션 참조 — effect 재부착 없이 옵션 변경 반영
   const opts = useRef(options)
-  opts.current = options
+  useLayoutEffect(() => { opts.current = options })
 
   const pState = useRef<GestureState | null>(null) // PointerEvent 파이프라인
   const tState = useRef<GestureState | null>(null) // Touch fallback 파이프라인
