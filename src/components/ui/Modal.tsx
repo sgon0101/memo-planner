@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
@@ -51,7 +51,19 @@ export default function Modal({
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
-  // 포커스 트랩 + Escape + 포커스 복원
+  // 최신 콜백/옵션을 ref로 참조 — effect를 mount 1회로 고정하기 위함.
+  // ★ onClose가 inline 함수면 부모 재렌더마다 identity가 바뀌는데,
+  //   effect가 onClose에 의존하면 재실행 cleanup의 포커스 복원이 input을 blur시켜
+  //   모바일에서 키보드가 떴다 숨겨졌다 반복하는 루프가 생긴다
+  //   (키보드 오픈 → viewport 리사이즈 → 부모 재렌더 → effect 재실행 → blur → ...).
+  const onCloseRef = useRef(onClose)
+  const closeOnEscapeRef = useRef(closeOnEscape)
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose
+    closeOnEscapeRef.current = closeOnEscape
+  })
+
+  // 포커스 트랩 + Escape + 포커스 복원 — mount/unmount 시에만 실행
   useEffect(() => {
     restoreFocusRef.current = document.activeElement as HTMLElement | null
 
@@ -65,9 +77,9 @@ export default function Modal({
     }
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && closeOnEscape) {
+      if (e.key === 'Escape' && closeOnEscapeRef.current) {
         e.stopPropagation()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== 'Tab') return
@@ -96,7 +108,7 @@ export default function Modal({
       document.body.style.overflow = prevOverflow
       restoreFocusRef.current?.focus?.()
     }
-  }, [onClose, closeOnEscape])
+  }, []) // 콜백은 ref로 참조 — mount 1회 고정
 
   if (typeof document === 'undefined') return null
 

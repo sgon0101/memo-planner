@@ -557,6 +557,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-06-11 | 개선 5단계 | `lib/graph/colors.ts` 색상 단일 출처 — GraphView/GraphCanvas/GraphSettings의 중복 nodeColor/hex 제거 | 100% |
 | 2026-06-11 | 개선 6단계 | useGraphData O(n²) 제거 — simLink 검증 memos.some→Set, 허브 linkCount links.filter→사전 집계 Map | 100% |
 | 2026-06-11 | lint 정리 | ESLint react-hooks 에러 26→0 — 실수정 4건(useId/dragX 파생/useLayoutEffect 2건) + 의도 패턴은 사유 명시 disable, Modal aria-hidden 버그·CalendarView import 누락·ResizableImageView 타입도 수정 | 100% |
+| 2026-06-11 | 버그 수정 | 모바일 주/일 뷰 시간대 탭 시 키보드 깜빡임 반복 — Modal 포커스 트랩 effect가 inline onClose 의존으로 재실행되며 cleanup 포커스 복원이 input을 blur시키던 루프, 콜백 ref화 + mount 1회 고정으로 해결 | 100% |
 
 ---
 
