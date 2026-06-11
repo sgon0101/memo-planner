@@ -109,7 +109,6 @@ export default function Modal({
       )}
       style={{ zIndex: 'var(--z-modal)' as unknown as number }}
       onClick={closeOnBackdrop ? onClose : undefined}
-      aria-hidden="true"
     >
       <div
         ref={panelRef}

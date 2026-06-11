@@ -140,7 +140,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       // 모바일 터치 폴백 — onClick 합성 실패 케이스 대비
-      onTouchEnd={(e) => {
+      onTouchEnd={(e: React.TouchEvent) => {
         if (!editor) return
         // 리사이즈 핸들/툴바 위 탭은 무시
         const target = e.target as HTMLElement
