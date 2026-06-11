@@ -222,11 +222,12 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
-            autoComplete="off"
+            autoComplete="new-password"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
+            data-bitwarden-ignore="true"
             data-form-type="other"
             name={`quick-memo-${autofillBlockId}`}
             className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
