@@ -10,7 +10,27 @@
       "Bash(cmd /c \"python .claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py personal --design-system -p MemoPlanner\")",
       "Bash(npx eslint *)",
       "Bash(find . -name \"middleware.ts\" -not -path \"*/node_modules/*\")",
-      "Bash(find . -name \"proxy.ts\" -not -path \"*/node_modules/*\")"
+      "Bash(find . -name \"proxy.ts\" -not -path \"*/node_modules/*\")",
+      "Bash(claude plugin *)",
+      "Bash(bash __TRACKED_VAR__/.claude/hooks/cache-expiry-check.sh)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(bash __TRACKED_VAR__/.claude/scripts/statusline-logger.sh)",
+      "Bash(bash __TRACKED_VAR__/.claude/hooks/statusline-version-check.sh)",
+      "Bash(cat)",
+      "Bash(python3 /tmp/analyze_sessions.py)",
+      "Bash(gh run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'docs: CLAUDE.md 태그 드롭다운 작업 이력 추가 *)",
+      "Bash(xargs grep *)",
+      "Bash(gh deployment *)",
+      "Bash(gh api *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git commit *)",
+      "Bash(curl -sL \"https://memo-planner.vercel.app/login\")",
+      "Bash(npx next *)",
+      "Bash(git pull *)"
     ]
   }
 }

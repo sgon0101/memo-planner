@@ -3,6 +3,7 @@
 import { X } from 'lucide-react'
 import { useGraphStore } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
+import { GRAPH_COLORS } from '@/lib/graph/colors'
 
 interface Props {
   onReset: () => void
@@ -120,9 +121,9 @@ export default function GraphSettings({ onReset }: Props) {
         <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">범례</p>
           {[
-            { color: '#7F77DD', label: '메모 노드', border: '' },
-            { color: '#1D9E75', label: '[[위키]] 허브', border: '1px solid #0F6E56' },
-            { color: '#378ADD', label: '#태그 허브', border: '1px solid #185FA5' },
+            { color: GRAPH_COLORS.memoMany, label: '메모 노드', border: '' },
+            { color: GRAPH_COLORS.wiki, label: '[[위키]] 허브', border: `1px solid ${GRAPH_COLORS.wikiBorder}` },
+            { color: GRAPH_COLORS.tag, label: '#태그 허브', border: `1px solid ${GRAPH_COLORS.tagBorder}` },
           ].map(({ color, label, border }) => (
             <div key={label} className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color, border: border || undefined }} />

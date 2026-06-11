@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
@@ -42,6 +43,14 @@ export function usePlanner() {
     setRecurringCompletions, setRecurringCompletion, deleteRecurringCompletion,
   } = usePlannerStore()
   const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  // 플랜 변경 시 홈 화면 통계/D-day 쿼리 무효화
+  // → 홈은 staleTime 동안 캐시를 쓰되, 변경이 있었으면 다음 방문 시 재조회
+  const invalidateHomeQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['home-stats'] })
+    queryClient.invalidateQueries({ queryKey: ['home-dday'] })
+  }, [queryClient])
 
   const load = useCallback(async () => {
     const monthStart = format(startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
@@ -113,8 +122,9 @@ export function usePlanner() {
     if (error) throw error
     const plan = toPlan(row)
     addPlan(plan)
+    invalidateHomeQueries()
     return plan
-  }, [])
+  }, [invalidateHomeQueries])
 
   const editPlan = useCallback(async (id: string, data: Partial<Plan>) => {
     const patch: Record<string, unknown> = {
@@ -138,17 +148,20 @@ export function usePlanner() {
     if (data.linkedMemoIds !== undefined) patch.linked_memo_ids = data.linkedMemoIds
     await supabase.from('plans').update(patch).eq('id', id)
     updatePlan(id, data)
-  }, [])
+    invalidateHomeQueries()
+  }, [invalidateHomeQueries])
 
   const removePlan = useCallback(async (id: string) => {
     await supabase.from('plans').delete().eq('id', id)
     deletePlan(id)
-  }, [])
+    invalidateHomeQueries()
+  }, [invalidateHomeQueries])
 
   const toggleComplete = useCallback(async (id: string, current: boolean) => {
     await supabase.from('plans').update({ is_completed: !current }).eq('id', id)
     updatePlan(id, { isCompleted: !current })
-  }, [])
+    invalidateHomeQueries()
+  }, [invalidateHomeQueries])
 
   /** 반복 인스턴스 완료 토글
    *  is_completed=false는 "이 인스턴스 숨김(skip)" 의미로 예약되어 있으므로
@@ -184,7 +197,8 @@ export function usePlanner() {
       if (currentlyCompleted) deleteRecurringCompletion(key)
       else setRecurringCompletion(key, true)
     }
-  }, [])
+    invalidateHomeQueries()
+  }, [invalidateHomeQueries])
 
   /** 반복 인스턴스 이 일정만 삭제 (숨김 처리) */
   const skipRecurringInstance = useCallback(async (

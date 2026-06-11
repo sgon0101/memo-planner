@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 
 interface ColorWheelModalProps {
   showNameInput?: boolean
@@ -54,11 +55,11 @@ export default function ColorWheelModal({
   const preview = `hsl(${h}, ${s}%, ${l}%)`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-72 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      ariaLabel={showNameInput ? '새 폴더 만들기' : '폴더 색상 선택'}
+      panelClassName="p-6 w-72 space-y-4"
+    >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
             {showNameInput ? '새 폴더' : '폴더 색상 선택'}
@@ -136,6 +137,7 @@ export default function ColorWheelModal({
             {PRESETS.map((p, i) => (
               <button
                 key={i}
+                aria-label={`프리셋 색상 hsl(${p.h}, ${p.s}%, ${p.l}%)`}
                 className="w-7 h-7 rounded-full border-2 border-transparent hover:scale-110 transition-transform"
                 style={{
                   background: `hsl(${p.h},${p.s}%,${p.l}%)`,
@@ -165,7 +167,6 @@ export default function ColorWheelModal({
             {showNameInput ? '만들기' : '적용'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

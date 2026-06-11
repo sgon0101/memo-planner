@@ -202,6 +202,12 @@ export function useMemos(folderId: string | null | undefined) {
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
 
+    // ★ 캐시에서 제거하기 전에 폴더 ID를 먼저 확보
+    //   (제거 후 조회하면 항상 undefined → 폴더 카운트가 엉뚱한 버킷(null)에서 차감되던 버그)
+    const target = (queryClient.getQueryData<Memo[]>(memoKeys.all()) ?? [])
+      .find((m) => m.id === id)
+    const targetFolderId = target?.folderId ?? null
+
     // 전체 캐시에서 제거
     patchCache((old) => old.filter((m) => m.id !== id))
     deleteMemo(id)
@@ -210,9 +216,6 @@ export function useMemos(folderId: string | null | undefined) {
       ['memo-folder-counts'],
       (old) => {
         if (!old) return old
-        const target = (queryClient.getQueryData<Memo[]>(memoKeys.all()) ?? [])
-          .find((m) => m.id === id)
-        const targetFolderId = target?.folderId ?? null
         const idx = old.findIndex((row) => row.folder_id === targetFolderId)
         if (idx === -1) return old
         return [...old.slice(0, idx), ...old.slice(idx + 1)]

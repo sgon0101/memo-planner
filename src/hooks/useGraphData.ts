@@ -117,11 +117,10 @@ export function useGraphData() {
     }
 
     // 3단계: 유사도 링크 (캐시된 결과 재사용)
+    // memos.some() 쌍 비교(O(L×N)) → Set 조회(O(L))로 교체
+    const memoIdSet = new Set(memos.map((m) => m.id))
     for (const sl of simLinks) {
-      if (
-        memos.some((m) => m.id === sl.source) &&
-        memos.some((m) => m.id === sl.target)
-      ) {
+      if (memoIdSet.has(sl.source) && memoIdSet.has(sl.target)) {
         links.push({ source: sl.source, target: sl.target, type: 'similarity' })
         memoLinkCounts.set(sl.source, (memoLinkCounts.get(sl.source) ?? 0) + 1)
         memoLinkCounts.set(sl.target, (memoLinkCounts.get(sl.target) ?? 0) + 1)
@@ -136,16 +135,20 @@ export function useGraphData() {
     }
 
     // 5단계: 위키/태그 허브 노드 생성
+    // 허브마다 links.filter(O(H×L)) → target별 집계 Map 1회 구축(O(L+H))로 교체
+    const targetCounts = new Map<string, number>()
+    for (const l of links) {
+      const tgt = typeof l.target === 'string' ? l.target : l.target.id
+      targetCounts.set(tgt, (targetCounts.get(tgt) ?? 0) + 1)
+    }
     if (s.showWiki) {
       for (const [kw, nid] of wikiMap) {
-        const lc = links.filter((l) => l.target === nid).length
-        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: lc })
+        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: targetCounts.get(nid) ?? 0 })
       }
     }
     if (s.showTag) {
       for (const [tag, nid] of tagMap) {
-        const lc = links.filter((l) => l.target === nid).length
-        nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: lc })
+        nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: targetCounts.get(nid) ?? 0 })
       }
     }
 

@@ -54,13 +54,14 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.10);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
 
-  /* Z-index */
+  /* Z-index — 실사용 레이어 순서에 맞춤
+     dropdown(10) < sticky(20) < overlay/딤(40) < sidebar(50) < modal(100) < modal 내부 dropdown(200) < toast(300) */
   --z-dropdown: 10;
   --z-sticky:   20;
-  --z-overlay:  30;
-  --z-modal:    40;
-  --z-toast:    50;
-  --z-tooltip:  60;
+  --z-overlay:  40;
+  --z-modal:    100;
+  --z-toast:    300;
+  --z-tooltip:  310;
 }
 
 /* ===== Base ===== */

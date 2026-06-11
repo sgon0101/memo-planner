@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { X, Lock, Unlock } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 
 interface LockModalProps {
   mode: 'lock' | 'unlock'
@@ -38,11 +39,11 @@ export default function LockModal({ mode, onConfirm, onClose }: LockModalProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-80"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      ariaLabel={mode === 'lock' ? '메모 잠금' : '메모 잠금 해제'}
+      panelClassName="p-6 w-80"
+    >
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             {mode === 'lock'
@@ -108,7 +109,6 @@ export default function LockModal({ mode, onConfirm, onClose }: LockModalProps) 
             {loading ? '처리 중...' : mode === 'lock' ? '잠금 설정' : '잠금 해제'}
           </button>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }

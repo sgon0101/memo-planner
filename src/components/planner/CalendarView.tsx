@@ -123,36 +123,21 @@ export default function CalendarView() {
     else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
   }
 
-  // 모바일 좌우 스와이프 (월/주/일 네비게이션)
-  const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null)
-  const swipedRecently = useRef(false)
-  function onSwipeTouchStart(e: React.TouchEvent) {
-    if (e.touches.length !== 1) return
-    const t = e.touches[0]
-    swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now() }
-  }
-  function onSwipeTouchEnd(e: React.TouchEvent) {
-    if (!swipeStart.current) return
-    const t = e.changedTouches[0]
-    const dx = t.clientX - swipeStart.current.x
-    const dy = t.clientY - swipeStart.current.y
-    const dt = Date.now() - swipeStart.current.t
-    swipeStart.current = null
-    // 가로 60px 이상 + 가로가 세로보다 1.5배 이상 우세 + 500ms 이내
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 500) {
-      swipedRecently.current = true
-      if (dx > 0) goPrev()
-      else goNext()
-      // 스와이프 직후의 click 한 번을 차단 (셀 selectDate 방지)
-      setTimeout(() => { swipedRecently.current = false }, 350)
-    }
-  }
-  function onSwipeClickCapture(e: React.MouseEvent) {
-    if (swipedRecently.current) {
-      e.stopPropagation()
-      e.preventDefault()
-    }
-  }
+  // 모바일 좌우 스와이프 (월/주/일 네비게이션) — useSwipeGesture 통합 파이프라인
+  // 가로 60px 이상 + 세로보다 1.5배 우세 + 500ms 이내. touch 전용 (데스크탑 마우스 드래그 제외)
+  const {
+    ref: swipeRef,
+    onClickCapture: onSwipeClickCapture,
+  } = useSwipeGesture<HTMLDivElement>({
+    axis: 'x',
+    threshold: 60,
+    dominance: 1.5,
+    maxDuration: 500,
+    pointerTypes: ['touch'],
+    suppressClickAfterSwipe: true, // 스와이프 직후의 click 한 번 차단 (셀 selectDate 방지)
+    onSwipeLeft: goNext,
+    onSwipeRight: goPrev,
+  })
 
   // 모바일 기본 뷰는 주 — 새로고침마다 적용 (viewMode는 persist되지 않으므로 매 mount마다 검사)
   // 사용자가 세션 중에 월로 바꿔도 새로고침하면 다시 주로 (사용자 명시 요구)
@@ -342,9 +327,8 @@ export default function CalendarView() {
 
         {/* 달력 그리드 (모바일 스와이프 핸들러 부착) */}
         <div
+          ref={swipeRef}
           className="flex-1 overflow-auto"
-          onTouchStart={onSwipeTouchStart}
-          onTouchEnd={onSwipeTouchEnd}
           onClickCapture={onSwipeClickCapture}
         >
           {viewMode === 'month' && weeks.map((week, wi) => {

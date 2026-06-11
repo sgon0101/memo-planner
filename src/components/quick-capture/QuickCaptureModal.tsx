@@ -10,6 +10,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/uiStore'
+import Modal from '@/components/ui/Modal'
 import { useFolderStore } from '@/store/folderStore'
 import { useFolders } from '@/hooks/useFolders'
 import { usePlanner } from '@/hooks/usePlanner'
@@ -353,14 +354,13 @@ function QuickCaptureInner({
   }, [folders])
 
   return (
-    <div
-      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
-      onClick={close}
+    <Modal
+      onClose={close}
+      ariaLabel="빠른 작성"
+      sheetOnMobile
+      overlayClassName="p-0 sm:p-4"
+      panelClassName="w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
     >
-      <div
-        className="w-full sm:max-w-lg bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-3 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex gap-1">
@@ -956,8 +956,7 @@ function QuickCaptureInner({
             {success ? '저장됨' : saving ? '저장 중' : '저장'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
