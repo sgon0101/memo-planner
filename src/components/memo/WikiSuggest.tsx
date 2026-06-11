@@ -23,6 +23,7 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
   const showNew = !!query && !filtered.includes(query)
   const totalItems = filtered.length + (showNew ? 1 : 0)
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 검색어 변경 시 선택 인덱스 리셋 (의도된 패턴)
   useEffect(() => { setSelectedIndex(0) }, [query])
 
   // viewport 가용 공간 측정 → 아래 부족하면 위로 flip

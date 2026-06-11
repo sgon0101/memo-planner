@@ -54,7 +54,9 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const [imgVisible, setImgVisible] = useState(false)
   const prevThumbRef = useRef(memo.thumbnailUrl)
   // thumbnailUrl 변경 시 render-time에 즉시 동기화 — useEffect(2사이클)보다 1사이클 절약
+  // eslint-disable-next-line react-hooks/refs -- 의도된 render-time 동기화 패턴
   if (prevThumbRef.current !== memo.thumbnailUrl) {
+    // eslint-disable-next-line react-hooks/refs
     prevThumbRef.current = memo.thumbnailUrl
     setImgSrc(memo.thumbnailUrl ?? null)
     setImgVisible(false)
@@ -81,6 +83,7 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   const timeAgo = formatDistanceToNow(new Date(memo.updatedAt), { addSuffix: true, locale: ko })
 
   const trashDaysLeft = isTrash && memo.deletedAt
+    // eslint-disable-next-line react-hooks/purity -- 남은 일수 표시 (일 단위 정밀도면 충분)
     ? Math.max(0, 30 - Math.floor((Date.now() - new Date(memo.deletedAt).getTime()) / 86400000))
     : null
 

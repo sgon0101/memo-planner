@@ -151,7 +151,7 @@ export default function MemoSidePanel({ currentMemoId, folderId, onSelect, onClo
       onClickCapture={onClickCapture}
       style={{
         transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
-        transition: dragRef.current.active ? 'none' : 'transform 0.18s ease-out',
+        transition: dragX > 0 ? 'none' : 'transform 0.18s ease-out', // 드래그 중 = dragX > 0 (render-safe)
         touchAction: 'pan-y',
       }}
       className={cn(

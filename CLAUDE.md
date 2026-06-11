@@ -556,6 +556,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-06-11 | 개선 4단계 | useMemos.softDelete 버그 수정 — 캐시 제거 후 folderId 조회로 폴더 카운트가 null 버킷에서 차감되던 문제(제거 전 확보로 변경) | 100% |
 | 2026-06-11 | 개선 5단계 | `lib/graph/colors.ts` 색상 단일 출처 — GraphView/GraphCanvas/GraphSettings의 중복 nodeColor/hex 제거 | 100% |
 | 2026-06-11 | 개선 6단계 | useGraphData O(n²) 제거 — simLink 검증 memos.some→Set, 허브 linkCount links.filter→사전 집계 Map | 100% |
+| 2026-06-11 | lint 정리 | ESLint react-hooks 에러 26→0 — 실수정 4건(useId/dragX 파생/useLayoutEffect 2건) + 의도 패턴은 사유 명시 disable, Modal aria-hidden 버그·CalendarView import 누락·ResizableImageView 타입도 수정 | 100% |
 
 ---
 

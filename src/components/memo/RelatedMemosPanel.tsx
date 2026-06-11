@@ -59,6 +59,7 @@ export default function RelatedMemosPanel({ memoId, refreshKey }: Props) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- memoId 변경 시 비동기 로더 (loading 상태 동기 설정)
     if (memoId) load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memoId, refreshKey])
