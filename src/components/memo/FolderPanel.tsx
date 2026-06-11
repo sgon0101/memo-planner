@@ -145,11 +145,12 @@ function FolderItem({
             }}
             className="flex-1 bg-transparent outline-none text-sm min-w-0 border-b border-violet-400 dark:border-violet-500"
             onClick={(e) => e.stopPropagation()}
-            autoComplete="off"
+            autoComplete="new-password"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
+            data-bitwarden-ignore="true"
             data-form-type="other"
             name="folder-name"
           />

@@ -940,6 +940,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="제목 없음"
+          autoComplete="new-password"
+          autoCorrect="off"
+          spellCheck={false}
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-bitwarden-ignore="true"
+          data-form-type="other"
           className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
