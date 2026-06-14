@@ -185,8 +185,19 @@ aside {
   margin-top: 1em !important;
 }
 
-/* 이미지만 가진 paragraph는 위/아래 마진 0 — 이미지 사이 빈 줄 간격 축소.
-   :has 셀렉터 specificity가 위 p+p 룰보다 높아 override됨. */
+/* 이미지 wrapper 사이 빈 paragraph 좁힘 — Tiptap Image는 block 노드라
+   <wrapper-div><p(empty)></p><wrapper-div> 구조가 됨. 빈 paragraph는 line-height
+   25px 정도 차지해 이미지 사이가 멀어 보임. 빈 p만 골라 line-height 0으로 축소.
+   텍스트 paragraph는 영향 없음(:empty + :has(> br:only-child) 매칭). */
+.tiptap div[data-node-view-wrapper] + p:where(:empty, :has(> br:only-child)),
+.tiptap p:where(:empty, :has(> br:only-child)):has(+ div[data-node-view-wrapper]) {
+  min-height: 0 !important;
+  height: 0.25em !important;
+  line-height: 0 !important;
+  margin: 0 !important;
+}
+
+/* 이미지가 paragraph 자식으로 들어간 경우(다른 wrapping)도 안전망 */
 .tiptap p:has(> img),
 .tiptap p:has(> .react-renderer),
 .tiptap p:has(> div[data-node-view-wrapper]) {
