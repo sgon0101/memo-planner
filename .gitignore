@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 민감 파일 / 로컬 전용
+supabase memoPlanner  pw.txt
+*.bat
+*.ps1
+{
+/export/
+/scripts/
+/docs/
+.claude/
