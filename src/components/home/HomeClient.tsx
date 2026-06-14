@@ -218,7 +218,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
           data-form-type="other"
         >
           <input
-            type="text"
+            type="search"
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
@@ -230,7 +230,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
             data-bitwarden-ignore="true"
             data-form-type="other"
             name={`quick-memo-${autofillBlockId}`}
-            className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
+            className="flex-1 [&::-webkit-search-cancel-button]:hidden px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
           />
           <button
             type="submit"

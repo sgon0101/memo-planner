@@ -18,6 +18,8 @@ import {
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
+import { toast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
@@ -36,7 +38,7 @@ export default function SettingsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const confirm = useConfirm()
   const [storageStats, setStorageStats] = useState<{
     fileCount: number
     originalBytes: number
@@ -94,7 +96,7 @@ export default function SettingsPage() {
       setNotifPerm(perm as 'default' | 'granted' | 'denied' | 'unsupported')
       if (perm !== 'granted') {
         if (perm === 'denied') {
-          setToast({ type: 'error', message: '브라우저 설정에서 알림 권한을 허용해주세요.' })
+          toast.error('브라우저 설정에서 알림 권한을 허용해주세요.')
         }
         return
       }
@@ -107,15 +109,12 @@ export default function SettingsPage() {
       // ② 백그라운드 Web Push 구독 (cron이 발송할 수 있게)
       const ok = await push.subscribe()
       if (ok) {
-        setToast({ type: 'success', message: '알림이 활성화됐어요. 앱이 닫혀있어도 알림이 와요.' })
+        toast.success('알림이 활성화됐어요. 앱이 닫혀있어도 알림이 와요.')
       } else {
         // 푸시 구독 실패해도 포어그라운드는 동작하므로 그대로 진행
-        setToast({
-          type: 'error',
-          message: push.error
-            ? `포어그라운드 알림만 활성화됐어요 — 백그라운드 실패: ${push.error}`
-            : '포어그라운드 알림만 활성화됐어요 (백그라운드 등록 실패).',
-        })
+        toast.error(push.error
+          ? `포어그라운드 알림만 활성화됐어요 — 백그라운드 실패: ${push.error}`
+          : '포어그라운드 알림만 활성화됐어요 (백그라운드 등록 실패).')
       }
     } else {
       // 백그라운드 푸시 구독도 같이 해제 → cron 발송 대상에서 제외
@@ -123,12 +122,11 @@ export default function SettingsPage() {
       if (push.subscribed) {
         unsubscribed = await push.unsubscribe()
       }
-      setToast({
-        type: unsubscribed ? 'success' : 'error',
-        message: unsubscribed
-          ? '알림이 꺼졌어요. 백그라운드 알림도 중단됩니다.'
-          : '포어그라운드 알림은 꺼졌지만 백그라운드 해제에 실패했어요. 잠시 후 다시 시도해주세요.',
-      })
+      if (unsubscribed) {
+        toast.success('알림이 꺼졌어요. 백그라운드 알림도 중단됩니다.')
+      } else {
+        toast.error('포어그라운드 알림은 꺼졌지만 백그라운드 해제에 실패했어요. 잠시 후 다시 시도해주세요.')
+      }
     }
   }
 
@@ -141,9 +139,9 @@ export default function SettingsPage() {
   async function handleTestNotif() {
     const ok = await showTestNotification()
     if (ok) {
-      setToast({ type: 'success', message: '테스트 알림을 보냈어요.' })
+      toast.success('테스트 알림을 보냈어요.')
     } else {
-      setToast({ type: 'error', message: '먼저 알림을 활성화해주세요.' })
+      toast.error('먼저 알림을 활성화해주세요.')
     }
   }
 
@@ -175,9 +173,9 @@ export default function SettingsPage() {
       setAutoBackup(data.autoBackup)
       setBackupPeriod(data.period)
       setNextBackupAt(data.nextBackupAt ?? null)
-      setToast({ type: 'success', message: '자동 백업 설정이 저장되었습니다.' })
+      toast.success('자동 백업 설정이 저장되었습니다.')
     } catch {
-      setToast({ type: 'error', message: '설정 저장에 실패했습니다.' })
+      toast.error('설정 저장에 실패했습니다.')
     } finally {
       setAutoBackupLoading(false)
     }
@@ -235,13 +233,13 @@ export default function SettingsPage() {
     if (!connected && !error) return
     queueMicrotask(() => {
       if (connected === 'calendar') {
-        setToast({ type: 'success', message: 'Google Calendar가 연결되었습니다.' })
+        toast.success('Google Calendar가 연결되었습니다.')
       } else if (connected === 'drive') {
-        setToast({ type: 'success', message: 'Google Drive가 연결되었습니다.' })
+        toast.success('Google Drive가 연결되었습니다.')
       } else if (error === 'calendar_auth_failed') {
-        setToast({ type: 'error', message: 'Google Calendar 연결에 실패했습니다.' })
+        toast.error('Google Calendar 연결에 실패했습니다.')
       } else if (error === 'drive_auth_failed') {
-        setToast({ type: 'error', message: 'Google Drive 연결에 실패했습니다.' })
+        toast.error('Google Drive 연결에 실패했습니다.')
       }
       fetchIntegrationStatus()
       fetchBackupSettings()
@@ -250,20 +248,14 @@ export default function SettingsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 3000)
-    return () => clearTimeout(t)
-  }, [toast])
-
   async function disconnectCalendar() {
     setCalendarLoading(true)
     try {
       await fetch('/api/calendar/disconnect', { method: 'DELETE' })
       setCalendarConnected(false)
-      setToast({ type: 'success', message: 'Google Calendar 연결이 해제되었습니다.' })
+      toast.success('Google Calendar 연결이 해제되었습니다.')
     } catch {
-      setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
+      toast.error('연결 해제 중 오류가 발생했습니다.')
     } finally {
       setCalendarLoading(false)
     }
@@ -274,9 +266,9 @@ export default function SettingsPage() {
     try {
       const { error } = await supabase.auth.updateUser({ data: { display_name: nickname.trim() } })
       if (error) throw error
-      setToast({ type: 'success', message: '별명이 저장되었습니다.' })
+      toast.success('별명이 저장되었습니다.')
     } catch {
-      setToast({ type: 'error', message: '저장 중 오류가 발생했습니다.' })
+      toast.error('저장 중 오류가 발생했습니다.')
     } finally {
       setNicknameSaving(false)
     }
@@ -289,9 +281,9 @@ export default function SettingsPage() {
       if (!user) return
       await supabase.from('user_integrations').delete().eq('user_id', user.id).eq('provider', 'google_drive')
       setDriveConnected(false)
-      setToast({ type: 'success', message: 'Google Drive 연결이 해제되었습니다.' })
+      toast.success('Google Drive 연결이 해제되었습니다.')
     } catch {
-      setToast({ type: 'error', message: '연결 해제 중 오류가 발생했습니다.' })
+      toast.error('연결 해제 중 오류가 발생했습니다.')
     } finally {
       setDriveLoading(false)
     }
@@ -329,12 +321,11 @@ export default function SettingsPage() {
       setLastBackup(now)
       localStorage.setItem('lastDriveBackup', now)
       const failMsg = data.failCount ? ` / 실패 ${data.failCount}개` : ''
-      setToast({
-        type: data.failCount ? 'error' : 'success',
-        message: `${data.message} (성공 ${data.count}개${failMsg})`,
-      })
+      const msg = `${data.message} (성공 ${data.count}개${failMsg})`
+      if (data.failCount) toast.error(msg)
+      else toast.success(msg)
     } catch (err) {
-      setToast({ type: 'error', message: err instanceof Error ? err.message : '백업 중 오류가 발생했습니다.' })
+      toast.error(err instanceof Error ? err.message : '백업 중 오류가 발생했습니다.')
     } finally {
       setDriveBackupLoading(false)
     }
@@ -358,9 +349,9 @@ export default function SettingsPage() {
       a.download = `backup-${new Date().toISOString().slice(0, 10)}.${ext}`
       a.click()
       URL.revokeObjectURL(url)
-      setToast({ type: 'success', message: '내보내기가 완료되었습니다.' })
+      toast.success('내보내기가 완료되었습니다.')
     } catch {
-      setToast({ type: 'error', message: '내보내기 중 오류가 발생했습니다.' })
+      toast.error('내보내기 중 오류가 발생했습니다.')
     } finally {
       setExportLoading(false)
     }
@@ -382,41 +373,36 @@ export default function SettingsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       const { results } = data
-      setToast({ type: 'success', message: `가져오기 완료: 폴더 ${results.folders}개, 메모 ${results.memos}개, 플랜 ${results.plans}개` })
+      toast.success(`가져오기 완료: 폴더 ${results.folders}개, 메모 ${results.memos}개, 플랜 ${results.plans}개`)
     } catch (err) {
-      setToast({ type: 'error', message: err instanceof Error ? err.message : '가져오기 중 오류가 발생했습니다.' })
+      toast.error(err instanceof Error ? err.message : '가져오기 중 오류가 발생했습니다.')
     } finally {
       setImportLoading(false)
     }
   }
 
-  async function handleDeleteAccount() {
-    if (!confirm('계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다. 정말 삭제하시겠습니까?')) return
-    if (!confirm('이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?')) return
-    setDeleteLoading(true)
-    try {
-      // 서비스 역할로 계정 삭제는 서버 API가 필요하므로 로그아웃만 처리
-      await supabase.auth.signOut()
-      router.push('/login')
-    } finally {
-      setDeleteLoading(false)
-    }
+  function handleDeleteAccount() {
+    confirm.open({
+      title: '계정을 삭제할까요?',
+      description: '계정을 삭제하면 모든 데이터가 영구적으로 삭제돼요.\n이 작업은 되돌릴 수 없습니다.',
+      variant: 'danger',
+      confirmLabel: '계정 삭제',
+      onConfirm: async () => {
+        setDeleteLoading(true)
+        try {
+          // 서비스 역할로 계정 삭제는 서버 API가 필요하므로 로그아웃만 처리
+          await supabase.auth.signOut()
+          router.push('/login')
+        } finally {
+          setDeleteLoading(false)
+        }
+      },
+    })
   }
 
   return (
     <div className="max-w-xl mx-auto p-6 space-y-6">
       <h2 className="text-base font-semibold text-gray-900 dark:text-white">설정</h2>
-
-      {/* Toast */}
-      {toast && (
-        <div className={cn(
-          'fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all',
-          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'
-        )}>
-          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          {toast.message}
-        </div>
-      )}
 
       {/* 프로필 */}
       <Section title="프로필" icon={<User size={15} />}>
@@ -809,6 +795,7 @@ export default function SettingsPage() {
 
       {/* 버전 */}
       <p className="text-xs text-center text-gray-400">Weave v0.1.0</p>
+      <confirm.Render />
     </div>
   )
 }

@@ -11,6 +11,8 @@ import { useDragStore } from '@/store/dragStore'
 import { createClient } from '@/lib/supabase/client'
 import { TRASH_ID } from '@/hooks/useMemos'
 import ColorWheelModal from './ColorWheelModal'
+import { useConfirm } from '@/components/ui/ConfirmModal'
+import { toast } from '@/components/ui/Toast'
 import type { Folder as FolderType } from '@/types'
 
 interface MenuState { folderId: string; x: number; y: number }
@@ -143,8 +145,9 @@ function FolderItem({
               if (e.key === 'Enter') { e.preventDefault(); onCommitEdit(folder.id) }
               if (e.key === 'Escape') { e.preventDefault(); onCancelEdit() }
             }}
-            className="flex-1 bg-transparent outline-none text-sm min-w-0 border-b border-violet-400 dark:border-violet-500"
+            className="flex-1 [&::-webkit-search-cancel-button]:hidden bg-transparent outline-none text-sm min-w-0 border-b border-violet-400 dark:border-violet-500"
             onClick={(e) => e.stopPropagation()}
+            type="search"
             autoComplete="new-password"
             autoCorrect="off"
             spellCheck={false}
@@ -152,7 +155,7 @@ function FolderItem({
             data-lpignore="true"
             data-bitwarden-ignore="true"
             data-form-type="other"
-            name="folder-name"
+            name="f-rename-field"
           />
         ) : (
           <span className="flex-1 truncate text-sm">{folder.name}</span>
@@ -235,6 +238,7 @@ export default function FolderPanel() {
   }, new Map())
 
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [colorTarget, setColorTarget] = useState<FolderType | null>(null)
@@ -244,7 +248,6 @@ export default function FolderPanel() {
   const [editValue, setEditValue] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
   const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null)
   const [folderDropTarget, setFolderDropTarget] = useState<DropTarget>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
@@ -254,8 +257,7 @@ export default function FolderPanel() {
     .sort((a, b) => a.orderIndex - b.orderIndex)
 
   function showToast(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2500)
+    toast.success(msg)
   }
 
   const handleDrop = useCallback(async (memoId: string, folderId: string | null) => {
@@ -359,12 +361,19 @@ export default function FolderPanel() {
       .eq('folder_id', id)
       .eq('is_deleted', false)
     const folderName = folders.find((f) => f.id === id)?.name ?? '폴더'
-    const msg = count && count > 0
-      ? `"${folderName}" 폴더를 삭제하면\n안에 있는 메모 ${count}개도 휴지통으로 이동해요.\n\n계속하시겠어요?`
-      : `"${folderName}" 폴더를 삭제할까요?`
-    if (!confirm(msg)) return
-    await removeFolder(id).catch(console.error)
-    if (selectedFolderId === id) selectFolder(null)
+    const hasMemos = !!count && count > 0
+    confirm.open({
+      title: `"${folderName}" 폴더를 삭제할까요?`,
+      description: hasMemos
+        ? `안에 있는 메모 ${count}개도 함께 휴지통으로 이동돼요.`
+        : '폴더만 삭제됩니다.',
+      variant: 'danger',
+      confirmLabel: '삭제',
+      onConfirm: async () => {
+        await removeFolder(id).catch(console.error)
+        if (selectedFolderId === id) selectFolder(null)
+      },
+    })
   }
 
   const menuFolder = menu ? folders.find((f) => f.id === menu.folderId) : null
@@ -579,12 +588,7 @@ export default function FolderPanel() {
         />
       )}
 
-      {/* 드랍 성공 토스트 */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
-          {toast}
-        </div>
-      )}
+      <confirm.Render />
     </div>
   )
 }

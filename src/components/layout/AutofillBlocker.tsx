@@ -40,8 +40,9 @@ export default function AutofillBlocker() {
       el.setAttribute('data-1p-ignore', 'true')
       el.setAttribute('data-lpignore', 'true')
       el.setAttribute('data-form-type', 'other')
-      // name이 'username/email/address' 등이면 브라우저가 autofill 제안 → 임의 이름으로 변환
-      const susNames = /^(?:username|user|email|address|street|city|zip|postal|tel|phone|cc-|credit|card)/i
+      // name에 'name/email/address' 등이 포함되면 브라우저가 autofill 제안 → 임의 이름으로 변환
+      // (prefix만 검사하던 것을 포함 검사로 강화 — 'folder-name' 같은 케이스도 차단)
+      const susNames = /(?:username|user|email|address|street|city|zip|postal|tel|phone|cc-|credit|card|name)/i
       if (!el.name || susNames.test(el.name)) {
         // input마다 고유 — collision 방지
         el.name = `_${(el.tagName === 'TEXTAREA' ? 'ta' : 'in')}_${Math.random().toString(36).slice(2, 8)}`

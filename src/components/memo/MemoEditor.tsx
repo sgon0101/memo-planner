@@ -32,6 +32,9 @@ import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
 import WikiSuggest from './WikiSuggest'
 import TagSuggest from './TagSuggest'
+import Modal from '@/components/ui/Modal'
+import { useConfirm } from '@/components/ui/ConfirmModal'
+import { toast } from '@/components/ui/Toast'
 import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
 
@@ -162,8 +165,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
   const [tagQuery, setTagQuery] = useState<string | null>(null)
   const [tagPos, setTagPos] = useState({ x: 0, y: 0 })
-  const [uploadToast, setUploadToast] = useState<string | null>(null)
-  const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const confirm = useConfirm()
 
   const hasUnsavedRef = useRef(false)
   const folderIdRef = useRef<string | null>(initialFolderId ?? null)
@@ -446,14 +448,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     return () => {
       if (savedDisplayTimerRef.current) clearTimeout(savedDisplayTimerRef.current)
       if (newMemoTimerRef.current) clearTimeout(newMemoTimerRef.current)
-      if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current)
     }
   }, [])
 
   function showUploadToast(msg: string) {
-    setUploadToast(msg)
-    if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current)
-    uploadToastTimerRef.current = setTimeout(() => setUploadToast(null), 3500)
+    // 압축률 등 "성공" 톤이 기본 — 실패 시는 별도 toast.error로
+    toast.success(msg)
   }
 
   async function handleImageUpload(file: File) {
@@ -606,34 +606,40 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     save(json, text)
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     const id = createdIdRef.current
     if (!id) return
-    if (!confirm('이 메모를 휴지통으로 이동할까요?')) return
+    confirm.open({
+      title: '메모를 휴지통으로 옮길까요?',
+      description: '7일 후 자동으로 영구 삭제돼요.',
+      variant: 'danger',
+      confirmLabel: '휴지통으로',
+      onConfirm: async () => {
+        await supabase
+          .from('memos')
+          .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+          .eq('id', id)
 
-    await supabase
-      .from('memos')
-      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-      .eq('id', id)
-
-    // 단일 전체 캐시에서 즉시 제거
-    queryClient.setQueryData<import('@/types').Memo[]>(
-      memoKeys.all(),
-      (old) => old?.filter((m) => m.id !== id) ?? []
-    )
-    // 폴더 카운트 감소
-    queryClient.setQueryData<Array<{ folder_id: string | null }>>(
-      ['memo-folder-counts'],
-      (old) => {
-        if (!old) return old
-        const idx = old.findIndex((r) => r.folder_id === folderIdRef.current)
-        if (idx === -1) return old
-        return [...old.slice(0, idx), ...old.slice(idx + 1)]
-      }
-    )
-    queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-    deleteMemo(id)
-    router.push('/memo')
+        // 단일 전체 캐시에서 즉시 제거
+        queryClient.setQueryData<import('@/types').Memo[]>(
+          memoKeys.all(),
+          (old) => old?.filter((m) => m.id !== id) ?? []
+        )
+        // 폴더 카운트 감소
+        queryClient.setQueryData<Array<{ folder_id: string | null }>>(
+          ['memo-folder-counts'],
+          (old) => {
+            if (!old) return old
+            const idx = old.findIndex((r) => r.folder_id === folderIdRef.current)
+            if (idx === -1) return old
+            return [...old.slice(0, idx), ...old.slice(idx + 1)]
+          }
+        )
+        queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+        deleteMemo(id)
+        router.push('/memo')
+      },
+    })
   }
 
   function handleRestore(version: MemoVersion) {
@@ -936,7 +942,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
         {/* 제목 */}
         <input
-          type="text"
+          type="search"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="제목 없음"
@@ -947,7 +953,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           data-lpignore="true"
           data-bitwarden-ignore="true"
           data-form-type="other"
-          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          className="w-full [&::-webkit-search-cancel-button]:hidden px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 */}
@@ -1017,14 +1023,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         />
       )}
 
-      {/* 나가기 확인 다이얼로그 */}
-      {/* 이미지 업로드 토스트 */}
-      {uploadToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-gray-700 text-white text-xs px-4 py-2.5 rounded-xl shadow-lg">
-          {uploadToast}
-        </div>
-      )}
-
       {/* 위키 자동완성 */}
       {wikiQuery !== null && (
         <WikiSuggest
@@ -1046,38 +1044,42 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       )}
 
       {showLeaveDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-80">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">저장하지 않은 내용이 있어요</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">저장하고 나가시겠어요?</p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={handleSaveAndLeave}
-                className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                저장하고 나가기
-              </button>
-              <button
-                onClick={() => {
-                  const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
-                  setPendingMemoId(null)
-                  setShowLeaveDialog(false)
-                  router.push(dest)
-                }}
-                className="w-full py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                그냥 나가기
-              </button>
-              <button
-                onClick={() => setShowLeaveDialog(false)}
-                className="w-full py-2 text-sm text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                취소
-              </button>
-            </div>
+        <Modal
+          onClose={() => setShowLeaveDialog(false)}
+          ariaLabel="저장하지 않은 내용이 있어요"
+          panelClassName="w-80 max-w-[92vw] p-6"
+        >
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">저장하지 않은 내용이 있어요</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">저장하고 나가시겠어요?</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleSaveAndLeave}
+              autoFocus
+              className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 cursor-pointer"
+            >
+              저장하고 나가기
+            </button>
+            <button
+              onClick={() => {
+                const dest = pendingMemoId ? `/memo/${pendingMemoId}` : '/memo'
+                setPendingMemoId(null)
+                setShowLeaveDialog(false)
+                router.push(dest)
+              }}
+              className="w-full py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 cursor-pointer"
+            >
+              그냥 나가기
+            </button>
+            <button
+              onClick={() => setShowLeaveDialog(false)}
+              className="w-full py-2 text-sm text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 cursor-pointer"
+            >
+              취소
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
+      <confirm.Render />
     </div>
   )
 }
