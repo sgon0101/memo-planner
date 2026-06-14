@@ -138,7 +138,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     <NodeViewWrapper
       ref={containerRef}
       as="div"
-      className="relative inline-block max-w-full my-0.5 align-middle"
+      className="relative inline-block max-w-full my-0 align-middle"
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}

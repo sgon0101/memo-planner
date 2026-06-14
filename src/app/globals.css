@@ -191,8 +191,8 @@ aside {
    :has 미지원 환경(구형 Safari)에서는 my-0.5(ResizableImageView)로 fallback. */
 .tiptap p:has(> div[data-node-view-wrapper]),
 .tiptap p:has(> img) {
-  margin-top: 0.125rem !important;
-  margin-bottom: 0.125rem !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
   line-height: 1;
 }
 
@@ -464,46 +464,4 @@ aside {
   .plan-block-just-dropped { animation: none; }
 }
 
-/* ===== Skeleton Loader ===== */
-@keyframes skeleton-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-.skeleton {
-  background: #E2E8F0;
-  border-radius: 6px;
-  animation: skeleton-pulse 1.5s ease-in-out infinite;
-}
-.dark .skeleton {
-  background: #334155;
-}
-
-/* ===== Toast / Alert ===== */
-.toast-enter {
-  transform: translateY(8px);
-  opacity: 0;
-}
-.toast-enter-active {
-  transform: translateY(0);
-  opacity: 1;
-  transition: transform 200ms ease-out, opacity 200ms ease-out;
-}
-
-@keyframes slideInLeft {
-  from { transform: translateX(-100%); opacity: 0; }
-  to   { transform: translateX(0);     opacity: 1; }
-}
-.animate-slide-in-left {
-  animation: slideInLeft 0.2s ease forwards;
-}
-
-
-/* PlanPanel 그립 — 첫 진입 시 살짝 위아래로 bounce해 스와이프 가능 affordance 전달 (모바일만) */
-@keyframes plan-panel-grip-bounce {
-  0%, 100% { transform: translateY(0); }
-  20%      { transform: translateY(-2px); }
-  40%      { transform: translateY(3px); }
-  60%      { transform: translateY(-1px); }
-  80%      { transform: translateY(1px); }
-}
-@media (max-width: 767px
+/* ===== Skeleton Lo
