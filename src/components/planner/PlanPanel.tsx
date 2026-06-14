@@ -79,11 +79,15 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       {/* 그립 핸들만 touch-action:none — X 버튼이 click 이벤트를 못 받는 버그 방지 */}
       <div
         ref={gripRef}
+        onClick={() => { if (dragY === 0) onClose() }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClose() } }}
+        role="button"
+        tabIndex={0}
         style={{ touchAction: 'none' }}
-        className="flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing select-none"
-        aria-label="패널 닫기 그립 — 아래로 밀어 닫기"
+        className="flex justify-center pt-2.5 pb-1.5 cursor-pointer md:cursor-grab active:cursor-grabbing select-none group"
+        aria-label="패널 닫기 (클릭 또는 아래로 밀기)"
       >
-        <div className="w-12 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 md:bg-gray-300 md:dark:bg-gray-600 md:opacity-30 md:hover:opacity-70 transition-opacity plan-panel-grip-bounce" />
+        <div className="w-12 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 md:bg-gray-300 md:dark:bg-gray-600 md:opacity-30 md:group-hover:opacity-90 group-hover:bg-gray-500 dark:group-hover:bg-gray-400 transition-all plan-panel-grip-bounce" />
       </div>
 
       {/* 헤더 — 모바일: 날짜 가운데, X 숨김 (스와이프-다운으로 닫음) / 데스크탑: 양쪽 정렬 + X */}
