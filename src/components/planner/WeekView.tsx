@@ -313,10 +313,30 @@ export default function WeekView({
     onNewPlan(dayStr)
   }
 
+  // 시간 그리드의 스크롤바 폭 측정 — 헤더/종일 행에 동일 폭 padding 적용해 컬럼 정렬
+  const [scrollbarWidth, setScrollbarWidth] = useState(0)
+  useEffect(() => {
+    function measure() {
+      if (!scrollRef.current) { setScrollbarWidth(0); return }
+      const el = scrollRef.current
+      const sw = el.offsetWidth - el.clientWidth
+      setScrollbarWidth(sw)
+    }
+    measure()
+    // 리사이즈 시 재측정 (스크롤바 표시/숨김 변화 대응)
+    const ro = new ResizeObserver(measure)
+    if (scrollRef.current) ro.observe(scrollRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 날짜 헤더 — scrollbar-gutter로 시간 그리드 스크롤바 폭만큼 우측 자리 확보 (컬럼 정렬) */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0" style={{ scrollbarGutter: 'stable' }}>
+      {/* 날짜 헤더 — 시간 그리드 스크롤바 폭만큼 우측 padding으로 컬럼 정렬 */}
+      <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0" style={{ paddingRight: scrollbarWidth }}>
         <div className="w-14 flex-shrink-0" />
         {days.map((day, i) => {
           const dayStr = format(day, 'yyyy-MM-dd')
@@ -350,7 +370,7 @@ export default function WeekView({
         const rangeSlotCount = rangePlans.reduce((m, r) => Math.max(m, r.slot + 1), 0)
         const rangeBarHeight = rangeSlotCount > 0 ? rangeSlotCount * 22 + 4 : 0
         return (
-          <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 min-h-8" style={{ scrollbarGutter: 'stable' }}>
+          <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 min-h-8" style={{ paddingRight: scrollbarWidth }}>
             <div className="w-14 flex-shrink-0 flex items-start justify-end pr-2 pt-1.5" style={{ paddingTop: `${Math.max(6, rangeBarHeight + 4)}px` }}>
               <span className="text-xs text-gray-400">종일</span>
             </div>
@@ -409,7 +429,7 @@ export default function WeekView({
       })()}
 
       {/* 시간 그리드 */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div ref={colsContainerRef} className="flex" style={{ height: `${24 * HOUR_H}px` }}>
           {/* 시간 레이블 */}
           <div className="w-14 flex-shrink-0 relative">
