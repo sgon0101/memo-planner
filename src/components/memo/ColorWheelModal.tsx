@@ -80,7 +80,7 @@ export default function ColorWheelModal({
             }}
             placeholder="폴더 이름"
             autoFocus
-            autoComplete="off"
+            autoComplete="new-password"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"

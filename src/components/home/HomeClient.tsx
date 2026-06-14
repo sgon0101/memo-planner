@@ -222,7 +222,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
-            autoComplete="off"
+            autoComplete="new-password"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"
