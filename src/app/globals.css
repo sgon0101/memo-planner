@@ -186,19 +186,54 @@ aside {
 }
 
 /* 다크모드 인라인 텍스트 색상 처리
-   ① background-color 없는 요소: 어떤 색이든 밝은 색으로 → 어두운 배경에서 가독성 확보
-   ② background-color 있는 요소(형광펜): 텍스트는 어둡게 강제 → 밝은 배경 위에서 가독성 확보
-   ③ strong/b: prose 플러그인이 인라인 style 없이 직접 dark color를 지정하므로 별도 처리 */
-.dark .tiptap [style*="color"]:not([style*="background-color"]) {
-  color: #F1F5F9 !important;
-}
+   ① 사용자가 명시적으로 선택한 글자색(setColor 결과)은 그대로 존중.
+      (기존엔 모든 inline color를 #F1F5F9로 덮어쓰는 안전망이 있었지만,
+       사용자가 다크모드에서 골라도 결과가 안 바뀌어 보이는 회귀를 유발 → 제거.)
+   ② background-color 있는 요소(형광펜): 텍스트는 어둡게 강제 → 밝은 형광색 배경 위 가독성 확보
+   ③ strong/b: prose 플러그인이 인라인 style 없이 직접 dark color를 지정하므로 별도 처리
+   ④ 빈 textStyle mark(storedMarks 잔재)만 prose 기본 색으로 fallback */
 .dark .tiptap [style*="background-color"] {
   color: #1E293B !important;
+}
+/* 빈 색 mark — storedMarks가 비어있는 textStyle로 입력된 경우 본문 색 사라지지 않게 */
+.tiptap [style="color: "],
+.tiptap [style="color:"],
+.dark .tiptap [style="color: "],
+.dark .tiptap [style="color:"] {
+  color: inherit !important;
 }
 /* prose strong/b는 인라인 style 없이 CSS 변수로 색이 지정되므로 inherit으로 부모 색 따름 */
 .dark .tiptap strong,
 .dark .tiptap b {
   color: inherit;
+}
+
+/* ===== 헤딩 안 inline color 안전망 =====
+   슬래시 메뉴/툴바 헤딩 변환 후 storedMarks 잔재로 H1~H6 안에 흰색·옅은색 textStyle
+   mark가 적용돼 흰 배경에서 텍스트가 안 보이는 케이스 차단.
+   헤딩에 직접 색을 적용하는 케이스는 거의 없어서, 헤딩 안의 inline color는
+   모두 prose 헤딩 색(부모 색)으로 강제 fallback.
+   background-color(형광펜)는 유지. */
+.tiptap h1 [style*="color"]:not([style*="background-color"]),
+.tiptap h2 [style*="color"]:not([style*="background-color"]),
+.tiptap h3 [style*="color"]:not([style*="background-color"]),
+.tiptap h4 [style*="color"]:not([style*="background-color"]),
+.tiptap h5 [style*="color"]:not([style*="background-color"]),
+.tiptap h6 [style*="color"]:not([style*="background-color"]) {
+  color: inherit !important;
+}
+.tiptap h1[style*="color"]:not([style*="background-color"]),
+.tiptap h2[style*="color"]:not([style*="background-color"]),
+.tiptap h3[style*="color"]:not([style*="background-color"]),
+.tiptap h4[style*="color"]:not([style*="background-color"]),
+.tiptap h5[style*="color"]:not([style*="background-color"]),
+.tiptap h6[style*="color"]:not([style*="background-color"]) {
+  color: inherit !important;
+}
+
+/* 라이트모드 빈 mark fallback은 위 통합 규칙에서 처리. style="" 빈 속성만 추가. */
+.tiptap [style=""] {
+  color: inherit !important;
 }
 
 .tiptap p.is-editor-empty:first-child::before {
@@ -448,72 +483,4 @@ aside {
   60%      { transform: translateY(-1px); }
   80%      { transform: translateY(1px); }
 }
-@media (max-width: 767px) {
-  .plan-panel-grip-bounce {
-    animation: plan-panel-grip-bounce 1.4s ease-out 0.15s 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .plan-panel-grip-bounce { animation: none; }
-}
-
-/* 메모 에디터 이미지 — 일관된 간격과 정렬 (NodeView 래퍼 my-3와 별도로 raw img 대비) */
-.tiptap img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-.tiptap .ProseMirror-selectednode img {
-  outline: 2px solid #7C3AED;
-}
-
-/* ===== 검색 매칭 <mark> — 다크모드 대응 ===== */
-mark, .tiptap mark {
-  background-color: #FEF3C7; /* amber-100 */
-  color: #78350F;            /* amber-900 */
-  padding: 0 2px;
-  border-radius: 2px;
-}
-.dark mark, .dark .tiptap mark {
-  background-color: rgba(252, 211, 77, 0.25); /* amber-300/25 */
-  color: #FDE68A;                              /* amber-200 */
-}
-
-/* ===== 공통 Modal 진입·퇴장 애니메이션 ===== */
-@keyframes modal-overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes modal-overlay-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-@keyframes modal-panel-in {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
-  to   { opacity: 1; transform: scale(1)    translateY(0);   }
-}
-@keyframes modal-panel-out {
-  from { opacity: 1; transform: scale(1)    translateY(0);   }
-  to   { opacity: 0; transform: scale(0.96) translateY(4px); }
-}
-@keyframes modal-sheet-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0);    }
-}
-@keyframes modal-sheet-out {
-  from { opacity: 1; transform: translateY(0);    }
-  to   { opacity: 0; transform: translateY(16px); }
-}
-.modal-overlay-enter { animation: modal-overlay-in 160ms ease-out; }
-.modal-overlay-exit  { animation: modal-overlay-out 140ms ease-in forwards; }
-.modal-panel-enter   { animation: modal-panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
-.modal-panel-exit    { animation: modal-panel-out 140ms ease-in forwards; }
-.modal-sheet-enter   { animation: modal-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
-.modal-sheet-exit    { animation: modal-sheet-out 160ms ease-in forwards; }
-@media (prefers-reduced-motion: reduce) {
-  .modal-overlay-enter, .modal-overlay-exit,
-  .modal-panel-enter, .modal-panel-exit,
-  .modal-sheet-enter, .modal-sheet-exit {
-    animation-duration: 0.01ms !important;
-  }
-}
+@media (max-width: 767px
