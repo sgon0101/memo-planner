@@ -6,7 +6,7 @@ import {
   Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks,
   Quote, Code2, Minus, Table as TableIcon, Image as ImageIcon,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import SlashCommandItem from './SlashCommandItem'
 
 interface Props {
   editor: Editor
@@ -25,35 +25,57 @@ interface Command {
   run: (editor: Editor, from: number, to: number) => void
 }
 
-// 블록 변환 직전 marks/storedMarks 클리어 (이전 텍스트색이 새 입력에 적용되는 버그 방지)
-function cleanChain(e: Editor, from: number, to: number) {
-  return e.chain().focus().deleteRange({ from, to }).unsetAllMarks()
+/**
+ * 블록 변환 직전·직후 marks/storedMarks 완전 클리어.
+ *
+ * 변환 "전" + "후" 두 번 클리어하는 이유:
+ *   - Tiptap 3.x의 setNode/toggleXxx가 변환 과정에서 storedMarks를 다시 채우는 케이스 관찰됨
+ *   - 그래서 변환 후에도 한 번 더 setStoredMarks(null) 강제
+ *
+ * unsetMark('textStyle')/('highlight')를 명시한 이유:
+ *   - 빈 selection에서 unsetAllMarks가 일부 mark를 안 떼는 케이스 대비
+ */
+function applyBlock(
+  e: Editor,
+  from: number,
+  to: number,
+  apply: (c: ReturnType<Editor['chain']>) => ReturnType<Editor['chain']>,
+) {
+  return apply(
+    e.chain().focus()
+      .deleteRange({ from, to })
+      .unsetMark('textStyle')
+      .unsetMark('highlight')
+      .unsetAllMarks()
+      .command(({ tr }) => { tr.setStoredMarks(null); return true }),
+  )
     .command(({ tr }) => { tr.setStoredMarks(null); return true })
+    .run()
 }
 
 const COMMANDS: Command[] = [
   { id: 'h1', label: '제목 1', keywords: ['h1', 'heading1', 'title', '제목', '큰제목'], icon: <Heading1 size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).setNode('heading', { level: 1 }).run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 1 })) },
   { id: 'h2', label: '제목 2', keywords: ['h2', 'heading2', '제목', '중제목'], icon: <Heading2 size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).setNode('heading', { level: 2 }).run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 2 })) },
   { id: 'h3', label: '제목 3', keywords: ['h3', 'heading3', '제목', '소제목'], icon: <Heading3 size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).setNode('heading', { level: 3 }).run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 3 })) },
   { id: 'paragraph', label: '본문', keywords: ['paragraph', 'text', 'p', '본문', '텍스트', '단락'], icon: <Pilcrow size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).setParagraph().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setParagraph()) },
   { id: 'bullet', label: '글머리표', keywords: ['bullet', 'list', 'ul', '글머리', '목록', '리스트'], icon: <List size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).toggleBulletList().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.toggleBulletList()) },
   { id: 'ordered', label: '번호 매기기', keywords: ['ordered', 'numbered', 'ol', '번호', '순서'], icon: <ListOrdered size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).toggleOrderedList().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.toggleOrderedList()) },
   { id: 'task', label: '체크리스트', keywords: ['task', 'todo', 'check', 'checkbox', '체크', '할일', '투두'], icon: <ListChecks size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).toggleTaskList().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.toggleTaskList()) },
   { id: 'quote', label: '인용', keywords: ['quote', 'blockquote', '인용'], icon: <Quote size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).toggleBlockquote().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.toggleBlockquote()) },
   { id: 'code', label: '코드 블록', keywords: ['code', 'codeblock', 'pre', '코드', '코드블록'], icon: <Code2 size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).toggleCodeBlock().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.toggleCodeBlock()) },
   { id: 'hr', label: '구분선', keywords: ['hr', 'divider', 'separator', 'rule', '구분', '구분선'], icon: <Minus size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).setHorizontalRule().run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setHorizontalRule()) },
   { id: 'table', label: '표 (3x3)', keywords: ['table', '표', '테이블'], icon: <TableIcon size={15} />,
-    run: (e, f, t) => cleanChain(e, f, t).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+    run: (e, f, t) => applyBlock(e, f, t, (c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })) },
 ]
 
 const IMAGE_TMPL: Omit<Command, 'run'> = {
@@ -71,6 +93,7 @@ export default function SlashCommand({ editor, query, position, triggerFrom, onI
 
   const all: Command[] = onImageUpload
     ? [...COMMANDS, { ...IMAGE_TMPL, run: (e, f, t) => {
+        // 이미지: 본문 변환이 아니라 파일 다이얼로그 — `/` 입력만 지움
         e.chain().focus().deleteRange({ from: f, to: t }).run()
         const input = document.createElement('input')
         input.type = 'file'; input.accept = 'image/*'
@@ -142,37 +165,17 @@ export default function SlashCommand({ editor, query, position, triggerFrom, onI
       className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 w-60 max-h-[360px] overflow-y-auto"
       style={styleProp}
     >
-      {filtered.map((cmd, i) => {
-        const sel = i === idx
-        return (
-          <button
-            key={cmd.id}
-            ref={(el) => { itemRefs.current[i] = el }}
-            role="option"
-            aria-selected={sel}
-            onMouseEnter={() => setIdx(i)}
-            onMouseDown={(e) => { e.preventDefault(); setIdx(i); commit() }}
-            className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors cursor-pointer',
-              sel
-                ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50',
-            )}
-          >
-            <span
-              className={cn(
-                'flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md border border-gray-200 dark:border-gray-700',
-                sel
-                  ? 'bg-white dark:bg-gray-800 text-violet-600 dark:text-violet-400'
-                  : 'text-gray-500 dark:text-gray-400',
-              )}
-            >
-              {cmd.icon}
-            </span>
-            <span className="flex-1 truncate">{cmd.label}</span>
-          </button>
-        )
-      })}
+      {filtered.map((cmd, i) => (
+        <SlashCommandItem
+          key={cmd.id}
+          selected={i === idx}
+          label={cmd.label}
+          icon={cmd.icon}
+          itemRef={(el) => { itemRefs.current[i] = el }}
+          onMouseEnter={() => setIdx(i)}
+          onSelect={() => { setIdx(i); commit() }}
+        />
+      ))}
     </div>
   )
 }
