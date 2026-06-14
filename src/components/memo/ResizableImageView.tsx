@@ -2,7 +2,6 @@
 
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { useState, useRef, useEffect } from 'react'
-import { useUIStore } from '@/store/uiStore'
 
 const PRESETS = [
   { label: '소', value: '25%' },
@@ -42,7 +41,6 @@ function pickSrc(
  *  - 모바일에서 핸들 크기 24px, 툴바 위치는 top 잘림 방지
  */
 export function ResizableImageView({ node, updateAttributes, editor, getPos, selected }: NodeViewProps) {
-  const openLightbox = useUIStore((s) => s.openLightbox)
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
   const [activeSrc, setActiveSrc] = useState(node.attrs.src as string)
   const [toolbarBelow, setToolbarBelow] = useState(false)
@@ -92,11 +90,6 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     e.preventDefault()
     e.stopPropagation()
     if (!editor) return
-    // 이미 선택된 상태에서 다시 클릭하면 라이트박스 — 첫 클릭은 select(리사이즈 핸들 노출)
-    if (selected) {
-      openLightbox(node.attrs.src as string)
-      return
-    }
     const pos = typeof getPos === 'function' ? getPos() : null
     if (typeof pos === 'number') {
       editor.commands.setNodeSelection(pos)
@@ -154,11 +147,6 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
         const target = e.target as HTMLElement
         if (target.closest('button') || target.dataset.resizeHandle === '1') return
         e.preventDefault()
-        // 이미 선택된 상태에서 다시 탭 → 라이트박스
-        if (selected) {
-          openLightbox(node.attrs.src as string)
-          return
-        }
         const pos = typeof getPos === 'function' ? getPos() : null
         if (typeof pos === 'number') {
           editor.commands.setNodeSelection(pos)
@@ -221,17 +209,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
               // eslint-disable-next-line react-hooks/refs -- 리사이즈 실측 표시 (widthAttr 변경마다 리렌더되므로 최신값 보장)
               <span className="text-[10px] text-gray-400 ml-1 whitespace-nowrap">{displaySize()}</span>
             )}
-            {/* 라이트박스 — 풀스크린 확대 보기 */}
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => { e.stopPropagation(); openLightbox(node.attrs.src as string) }}
-              className="text-[10px] text-white px-1.5 py-0.5 rounded hover:bg-white/20 active:bg-white/30 transition-colors whitespace-nowrap touch-manipulation ml-1"
-              aria-label="이미지 확대 보기"
-              title="확대 보기"
-            >
-              확대
-            </button>
+
           </div>
         </>
       )}
