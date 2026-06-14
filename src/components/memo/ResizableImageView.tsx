@@ -47,6 +47,8 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
   const imgRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const startRef = useRef({ x: 0, initW: 0 })
+  // 모바일 탭/스크롤 판별 — touchstart 좌표 기록, touchend에서 거리 비교
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const widthAttr = node.attrs.width as string | null
   const srcFull = node.attrs.src as string
@@ -140,12 +142,29 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
-      // 모바일 터치 폴백 — onClick 합성 실패 케이스 대비
+      // 모바일 터치 폴백 — onClick 합성 실패 케이스 대비.
+      // touchstart 좌표 기록 → touchend에서 이동 거리 ≤ 10px만 tap으로 판정.
+      // 스크롤(swipe)은 무시되어, 화면을 내릴 때 이미지가 자동 선택되던 UX 이슈 해결.
+      onTouchStart={(e: React.TouchEvent) => {
+        const t = e.touches[0]
+        if (t) touchStartRef.current = { x: t.clientX, y: t.clientY }
+      }}
       onTouchEnd={(e: React.TouchEvent) => {
         if (!editor) return
         // 리사이즈 핸들/툴바 위 탭은 무시
         const target = e.target as HTMLElement
         if (target.closest('button') || target.dataset.resizeHandle === '1') return
+
+        // ★ tap vs scroll 판별
+        const start = touchStartRef.current
+        touchStartRef.current = null
+        const end = e.changedTouches[0]
+        if (start && end) {
+          const dx = Math.abs(end.clientX - start.x)
+          const dy = Math.abs(end.clientY - start.y)
+          if (dx > 10 || dy > 10) return  // 스크롤·스와이프 — 선택 차단
+        }
+
         e.preventDefault()
         const pos = typeof getPos === 'function' ? getPos() : null
         if (typeof pos === 'number') {
