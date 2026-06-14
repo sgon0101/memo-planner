@@ -185,6 +185,17 @@ aside {
   margin-top: 1em !important;
 }
 
+/* ===== 이미지 간격 — 텍스트 행간 수준으로 축소 =====
+   이미지만 가진 paragraph(<p><img/></p>)는 위·아래 여백을 거의 0으로 두어,
+   이미지 여러 장 연속 첨부 시 한 줄 이상 공백이 생기던 문제를 해결.
+   :has 미지원 환경(구형 Safari)에서는 my-0.5(ResizableImageView)로 fallback. */
+.tiptap p:has(> div[data-node-view-wrapper]),
+.tiptap p:has(> img) {
+  margin-top: 0.125rem !important;
+  margin-bottom: 0.125rem !important;
+  line-height: 1;
+}
+
 /* 다크모드 인라인 텍스트 색상 처리
    ① 사용자가 명시적으로 선택한 글자색(setColor 결과)은 그대로 존중.
       (기존엔 모든 inline color를 #F1F5F9로 덮어쓰는 안전망이 있었지만,
