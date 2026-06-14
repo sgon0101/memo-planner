@@ -5,6 +5,7 @@ import { RefreshCw, Edit2, Check, X, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { toast } from '@/components/ui/Toast'
 
 interface Profile {
   id: string
@@ -55,9 +56,10 @@ export default function UserProfile() {
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
+        toast.success('프로필 분석이 완료됐어요.')
       } else {
-        const { error } = await res.json()
-        alert(error ?? '분석 실패')
+        const { error } = await res.json().catch(() => ({ error: null }))
+        toast.error(error ?? '분석에 실패했어요.')
       }
     } finally {
       setAnalyzing(false)

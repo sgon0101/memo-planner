@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect, forwardRef } from 'react'
 import { createPortal } from 'react-dom'
 import { type Editor } from '@tiptap/react'
 import {
@@ -12,6 +12,7 @@ import {
   Undo2, Redo2, ChevronDown, MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import LinkInputPopover from './LinkInputPopover'
 
 interface ToolbarProps {
   editor: Editor
@@ -137,17 +138,16 @@ function PortalDropdown({
   )
 }
 
-function ToolBtn({
-  onClick, active, disabled, title, children,
-}: {
+const ToolBtn = forwardRef<HTMLButtonElement, {
   onClick: () => void
   active?: boolean
   disabled?: boolean
   title: string
   children: React.ReactNode
-}) {
+}>(function ToolBtn({ onClick, active, disabled, title, children }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       onMouseDown={(e) => { e.preventDefault(); onClick() }}
       disabled={disabled}
@@ -163,7 +163,7 @@ function ToolBtn({
       {children}
     </button>
   )
-}
+})
 
 function Divider() {
   return <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5 flex-shrink-0" />
@@ -657,16 +657,24 @@ function MoreMenu({ editor }: { editor: Editor }) {
 export default function EditorToolbar({ editor }: ToolbarProps) {
   const [imageUploading, setImageUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const linkBtnRef = useRef<HTMLButtonElement>(null)
+  const [linkPopover, setLinkPopover] = useState<{ rect: DOMRect; initial: string; has: boolean } | null>(null)
 
-  function setLink() {
-    const prev = editor.getAttributes('link').href as string | undefined
-    const url = window.prompt('링크 URL을 입력하세요', prev ?? 'https://')
-    if (url === null) return
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run()
-    } else {
-      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
-    }
+  function openLinkPopover() {
+    const btn = linkBtnRef.current
+    if (!btn) return
+    const prev = (editor.getAttributes('link').href as string | undefined) ?? ''
+    setLinkPopover({
+      rect: btn.getBoundingClientRect(),
+      initial: prev,
+      has: !!prev,
+    })
+  }
+  function applyLink(url: string) {
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+  }
+  function removeLink() {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run()
   }
 
   async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -800,9 +808,19 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
       <Divider />
 
       {/* 링크 — 공통 */}
-      <ToolBtn onClick={setLink} active={editor.isActive('link')} title="링크">
+      <ToolBtn ref={linkBtnRef} onClick={openLinkPopover} active={editor.isActive('link')} title="링크">
         <Link2 size={14} />
       </ToolBtn>
+      {linkPopover && (
+        <LinkInputPopover
+          anchorRect={linkPopover.rect}
+          initialUrl={linkPopover.initial}
+          hasExistingLink={linkPopover.has}
+          onApply={applyLink}
+          onRemove={removeLink}
+          onClose={() => setLinkPopover(null)}
+        />
+      )}
 
       {/* 이미지 — 공통 */}
       <ToolBtn onClick={() => fileInputRef.current?.click()} disabled={imageUploading} title="이미지 삽입">

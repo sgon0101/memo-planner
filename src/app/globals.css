@@ -393,6 +393,19 @@ aside {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
+/* 드롭 후 새 위치 violet pulse — 어디로 옮겨졌는지 시각적 잔상 */
+@keyframes plan-drop-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.45), 0 2px 8px rgba(0, 0, 0, 0.12); }
+  60%  { box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.10), 0 2px 8px rgba(0, 0, 0, 0.12); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0), 0 2px 8px rgba(0, 0, 0, 0.12); }
+}
+.plan-block-just-dropped {
+  animation: plan-drop-pulse 700ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-block-just-dropped { animation: none; }
+}
+
 /* ===== Skeleton Loader ===== */
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 1; }

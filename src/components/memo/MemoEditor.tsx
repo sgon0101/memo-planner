@@ -1093,6 +1093,18 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         />
       )}
 
+      {/* 슬래시 명령 */}
+      {slashQuery !== null && editor && (
+        <SlashCommand
+          editor={editor}
+          query={slashQuery}
+          position={slashPos}
+          triggerFrom={slashFrom}
+          onImageUpload={handleImageUpload}
+          onClose={() => setSlashQuery(null)}
+        />
+      )}
+
       {showLeaveDialog && (
         <Modal
           onClose={() => setShowLeaveDialog(false)}
