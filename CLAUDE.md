@@ -647,6 +647,52 @@ UPDATE memos SET title = title;
 
 ---
 
+## 배포 전 필수 체크리스트 (재발 방지)
+
+Vercel 빌드 실패는 대부분 다음 두 가지 손상 패턴이다. dev push 전에 **반드시** 확인:
+
+### 1. 파일 null byte 검사 (CSS 손상 = 빌드 실패)
+```bash
+# 모든 추적 파일에서 null byte 검출 — 발견 시 즉시 fix
+git ls-files | xargs -I{} sh -c 'grep -lq $"\x00" "{}" 2>/dev/null && echo "NULL: {}"'
+
+# 또는 globals.css만 빠르게
+python -c "print('nulls:', open('src/app/globals.css','rb').read().count(b'\x00'))"
+```
+- 발견 시 `python -c "import sys; sys.stdout.buffer.write(open('FILE','rb').read().replace(b'\x00',b''))" > FILE.clean && mv FILE.clean FILE`
+- 가장 자주 손상되는 파일: `src/app/globals.css`, `src/components/memo/MemoEditor.tsx`, `EditorToolbar.tsx`, `MemoList.tsx`, `ResizableImageView.tsx`
+
+### 2. 파일 끝 잘림 검사
+```bash
+# CSS는 닫는 } 가 있어야 정상
+tail -3 src/app/globals.css
+# tsx는 마지막에 } 또는 ) 또는 ;로 끝나야 정상
+for f in $(git ls-files '*.tsx'); do
+  tail -1 "$f" | grep -qE '[}\)\;]\s*$' || echo "TRUNCATED: $f"
+done
+```
+
+### 3. tsc + next build 둘 다 검증
+- `npx tsc --noEmit` 통과 = 타입만 OK (필요조건)
+- `npm run build` 통과 = 진짜 빌드 OK (충분조건)
+- tsc만 보고 push하면 CSS·SSR·Server Component 에러를 놓침
+
+### 4. CSS modern feature는 보수적으로
+- `:has()` 셀렉터는 Vercel CSS 파이프라인(lightningcss 등 환경에 따라)에서 빌드 실패 가능 → JS 레벨로 처리하거나 fallback 클래스로 대체
+
+### 5. 큰 파일 편집 시 손상 방지 패턴
+500줄 이상 파일을 수정할 때는 **반드시** python 스크립트로:
+```python
+import subprocess
+base = subprocess.run(['git','show','HEAD:PATH'], capture_output=True, text=True).stdout
+new = base.replace(OLD, NEW)
+assert '\x00' not in new
+with open('PATH','wb') as f: f.write(new.encode('utf-8'))
+```
+Edit/Write 도구로 큰 파일(MemoEditor·EditorToolbar·MemoList·globals.css)을 직접 수정하면 끝부분이 잘리거나 null byte가 섞이는 패턴이 반복됨.
+
+---
+
 ## Git 전략
 
 ### 레포지토리
