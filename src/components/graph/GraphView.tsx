@@ -1175,7 +1175,15 @@ export default function GraphView() {
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40" />
               <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh] outline-none">
-                <div className="flex-shrink-0 mx-auto w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mt-3 mb-2" />
+                {/* 그립 핸들 — 클릭 시 닫힘 */}
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(false)}
+                  aria-label="설정 패널 닫기"
+                  className="flex-shrink-0 mx-auto flex items-center justify-center py-2 px-6 -mb-1 mt-2 cursor-pointer group"
+                >
+                  <span className="block w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full group-hover:bg-gray-400 dark:group-hover:bg-gray-500 transition-colors" />
+                </button>
                 <Drawer.Title className="sr-only">그래프 설정</Drawer.Title>
                 <div className="flex-1 overflow-y-auto pb-safe">
                   <GraphSettings onReset={() => { handleReset(); setShowSettings(false) }} />
@@ -1198,7 +1206,18 @@ export default function GraphView() {
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40" />
               <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[60vh] outline-none">
-                <div className="flex-shrink-0 mx-auto w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mt-3 mb-2" />
+                {/* 그립 핸들 — 클릭 시 닫힘 (모바일 swipe-down + PC 클릭 모두 대응) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTagDrawerOpen(false)
+                    setSelectedTagPanel(null)
+                  }}
+                  aria-label="패널 닫기"
+                  className="flex-shrink-0 mx-auto flex items-center justify-center py-2 px-6 -mb-1 mt-2 cursor-pointer group"
+                >
+                  <span className="block w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full group-hover:bg-gray-400 dark:group-hover:bg-gray-500 transition-colors" />
+                </button>
                 {selectedTagPanel && (
                   <>
                     <Drawer.Title asChild>
