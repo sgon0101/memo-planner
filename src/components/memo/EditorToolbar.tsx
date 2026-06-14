@@ -192,7 +192,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
   const [customColor, setCustomColor] = useState('#000000')
   const btnRef = useRef<HTMLButtonElement>(null)
 
-  const currentColor = (editor.getAttributes('textStyle').color as string | undefined) ?? '#000000'
+  const currentColor = (editor.getAttributes('textStyle').color as string | undefined) ?? null
 
   return (
     <>
@@ -205,7 +205,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         className="flex flex-col items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 leading-none">A</span>
-        <span className="w-4 h-1 rounded-sm mt-0.5" style={{ background: currentColor }} />
+        <span className="w-4 h-1 rounded-sm mt-0.5" style={{ background: currentColor ?? 'currentColor' }} />
       </button>
       <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-3 w-64">
         <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">기본 색상</p>
@@ -220,7 +220,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
               }}
               className={cn(
                 'w-full aspect-square rounded-lg border-2 transition-all hover:scale-105 active:scale-95',
-                currentColor.toLowerCase() === c.toLowerCase()
+                currentColor && currentColor.toLowerCase() === c.toLowerCase()
                   ? 'border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700'
                   : 'border-gray-200 dark:border-gray-700',
               )}

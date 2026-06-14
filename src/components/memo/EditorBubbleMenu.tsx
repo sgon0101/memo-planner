@@ -184,7 +184,10 @@ export default function EditorBubbleMenu({ editor }: Props) {
           <BMBtn onClick={() => setMode('color')} title="글자색">
             <span className="flex items-center gap-0.5">
               <span className="text-xs font-bold text-white">A</span>
-              <span className="w-2.5 h-1 rounded-sm bg-violet-400" />
+              <span
+                className="w-2.5 h-1 rounded-sm"
+                style={{ background: (editor.getAttributes('textStyle').color as string | undefined) ?? 'currentColor' }}
+              />
               <ChevronDown size={10} className="text-gray-400" />
             </span>
           </BMBtn>
