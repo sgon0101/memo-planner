@@ -62,6 +62,11 @@
   --z-modal:    100;
   --z-toast:    300;
   --z-tooltip:  310;
+
+  /* Sidebar 너비 — Sidebar.tsx에서 사용 (md:w-* 하드코딩 제거용) */
+  --sidebar-w-collapsed: 56px;  /* w-14 */
+  --sidebar-w-expanded:  224px; /* w-56 */
+  --sidebar-w-mobile:    256px; /* w-64, max-w-[85vw]는 인라인 유지 */
 }
 
 /* ===== Base ===== */
@@ -85,7 +90,7 @@ html {
 body {
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.7;
+  line-height: 1.75;
   color: #1E293B;
   background-color: #FAFAFA;
   -webkit-font-smoothing: antialiased;
@@ -447,4 +452,55 @@ aside {
 }
 .tiptap .ProseMirror-selectednode img {
   outline: 2px solid #7C3AED;
+}
+
+/* ===== 검색 매칭 <mark> — 다크모드 대응 ===== */
+mark, .tiptap mark {
+  background-color: #FEF3C7; /* amber-100 */
+  color: #78350F;            /* amber-900 */
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.dark mark, .dark .tiptap mark {
+  background-color: rgba(252, 211, 77, 0.25); /* amber-300/25 */
+  color: #FDE68A;                              /* amber-200 */
+}
+
+/* ===== 공통 Modal 진입·퇴장 애니메이션 ===== */
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+@keyframes modal-panel-out {
+  from { opacity: 1; transform: scale(1)    translateY(0);   }
+  to   { opacity: 0; transform: scale(0.96) translateY(4px); }
+}
+@keyframes modal-sheet-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes modal-sheet-out {
+  from { opacity: 1; transform: translateY(0);    }
+  to   { opacity: 0; transform: translateY(16px); }
+}
+.modal-overlay-enter { animation: modal-overlay-in 160ms ease-out; }
+.modal-overlay-exit  { animation: modal-overlay-out 140ms ease-in forwards; }
+.modal-panel-enter   { animation: modal-panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.modal-panel-exit    { animation: modal-panel-out 140ms ease-in forwards; }
+.modal-sheet-enter   { animation: modal-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.modal-sheet-exit    { animation: modal-sheet-out 160ms ease-in forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay-enter, .modal-overlay-exit,
+  .modal-panel-enter, .modal-panel-exit,
+  .modal-sheet-enter, .modal-sheet-exit {
+    animation-duration: 0.01ms !important;
+  }
 }

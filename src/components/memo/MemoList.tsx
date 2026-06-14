@@ -18,6 +18,7 @@ import { MemoListSkeleton } from '@/components/ui/Skeleton'
 import MemoCard from './MemoCard'
 import ColorWheelModal from './ColorWheelModal'
 import TimelineFilter from './TimelineFilter'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 
 const PAGE_SIZE = 20
 
@@ -55,6 +56,7 @@ export default function MemoList() {
   const [editValue, setEditValue] = useState('')
   const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
+  const confirm = useConfirm()
 
   // 모바일 폴더 touch DnD 상태
   const [touchDragId, setTouchDragId] = useState<string | null>(null)
@@ -545,12 +547,19 @@ export default function MemoList() {
       .eq('folder_id', id)
       .eq('is_deleted', false)
     const folderName = folders.find((f) => f.id === id)?.name ?? '폴더'
-    const msg = count && count > 0
-      ? `"${folderName}" 폴더를 삭제하면\n안에 있는 메모 ${count}개도 휴지통으로 이동해요.\n\n계속하시겠어요?`
-      : `"${folderName}" 폴더를 삭제할까요?`
-    if (!confirm(msg)) return
-    await removeFolder(id).catch(console.error)
-    if (selectedFolderId === id) selectFolder(null)
+    const hasMemos = !!count && count > 0
+    confirm.open({
+      title: `"${folderName}" 폴더를 삭제할까요?`,
+      description: hasMemos
+        ? `안에 있는 메모 ${count}개도 함께 휴지통으로 이동돼요.`
+        : '폴더만 삭제됩니다.',
+      variant: 'danger',
+      confirmLabel: '삭제',
+      onConfirm: async () => {
+        await removeFolder(id).catch(console.error)
+        if (selectedFolderId === id) selectFolder(null)
+      },
+    })
   }
 
   async function handleBulkRestore() {
@@ -560,11 +569,17 @@ export default function MemoList() {
     setSelectedTrashIds(new Set())
   }
 
-  async function handleRestoreAll() {
+  function handleRestoreAll() {
     if (memos.length === 0) return
-    if (!confirm(`휴지통의 메모 ${memos.length}개를 모두 복원할까요?`)) return
-    await bulkRestore(memos.map((m) => m.id)).catch(console.error)
-    setSelectedTrashIds(new Set())
+    confirm.open({
+      title: `메모 ${memos.length}개를 모두 복원할까요?`,
+      description: '휴지통에 있던 모든 메모가 원래 폴더로 돌아갑니다.',
+      confirmLabel: '전체 복원',
+      onConfirm: async () => {
+        await bulkRestore(memos.map((m) => m.id)).catch(console.error)
+        setSelectedTrashIds(new Set())
+      },
+    })
   }
 
   const cardActions = {
@@ -840,8 +855,13 @@ export default function MemoList() {
             <button
               onClick={() => {
                 if (memos.length === 0) return
-                if (confirm(`휴지통을 비울까요? ${memos.length}개의 메모가 영구 삭제됩니다.`))
-                  emptyTrash().catch(console.error)
+                confirm.open({
+                  title: '휴지통을 비울까요?',
+                  description: `${memos.length}개의 메모가 영구 삭제돼요. 복구할 수 없어요.`,
+                  variant: 'danger',
+                  confirmLabel: '휴지통 비우기',
+                  onConfirm: async () => { await emptyTrash().catch(console.error) },
+                })
               }}
               disabled={memos.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors disabled:opacity-40"
@@ -1206,6 +1226,7 @@ export default function MemoList() {
           onClose={() => setShowNewFolderModal(false)}
         />
       )}
+      <confirm.Render />
     </div>
   )
 }

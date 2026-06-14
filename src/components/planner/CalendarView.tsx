@@ -19,6 +19,7 @@ import PlanPanel from './PlanPanel'
 import PlanFormModal from './PlanFormModal'
 import WeekView from './WeekView'
 import DayView from './DayView'
+import { toast } from '@/components/ui/Toast'
 import type { Plan } from '@/types'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -89,14 +90,18 @@ export default function CalendarView() {
       const json = await res.json()
       if (!res.ok) {
         if (json.error === 'Google Calendar not connected') {
-          window.location.href = '/api/calendar/auth'
+          toast.info('Google Calendar 연결이 필요해요. 잠시 후 인증 페이지로 이동해요.')
+          // 사용자가 토스트를 확인할 수 있도록 600ms 대기 후 이동
+          window.setTimeout(() => { window.location.href = '/api/calendar/auth' }, 600)
+        } else {
+          toast.error('동기화 중 오류가 발생했습니다.')
         }
         return
       }
       await load()
-      alert(`Google Calendar 동기화 완료 (${json.synced}개 추가)`)
+      toast.success(`Google Calendar 동기화 완료 (${json.synced}개 추가)`)
     } catch {
-      alert('동기화 중 오류가 발생했습니다.')
+      toast.error('동기화 중 오류가 발생했습니다.')
     } finally {
       setSyncing(false)
     }

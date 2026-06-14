@@ -11,6 +11,7 @@ import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
 import { describeRRule } from '@/lib/planner/rrulePresets'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 import type { Plan } from '@/types'
 
 interface PlanDetailPanelProps {
@@ -33,6 +34,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
   const [showDeleteMenu, setShowDeleteMenu] = useState(false)
   const [tplSaveState, setTplSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const supabase = createClient()
+  const confirm = useConfirm()
 
   /** 현재 플랜을 새 템플릿으로 저장 — 색/시간/반복/알림/설명 모두 복사 */
   async function saveAsTemplate() {
@@ -89,10 +91,16 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
     if (plan.isRecurringInstance) {
       setShowDeleteMenu(true)
     } else {
-      if (confirm('플랜을 삭제할까요?')) {
-        removePlan(plan.id).catch(console.error)
-        onClose()
-      }
+      confirm.open({
+        title: '플랜을 삭제할까요?',
+        description: '삭제한 플랜은 되돌릴 수 없어요.',
+        variant: 'danger',
+        confirmLabel: '삭제',
+        onConfirm: async () => {
+          await removePlan(plan.id)
+          onClose()
+        },
+      })
     }
   }
 
@@ -306,6 +314,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
           </div>
         )}
       </div>
+      <confirm.Render />
     </div>
   )
 }

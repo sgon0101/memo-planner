@@ -5,6 +5,7 @@ import { X, RotateCcw, Trash2, Clock } from 'lucide-react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useVersions } from '@/hooks/useVersions'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 import type { MemoVersion } from '@/types'
 
 interface VersionHistoryProps {
@@ -15,6 +16,7 @@ interface VersionHistoryProps {
 
 export default function VersionHistory({ memoId, onRestore, onClose }: VersionHistoryProps) {
   const { versions, load, deleteVersion } = useVersions(memoId)
+  const confirm = useConfirm()
 
   useEffect(() => { load() }, [load])
 
@@ -61,11 +63,15 @@ export default function VersionHistory({ memoId, onRestore, onClose }: VersionHi
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                   <button
                     onClick={() => {
-                      if (confirm('이 버전으로 복원할까요? 현재 내용은 새 버전으로 저장됩니다.')) {
-                        onRestore(ver)
-                      }
+                      confirm.open({
+                        title: '이 버전으로 복원할까요?',
+                        description: '현재 작성 중인 내용은 새 버전으로 자동 저장돼요.',
+                        confirmLabel: '복원',
+                        onConfirm: () => onRestore(ver),
+                      })
                     }}
                     title="이 버전으로 복원"
+                    aria-label="이 버전으로 복원"
                     className="p-1 rounded hover:bg-violet-100 dark:hover:bg-violet-900/30 text-violet-500 transition-colors"
                   >
                     <RotateCcw size={13} />
@@ -87,6 +93,7 @@ export default function VersionHistory({ memoId, onRestore, onClose }: VersionHi
       <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
         <p className="text-xs text-gray-400 text-center">최대 {versions.length}/20 버전 보관</p>
       </div>
+      <confirm.Render />
     </div>
   )
 }

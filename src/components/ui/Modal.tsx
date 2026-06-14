@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,10 @@ import { cn } from '@/lib/utils'
  *
  * portal로 body에 직접 마운트 → 부모의 overflow/transform에 의한 잘림(clipping) 원천 차단.
  * z-index는 globals.css의 --z-modal 토큰 사용.
+ *
+ * 2026-06-12 보강:
+ * - 진입/퇴장 애니메이션 (modal-overlay-*, modal-panel-*, modal-sheet-*) — globals.css
+ * - dirty prop — 진입 폼이 수정됐을 때 backdrop 클릭/Escape 시 confirm 다이얼로그
  */
 
 const FOCUSABLE_SELECTOR =
@@ -36,6 +40,10 @@ interface ModalProps {
   sheetOnMobile?: boolean
   /** 오버레이 추가 클래스 */
   overlayClassName?: string
+  /** 입력이 변경된 상태 — 닫기 시 사용자에게 확인 */
+  dirty?: boolean
+  /** dirty 시 사용자에게 보일 확인 메시지 */
+  dirtyConfirmMessage?: string
 }
 
 export default function Modal({
@@ -47,9 +55,12 @@ export default function Modal({
   closeOnEscape = true,
   sheetOnMobile = false,
   overlayClassName,
+  dirty = false,
+  dirtyConfirmMessage = '작성한 내용을 버릴까요?',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const [closing, setClosing] = useState(false)
 
   // 최신 콜백/옵션을 ref로 참조 — effect를 mount 1회로 고정하기 위함.
   // ★ onClose가 inline 함수면 부모 재렌더마다 identity가 바뀌는데,
@@ -58,10 +69,27 @@ export default function Modal({
   //   (키보드 오픈 → viewport 리사이즈 → 부모 재렌더 → effect 재실행 → blur → ...).
   const onCloseRef = useRef(onClose)
   const closeOnEscapeRef = useRef(closeOnEscape)
+  const dirtyRef = useRef(dirty)
+  const dirtyMsgRef = useRef(dirtyConfirmMessage)
   useLayoutEffect(() => {
     onCloseRef.current = onClose
     closeOnEscapeRef.current = closeOnEscape
+    dirtyRef.current = dirty
+    dirtyMsgRef.current = dirtyConfirmMessage
   })
+
+  // dirty 가드 + 퇴장 애니메이션 트리거 — 외부에서 onClose 부르기 전에 확인
+  // ※ window.confirm은 잠시 유지 (Modal 안에서 또 Modal 띄우면 z-index 충돌·포커스 트랩 충돌).
+  //   추후 토스트 undo 패턴으로 교체 가능.
+  function attemptClose() {
+    if (dirtyRef.current) {
+      const ok = window.confirm(dirtyMsgRef.current)
+      if (!ok) return
+    }
+    setClosing(true)
+    // 퇴장 애니메이션 길이만큼 기다리고 실제 onClose
+    window.setTimeout(() => onCloseRef.current(), 140)
+  }
 
   // 포커스 트랩 + Escape + 포커스 복원 — mount/unmount 시에만 실행
   useEffect(() => {
@@ -79,7 +107,7 @@ export default function Modal({
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape' && closeOnEscapeRef.current) {
         e.stopPropagation()
-        onCloseRef.current()
+        attemptClose()
         return
       }
       if (e.key !== 'Tab') return
@@ -108,6 +136,7 @@ export default function Modal({
       document.body.style.overflow = prevOverflow
       restoreFocusRef.current?.focus?.()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 콜백은 ref로 참조 — mount 1회 고정
 
   if (typeof document === 'undefined') return null
@@ -117,10 +146,11 @@ export default function Modal({
       className={cn(
         'fixed inset-0 flex justify-center bg-black/40',
         sheetOnMobile ? 'items-end sm:items-center' : 'items-center p-4',
+        closing ? 'modal-overlay-exit' : 'modal-overlay-enter',
         overlayClassName,
       )}
       style={{ zIndex: 'var(--z-modal)' as unknown as number }}
-      onClick={closeOnBackdrop ? onClose : undefined}
+      onClick={closeOnBackdrop ? attemptClose : undefined}
     >
       <div
         ref={panelRef}
@@ -128,7 +158,14 @@ export default function Modal({
         aria-modal="true"
         aria-label={ariaLabel}
         onClick={(e) => e.stopPropagation()}
-        className={cn('bg-white dark:bg-gray-900 rounded-2xl shadow-xl', panelClassName)}
+        className={cn(
+          'bg-white dark:bg-gray-900 rounded-2xl shadow-xl',
+          // 모바일 시트는 별도 애니메이션(slide-up), 데스크탑 중앙은 fade+scale
+          sheetOnMobile
+            ? closing ? 'modal-sheet-exit sm:modal-panel-exit' : 'modal-sheet-enter sm:modal-panel-enter'
+            : closing ? 'modal-panel-exit' : 'modal-panel-enter',
+          panelClassName,
+        )}
       >
         {children}
       </div>

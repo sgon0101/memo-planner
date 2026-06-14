@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 import { highlight, getSnippet, matchesQuery } from '@/lib/memos/highlight'
 import type { Memo } from '@/types'
 
@@ -395,6 +396,7 @@ function CardMenu({
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
   const [menuCoords, setMenuCoords] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
+  const confirm = useConfirm()
 
   function handleToggle(e: React.MouseEvent) {
     e.stopPropagation()
@@ -443,7 +445,13 @@ function CardMenu({
                   danger
                   onClick={() => {
                     setOpen(false)
-                    if (confirm('영구 삭제하면 복구할 수 없습니다. 삭제할까요?')) onPermanentDelete(memo.id)
+                    confirm.open({
+                      title: '영구 삭제할까요?',
+                      description: '영구 삭제한 메모는 복구할 수 없어요.',
+                      variant: 'danger',
+                      confirmLabel: '영구 삭제',
+                      onConfirm: () => onPermanentDelete(memo.id),
+                    })
                   }}
                 />
               </>
@@ -460,12 +468,22 @@ function CardMenu({
                   <MenuItem icon={<FolderInput size={13} />} label="폴더 이동" onClick={() => { setOpen(false); onMoveToFolderClick() }} />
                 )}
                 <hr className="my-1 border-gray-100 dark:border-gray-700" />
-                <MenuItem icon={<Trash2 size={13} />} label="삭제" danger onClick={() => { setOpen(false); if (confirm('메모를 삭제할까요?')) onDelete(memo.id) }} />
+                <MenuItem icon={<Trash2 size={13} />} label="삭제" danger onClick={() => {
+                  setOpen(false)
+                  confirm.open({
+                    title: '메모를 휴지통으로 옮길까요?',
+                    description: '7일 후 자동으로 영구 삭제됩니다.',
+                    variant: 'danger',
+                    confirmLabel: '휴지통으로',
+                    onConfirm: () => onDelete(memo.id),
+                  })
+                }} />
               </>
             )}
           </div>
         </>
       )}
+      <confirm.Render />
     </div>
   )
 }

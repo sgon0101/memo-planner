@@ -5,6 +5,7 @@ import { Send, Bot, User, Plus, Trash2, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { useConfirm } from '@/components/ui/ConfirmModal'
 
 interface ChatRoom {
   id: string
@@ -56,6 +57,7 @@ export default function AIChatLayout() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
 
   const loadRooms = useCallback(async () => {
     const res = await fetch('/api/ai/chat-rooms')
@@ -91,12 +93,19 @@ export default function AIChatLayout() {
     await selectRoom(room.id)
   }
 
-  async function deleteRoom(id: string, e: React.MouseEvent) {
+  function deleteRoom(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('이 대화를 삭제할까요?')) return
-    await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
-    setRooms((prev) => prev.filter((r) => r.id !== id))
-    if (selectedId === id) { setSelectedId(null); setMessages([]); setMobileView('list') }
+    confirm.open({
+      title: '이 대화를 삭제할까요?',
+      description: '대화 기록이 영구적으로 사라집니다.',
+      variant: 'danger',
+      confirmLabel: '삭제',
+      onConfirm: async () => {
+        await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
+        setRooms((prev) => prev.filter((r) => r.id !== id))
+        if (selectedId === id) { setSelectedId(null); setMessages([]); setMobileView('list') }
+      },
+    })
   }
 
   async function send() {
@@ -356,6 +365,7 @@ export default function AIChatLayout() {
           </>
         )}
       </div>
+      <confirm.Render />
     </div>
   )
 }
