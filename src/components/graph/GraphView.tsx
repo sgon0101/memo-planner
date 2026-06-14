@@ -725,6 +725,10 @@ export default function GraphView() {
   }
 
   function onMouseUp(e: React.MouseEvent) {
+    // ★ 중복 호출 가드 — onMouseLeave가 onMouseUp을 재호출하는 경우 차단.
+    //   mousedown으로 시작된 인터랙션이 이미 처리(또는 발생 안 함)됐으면 skip.
+    //   (dragNodeRef/canvasDragRef 둘 다 null이면 진행 중인 게 없음 → 빠짐)
+    if (!dragNodeRef.current && !canvasDragRef.current) return
     // touchend 후 발화되는 synthetic mouseup 차단 (delegated 터치 호출은 e.type 없음)
     if (e.type === 'mouseup' && Date.now() - lastTouchEndAtRef.current < 600) return
     const { mx, my } = canvasXY(e)
