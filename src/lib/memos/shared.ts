@@ -27,11 +27,25 @@ export function toMemo(row: Record<string, unknown>): Memo {
 }
 
 
+/**
+ * 첫 이미지의 썸네일 URL을 반환.
+ *
+ * 우선순위: srcSm(R2 thumb_ 변환본) > srcMd > src(원본).
+ * 카드 썸네일에 원본(수 MB)을 그대로 띄우던 회귀를 해결 — 큰 이미지일수록
+ * 로딩이 느리고 placeholder가 오래 보여 "썸네일이 안 보임"으로 체감되던 케이스.
+ *
+ * data: URL(base64 fallback)은 DB 저장 부적합이라 null 처리.
+ */
 export function extractFirstImage(content: Record<string, unknown>): string | null {
   function traverse(node: Record<string, unknown>): string | null {
     if (node.type === 'image' && typeof node.attrs === 'object') {
-      const src = (node.attrs as Record<string, unknown>)?.src
-      if (typeof src === 'string' && src) return src
+      const attrs = node.attrs as Record<string, unknown>
+      const pick = (k: string): string | null => {
+        const v = attrs?.[k]
+        return typeof v === 'string' && v && !v.startsWith('data:') ? v : null
+      }
+      const chosen = pick('srcSm') ?? pick('srcMd') ?? pick('src')
+      if (chosen) return chosen
     }
     const children = node.content as Record<string, unknown>[] | undefined
     if (children) {

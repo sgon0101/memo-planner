@@ -12,6 +12,7 @@ import QueryProvider from '@/components/providers/QueryProvider'
 import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
 import QuickCaptureFAB from '@/components/quick-capture/QuickCaptureFAB'
 import QuickCaptureModal from '@/components/quick-capture/QuickCaptureModal'
+import ImageLightbox from '@/components/memo/ImageLightbox'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -47,6 +48,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <NotificationScheduler />
         <QuickCaptureFAB />
         <QuickCaptureModal />
+        <ImageLightbox />
       </div>
     </DarkModeProvider>
     </QueryProvider>
