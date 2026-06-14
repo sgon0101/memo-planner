@@ -820,7 +820,7 @@ export default function GraphView() {
       e.preventDefault()
       const { dist, cx, cy } = pinchInfo(e)
       const p = pinchRef.current
-      const newK = Math.max(0.08, Math.min(3, p.startK * (dist / p.startDist)))
+      const newK = Math.max(0.08, Math.min(5, p.startK * (dist / p.startDist)))
       const worldX = (p.centerX - p.startTransformX) / p.startK
       const worldY = (p.centerY - p.startTransformY) / p.startK
       transformRef.current.k = newK
@@ -912,7 +912,8 @@ export default function GraphView() {
     const { mx, my } = canvasXY(e)
     const { x, y, k } = transformRef.current
     const d = e.deltaY > 0 ? 0.85 : 1.18
-    const nk = Math.max(0.3, Math.min(3, k * d))
+    // 모바일 pinch(0.08~3)와 동일한 줌 한계 — 전체 노드 한눈에 보기 가능 + 가까이 더 확대
+    const nk = Math.max(0.08, Math.min(5, k * d))
     transformRef.current.x = mx - (mx - x) * (nk / k)
     transformRef.current.y = my - (my - y) * (nk / k)
     transformRef.current.k = nk
