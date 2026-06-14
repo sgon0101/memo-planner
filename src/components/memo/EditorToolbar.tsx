@@ -196,8 +196,13 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             <button
               key={c}
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {                editor.chain().focus().setColor(c).run()
+              // ★ onClick 대신 onMouseDown 시점에 즉시 setColor 적용.
+              //   click 단계까지 가면 portal dropdown의 mouseup이 editor selection을
+              //   collapse시켜 setColor가 mark를 적용 못하는 케이스가 있음.
+              //   preventDefault로 선택 보존 + 즉시 적용.
+              onMouseDown={(e) => {
+                e.preventDefault()
+                editor.chain().focus().setColor(c).run()
                 setOpen(false)
               }}
               className={cn(
@@ -233,8 +238,9 @@ function TextColorPicker({ editor }: { editor: Editor }) {
             />
             <button
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {                editor.chain().focus().setColor(customColor).run()
+              onMouseDown={(e) => {
+                e.preventDefault()
+                editor.chain().focus().setColor(customColor).run()
                 setOpen(false)
               }}
               className="text-xs font-medium px-3 py-1.5 bg-violet-600 text-white rounded-md hover:bg-violet-700 whitespace-nowrap flex-shrink-0"
@@ -245,10 +251,11 @@ function TextColorPicker({ editor }: { editor: Editor }) {
         </div>
         <button
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {            editor.chain().focus().unsetColor().run()
-                setOpen(false)
-              }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            editor.chain().focus().unsetColor().run()
+            setOpen(false)
+          }}
           className="w-full mt-2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md py-1.5 transition-colors"
         >
           색상 제거
@@ -287,10 +294,11 @@ function HighlightPicker({ editor }: { editor: Editor }) {
           <button
             key={opt.color}
             type="button"
-            onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {              editor.chain().focus().setHighlight({ color: opt.color }).run()
-                setOpen(false)
-              }}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              editor.chain().focus().setHighlight({ color: opt.color }).run()
+              setOpen(false)
+            }}
             className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-700 dark:text-gray-300"
           >
             <span className="w-5 h-5 rounded flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ background: opt.color }} />
@@ -300,10 +308,11 @@ function HighlightPicker({ editor }: { editor: Editor }) {
         <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
           <button
             type="button"
-            onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {              editor.chain().focus().unsetHighlight().run()
-                setOpen(false)
-              }}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              editor.chain().focus().unsetHighlight().run()
+              setOpen(false)
+            }}
             className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm text-gray-400"
           >
             <span className="w-5 h-5 rounded border border-dashed border-gray-300 dark:border-gray-600 flex-shrink-0" />
@@ -833,13 +842,4 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
 
       {/* 표 — 데스크톱만 (모바일은 더보기) */}
       <div className="hidden sm:flex">
-        <TablePicker onInsert={(rows, cols) => editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()} />
-      </div>
-
-      {/* 더보기 — 모바일만 */}
-      <div className="sm:hidden">
-        <MoreMenu editor={editor} />
-      </div>
-    </div>
-  )
-}
+        <TablePicker onInsert={(rows,
