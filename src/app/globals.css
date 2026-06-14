@@ -185,34 +185,34 @@ aside {
   margin-top: 1em !important;
 }
 
-/* 빈 paragraph 좁힘 — Tiptap Image가 block 노드라 두 이미지 사이 Enter 두 번이
-   <wrapper-div><p:empty><wrapper-div> 구조가 되고, 빈 p가 line-height 25px 차지.
-   모든 빈 paragraph(텍스트 단락 분리 포함)를 0.4em으로 통일.
-   주의: 텍스트 단락 사이 빈 줄도 좁아지는 trade-off. */
-.tiptap p:empty,
-.tiptap p:has(> br:only-child),
-.tiptap p.is-empty {
-  min-height: 0 !important;
-  height: 0.4em !important;
-  line-height: 0.4 !important;
+/* ===== 이미지 사이 간격 — 진단 결과 fix =====
+   DOM 구조: <div.react-renderer.node-image><div data-node-view-wrapper>...</div></div>
+   이전 wrapper가 inline-block + align-middle이라 line-height 1.6 * 16px = ~25px의
+   baseline gap이 두 이미지 사이에 생기던 게 진짜 원인 (빈 p 아님).
+   해결: .react-renderer와 wrapper 모두 block으로 강제, 형제 사이 마진 0. */
+.tiptap > div.react-renderer,
+.tiptap div.react-renderer.node-image {
+  display: block;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
+}
+
+.tiptap div[data-node-view-wrapper] {
   margin: 0 !important;
 }
 
-/* sibling 셀렉터 — 이미지 wrapper 옆 빈 paragraph (forward sibling 안 먹는 환경 대비) */
-.tiptap div[data-node-view-wrapper] + p:where(:empty, :has(> br:only-child), .is-empty) {
+/* 인접한 두 이미지 사이 공간 완전 제거 */
+.tiptap .react-renderer + .react-renderer {
+  margin-top: 0 !important;
+}
+
+/* 이미지 직후 빈 paragraph 안전망 (혹시 다른 구조 케이스) */
+.tiptap .react-renderer + p:where(:empty, :has(> br:only-child)) {
   min-height: 0 !important;
-  height: 0.2em !important;
+  height: 0.25em !important;
   line-height: 0 !important;
   margin: 0 !important;
-}
-
-/* 이미지가 paragraph 자식으로 들어간 경우(다른 wrapping)도 안전망 */
-.tiptap p:has(> img),
-.tiptap p:has(> .react-renderer),
-.tiptap p:has(> div[data-node-view-wrapper]) {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  line-height: 1;
 }
 
 /* 다크모드 인라인 텍스트 색상 처리
