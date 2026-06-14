@@ -185,14 +185,23 @@ aside {
   margin-top: 1em !important;
 }
 
-/* 이미지 wrapper 사이 빈 paragraph 좁힘 — Tiptap Image는 block 노드라
-   <wrapper-div><p(empty)></p><wrapper-div> 구조가 됨. 빈 paragraph는 line-height
-   25px 정도 차지해 이미지 사이가 멀어 보임. 빈 p만 골라 line-height 0으로 축소.
-   텍스트 paragraph는 영향 없음(:empty + :has(> br:only-child) 매칭). */
-.tiptap div[data-node-view-wrapper] + p:where(:empty, :has(> br:only-child)),
-.tiptap p:where(:empty, :has(> br:only-child)):has(+ div[data-node-view-wrapper]) {
+/* 빈 paragraph 좁힘 — Tiptap Image가 block 노드라 두 이미지 사이 Enter 두 번이
+   <wrapper-div><p:empty><wrapper-div> 구조가 되고, 빈 p가 line-height 25px 차지.
+   모든 빈 paragraph(텍스트 단락 분리 포함)를 0.4em으로 통일.
+   주의: 텍스트 단락 사이 빈 줄도 좁아지는 trade-off. */
+.tiptap p:empty,
+.tiptap p:has(> br:only-child),
+.tiptap p.is-empty {
   min-height: 0 !important;
-  height: 0.25em !important;
+  height: 0.4em !important;
+  line-height: 0.4 !important;
+  margin: 0 !important;
+}
+
+/* sibling 셀렉터 — 이미지 wrapper 옆 빈 paragraph (forward sibling 안 먹는 환경 대비) */
+.tiptap div[data-node-view-wrapper] + p:where(:empty, :has(> br:only-child), .is-empty) {
+  min-height: 0 !important;
+  height: 0.2em !important;
   line-height: 0 !important;
   margin: 0 !important;
 }
