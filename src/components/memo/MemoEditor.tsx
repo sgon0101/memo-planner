@@ -665,6 +665,26 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           }
         )
         queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+
+        // 홈 최근 메모 캐시도 즉시 제거 — useMemos.softDelete를 거치지 않고
+        // 직접 DB update를 하므로 동일한 캐시 정리를 여기서도 수행
+        queryClient.setQueryData<{ recentMemos: Array<{ id: string }> } | undefined>(
+          ['home-memos'],
+          (old) => old ? { ...old, recentMemos: old.recentMemos.filter((m) => m.id !== id) } : old,
+        )
+        queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('home-memos-cache')
+            if (raw) {
+              const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
+              const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== id) }
+              localStorage.setItem('home-memos-cache', JSON.stringify(next))
+              localStorage.setItem('home-memos-cache-ts', String(Date.now()))
+            }
+          } catch { /* ignore */ }
+        }
+
         deleteMemo(id)
         router.push('/memo')
       },
