@@ -32,6 +32,7 @@ import CodeBlockView from './CodeBlockView'
 import MemoSidePanel from './MemoSidePanel'
 import WikiSuggest from './WikiSuggest'
 import TagSuggest from './TagSuggest'
+import SlashCommand from './SlashCommand'
 import Modal from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
@@ -165,6 +166,15 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [wikiPos, setWikiPos] = useState({ x: 0, y: 0 })
   const [tagQuery, setTagQuery] = useState<string | null>(null)
   const [tagPos, setTagPos] = useState({ x: 0, y: 0 })
+  // 슬래시 명령 — 빈 줄에서 `/` 입력 시 트리거
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [slashPos, setSlashPos] = useState({ x: 0, y: 0 })
+  const [slashFrom, setSlashFrom] = useState(0)
+  // 빈 메모 마크다운/슬래시 안내 hint — localStorage로 1회만 dismiss
+  const [showMdHint, setShowMdHint] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return !window.localStorage.getItem('weave:md_hint_dismissed')
+  })
   const confirm = useConfirm()
 
   const hasUnsavedRef = useRef(false)
@@ -358,25 +368,37 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       setCharCount(text.replace(/\s/g, '').length)
       setTaskStats(getTaskStats(editor.getJSON() as Record<string, unknown>))
 
-      // 자동완성 감지 ([[위키]] / #태그)
+      // 자동완성 감지 ([[위키]] / #태그 / /슬래시)
       const { state, view } = editor
       const { from } = state.selection
       const textBefore = state.doc.textBetween(Math.max(0, from - 50), from, '\n')
       const wikiMatch = textBefore.match(/\[\[([^\]]*)$/)
       const tagMatch = !wikiMatch && textBefore.match(/#([\w가-힣]*)$/)
+      // 슬래시: 줄 시작에서 `/` + 영문/한글 검색어 — 위키·태그 우선
+      const slashMatch = !wikiMatch && !tagMatch && textBefore.match(/(?:^|\n)\/([\w가-힣]*)$/)
       if (wikiMatch) {
         const coords = view.coordsAtPos(from)
         setWikiQuery(wikiMatch[1])
         setWikiPos({ x: coords.left, y: coords.bottom })
         setTagQuery(null)
+        setSlashQuery(null)
       } else if (tagMatch) {
         const coords = view.coordsAtPos(from)
         setTagQuery(tagMatch[1])
         setTagPos({ x: coords.left, y: coords.bottom })
         setWikiQuery(null)
+        setSlashQuery(null)
+      } else if (slashMatch) {
+        const coords = view.coordsAtPos(from)
+        setSlashQuery(slashMatch[1])
+        setSlashPos({ x: coords.left, y: coords.bottom })
+        setSlashFrom(from - slashMatch[1].length - 1)
+        setWikiQuery(null)
+        setTagQuery(null)
       } else {
         setWikiQuery(null)
         setTagQuery(null)
+        setSlashQuery(null)
       }
 
       // 신규 메모: 2초 debounce로 즉시 DB 레코드 생성
@@ -980,6 +1002,34 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             })
           }}
         >
+          {/* 빈 메모 마크다운/슬래시 안내 — 한 번만 표시 */}
+          {showMdHint && charCount === 0 && (
+            <div className="px-3 md:px-8 pt-3">
+              <div className="inline-flex flex-wrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50/70 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 text-xs text-violet-700 dark:text-violet-300">
+                <span aria-hidden="true">💡</span>
+                <span className="font-mono"><kbd className="font-sans">/</kbd> 블록 메뉴</span>
+                <span className="opacity-40">·</span>
+                <span className="font-mono"><kbd className="font-sans">#</kbd> 제목</span>
+                <span className="opacity-40">·</span>
+                <span className="font-mono"><kbd className="font-sans">-</kbd> 목록</span>
+                <span className="opacity-40">·</span>
+                <span className="font-mono"><kbd className="font-sans">[[</kbd> 위키</span>
+                <span className="opacity-40">·</span>
+                <span className="font-mono"><kbd className="font-sans">#태그</kbd></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMdHint(false)
+                    try { window.localStorage.setItem('weave:md_hint_dismissed', '1') } catch {}
+                  }}
+                  aria-label="안내 닫기"
+                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 rounded"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
           <EditorContent editor={editor} />
         </div>
 
