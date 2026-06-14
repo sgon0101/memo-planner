@@ -72,7 +72,7 @@ export default function ColorWheelModal({
         {/* 폴더 이름 입력 (신규 폴더 모드) */}
         {showNameInput && (
           <input
-            type="text"
+            type="search"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
@@ -85,9 +85,10 @@ export default function ColorWheelModal({
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
+            data-bitwarden-ignore="true"
             data-form-type="other"
-            name="new-folder-name"
-            className="w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+            name="nf-title-field"
+            className="w-full [&::-webkit-search-cancel-button]:hidden px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
           />
         )}
 
