@@ -185,6 +185,16 @@ aside {
   margin-top: 1em !important;
 }
 
+/* 이미지만 가진 paragraph는 위/아래 마진 0 — 이미지 사이 빈 줄 간격 축소.
+   :has 셀렉터 specificity가 위 p+p 룰보다 높아 override됨. */
+.tiptap p:has(> img),
+.tiptap p:has(> .react-renderer),
+.tiptap p:has(> div[data-node-view-wrapper]) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: 1;
+}
+
 /* 다크모드 인라인 텍스트 색상 처리
    ① 사용자 글자색은 그대로 존중 (광범위 #F1F5F9 강제 안전망 제거)
    ② background-color 있는 요소(형광펜): 텍스트는 어둡게 강제
