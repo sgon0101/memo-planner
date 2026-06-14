@@ -208,6 +208,18 @@ aside {
   color: inherit;
 }
 
+/* ===== 헤딩 색 명시 — prose-invert 변수가 누락되는 환경 대비 =====
+   라이트/다크 모두 명시적으로 색을 지정해, 헤딩 색이 inherit으로 빈 채로 떨어지거나
+   storedMarks 색에 묶여 "투명"하게 보이는 케이스 차단. */
+.tiptap h1, .tiptap h2, .tiptap h3,
+.tiptap h4, .tiptap h5, .tiptap h6 {
+  color: #1E293B;
+}
+.dark .tiptap h1, .dark .tiptap h2, .dark .tiptap h3,
+.dark .tiptap h4, .dark .tiptap h5, .dark .tiptap h6 {
+  color: #F1F5F9;
+}
+
 /* ===== 헤딩 안 inline color 안전망 =====
    슬래시 메뉴/툴바 헤딩 변환 후 storedMarks 잔재로 H1~H6 안에 흰색·옅은색 textStyle
    mark가 적용돼 흰 배경에서 텍스트가 안 보이는 케이스 차단.
