@@ -15,6 +15,10 @@ interface UIStore {
   openQuickCapture: (mode?: QuickCaptureMode) => void
   closeQuickCapture: () => void
   toggleQuickCaptureMode: () => void
+  /** 이미지 라이트박스 — 메모 안 이미지 클릭 시 풀스크린 확대 보기 */
+  lightboxImageSrc: string | null
+  openLightbox: (src: string) => void
+  closeLightbox: () => void
 }
 
 export const useUIStore = create<UIStore>()(
@@ -32,6 +36,9 @@ export const useUIStore = create<UIStore>()(
       closeQuickCapture: () => set({ quickCaptureOpen: false }),
       toggleQuickCaptureMode: () =>
         set((s) => ({ quickCaptureMode: s.quickCaptureMode === 'memo' ? 'plan' : 'memo' })),
+      lightboxImageSrc: null,
+      openLightbox: (src) => set({ lightboxImageSrc: src }),
+      closeLightbox: () => set({ lightboxImageSrc: null }),
     }),
     {
       name: 'memo-planner-ui',

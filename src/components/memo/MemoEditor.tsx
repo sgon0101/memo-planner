@@ -247,6 +247,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         }).catch(() => { /* 임베딩 실패는 silent */ })
       } else {
         const { data: { user } } = await supabase.auth.getUser()
+        // 새 메모 INSERT에도 썸네일 추출 — 이미지 첨부 후 1.5s 안에 페이지를 벗어나면
+        // 다음 update 분기가 안 돌아 thumbnail_url이 null로 굳던 버그 방지
+        const firstImageUrl = extractFirstImage(content)
+        const insertThumb = (firstImageUrl && !firstImageUrl.startsWith('data:'))
+          ? firstImageUrl
+          : null
         const { data, error } = await supabase
           .from('memos')
           .insert({
@@ -257,6 +263,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             tags: extractTags(text),
             wiki_links: extractWikiLinks(text),
             folder_id: folderIdRef.current,
+            thumbnail_url: insertThumb,
           })
           .select()
           .single()
