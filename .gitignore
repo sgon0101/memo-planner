@@ -49,3 +49,6 @@ supabase memoPlanner  pw.txt
 /scripts/
 /docs/
 .claude/
+
+supabase/.temp/
+supabase/.branches/
