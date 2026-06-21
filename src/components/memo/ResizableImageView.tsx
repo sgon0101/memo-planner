@@ -139,7 +139,14 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       ref={containerRef}
       as="div"
       className="relative block max-w-full my-0"
-      style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
+      // pointerEvents: 'none' — wrapper 자체 hit 차단. 자식(img/리사이즈 핸들/툴바)만
+      // 명시적으로 'auto'로 활성화해, 이미지 옆 빈 공간 터치는 PM 부모로 패스되어
+      // selection 해제됨.
+      style={{
+        width: widthAttr ?? '100%',
+        maxWidth: naturalSize ? `${naturalSize.w}px` : '100%',
+        pointerEvents: 'none',
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -152,6 +159,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
           outline: selected ? '2px solid #7C3AED' : 'none',
           borderRadius: 2,
           cursor: 'pointer',
+          pointerEvents: 'auto',
         }}
         // hit 영역을 img로 한정 — wrapper는 fit-content + 외부 click 차단해
         // 이미지 옆 빈 공간 터치도 image selection으로 묶이던 회귀 fix.
@@ -194,7 +202,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
           <div
             data-resize-handle="1"
             className="absolute bottom-0 right-0 w-4 h-4 max-md:w-6 max-md:h-6 bg-violet-600 cursor-se-resize z-10 touch-none"
-            style={{ borderRadius: '0 0 3px 0' }}
+            style={{ borderRadius: '0 0 3px 0', pointerEvents: 'auto' }}
             onPointerDown={startResize}
             aria-label="이미지 크기 조정"
           />
@@ -206,6 +214,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
                 ? 'absolute top-2 left-2 flex items-center gap-1 bg-gray-900/85 rounded-md px-1.5 py-1 z-10 max-w-[calc(100%-1rem)] overflow-x-auto'
                 : 'absolute -top-8 left-0 flex items-center gap-1 bg-gray-900/85 rounded-md px-1.5 py-1 z-10 max-w-full overflow-x-auto'
             }
+            style={{ pointerEvents: 'auto' }}
           >
             {PRESETS.map((p) => (
               <button

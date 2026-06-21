@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { memoKeys, useMemos } from '@/hooks/useMemos'
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import { Color } from '@tiptap/extension-color'
@@ -430,6 +431,24 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     editorProps: {
       attributes: {
         class: 'outline-none min-h-[calc(100vh-220px)] px-3 md:px-8 py-4 md:py-6 prose prose-sm dark:prose-invert max-w-none',
+      },
+      // 이미지 노드 옆 빈 공간 클릭/터치 시 selection을 image NodeSelection이 아닌
+      // 인접 TextSelection으로 강제 변환 — 활성화 해제 효과.
+      // 실제 <img> 영역 click은 ResizableImageView의 onClick(stopPropagation)이 처리.
+      handleClickOn(view, pos, node, _nodePos, event) {
+        if (node.type.name !== 'image') return false
+        const target = event.target as HTMLElement | null
+        // 실제 img 또는 리사이즈 핸들/툴바 위 클릭 → ResizableImageView가 처리
+        if (target && (target.tagName === 'IMG' || target.closest('img') || target.closest('[data-resize-handle]') || target.closest('button'))) {
+          return false
+        }
+        // 그 외(이미지 옆 빈 영역) — TextSelection으로 옮겨 image 활성화 해제
+        try {
+          const $pos = view.state.doc.resolve(pos)
+          const sel = TextSelection.near($pos)
+          view.dispatch(view.state.tr.setSelection(sel))
+        } catch { /* ignore */ }
+        return true
       },
     },
     onUpdate({ editor }) {
