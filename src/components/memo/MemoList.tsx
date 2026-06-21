@@ -75,6 +75,8 @@ export default function MemoList() {
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
   const [selectedTrashIds, setSelectedTrashIds] = useState<Set<string>>(new Set())
   const selectAllRef = useRef<HTMLInputElement>(null)
+  // 실제 스크롤 컨테이너 ref — sessionStorage 측정/복원에 사용 (data-scroll-root 직접 잡기)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   // 콜백 ref: sentinel이 DOM에 나타나는 순간 observer를 연결, 사라지면 해제
   // useEffect 방식은 마운트 시 1회만 실행되어 데이터 로딩 후 sentinel이 생겨도 감지 불가
   const obsRef = useRef<IntersectionObserver | null>(null)
@@ -156,7 +158,7 @@ export default function MemoList() {
     if (pendingScroll === null) return
     if (memos.length === 0) return
     const id = requestAnimationFrame(() => {
-      const scrollEl = document.querySelector('[data-scroll-root="main"]') as HTMLElement | null
+      const scrollEl = scrollContainerRef.current
       if (scrollEl) scrollEl.scrollTop = pendingScroll
       setPendingScroll(null)
     })
@@ -167,7 +169,7 @@ export default function MemoList() {
   useEffect(() => {
     return () => {
       if (typeof window === 'undefined') return
-      const scrollEl = document.querySelector('[data-scroll-root="main"]') as HTMLElement | null
+      const scrollEl = scrollContainerRef.current
       const scrollY = scrollEl?.scrollTop ?? 0
       if (scrollY > 0) {
         try {
@@ -1131,7 +1133,7 @@ export default function MemoList() {
       )}
 
       {/* 메모 목록 */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {isFetching && memos.length === 0 ? (
           <MemoListSkeleton />
         ) : memos.length === 0 ? (
