@@ -153,31 +153,36 @@ export default function MemoList() {
     setSelectedTrashIds(new Set())
   }, [selectedFolderId])
 
-  // 데이터 로드 후 pendingScroll 적용 — scrollHeight가 목표값보다 작으면(렌더 미완료)
-  // setTimeout으로 재시도. 카드 60개 렌더가 비동기로 펼쳐지는 동안 따라잡음.
+  // 데이터 로드 후 pendingScroll 적용 — ResizeObserver로 scrollHeight 변화를
+  // 즉시 감지해 충분히 커지면 scroll 적용. 10초 안전 timeout.
   useEffect(() => {
     if (pendingScroll === null) return
     if (memos.length === 0) return
-    const target = pendingScroll  // null 좁힘 캡처 (중첩 함수에서 non-null 보장)
-    let cancelled = false
-    let attempts = 0
-    const MAX = 30  // 약 3초 (100ms × 30)
+    const target = pendingScroll
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+    let applied = false
     function tryScroll() {
-      if (cancelled) return
-      const scrollEl = scrollContainerRef.current
-      if (!scrollEl) { setPendingScroll(null); return }
+      if (applied || !scrollEl) return
       const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight
-      // 아직 목표 scrollY까지 렌더 안 됨 → 다음 frame 재시도
-      if (maxScroll < target - 4 && attempts < MAX) {
-        attempts++
-        setTimeout(tryScroll, 100)
-        return
+      if (maxScroll >= target - 4) {
+        scrollEl.scrollTop = target
+        applied = true
+        setPendingScroll(null)
       }
-      scrollEl.scrollTop = target
-      setPendingScroll(null)
     }
-    const id = requestAnimationFrame(tryScroll)
-    return () => { cancelled = true; cancelAnimationFrame(id) }
+    tryScroll()
+    const ro = new ResizeObserver(tryScroll)
+    ro.observe(scrollEl)
+    Array.from(scrollEl.children).forEach((c) => { try { ro.observe(c) } catch { /* ignore */ } })
+    const safety = setTimeout(() => {
+      if (!applied && scrollEl) {
+        scrollEl.scrollTop = target
+        applied = true
+        setPendingScroll(null)
+      }
+    }, 10000)
+    return () => { ro.disconnect(); clearTimeout(safety) }
   }, [pendingScroll, memos.length])
 
   // 스크롤할 때마다 sessionStorage 업데이트 — unmount cleanup이 발화 안 되는
