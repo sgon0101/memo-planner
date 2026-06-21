@@ -165,22 +165,32 @@ export default function MemoList() {
     return () => cancelAnimationFrame(id)
   }, [pendingScroll, memos.length])
 
-  // unmount 시 현재 스크롤+displayCount+folderId 저장 — 다음 mount 때 복원에 사용
+  // 스크롤할 때마다 sessionStorage 업데이트 — unmount cleanup이 발화 안 되는
+  // 케이스(Next.js App Router에서 Suspense/cache 등) 대비. 매 frame 1회 throttle.
   useEffect(() => {
-    return () => {
-      if (typeof window === 'undefined') return
-      const scrollEl = scrollContainerRef.current
-      const scrollY = scrollEl?.scrollTop ?? 0
-      if (scrollY > 0) {
+    if (typeof window === 'undefined') return
+    const el = scrollContainerRef.current
+    if (!el) return
+    let scheduled = false
+    function onScroll() {
+      if (scheduled || !el) return
+      scheduled = true
+      requestAnimationFrame(() => {
+        scheduled = false
         try {
-          sessionStorage.setItem('memo-list-state', JSON.stringify({
-            folderId: selectedFolderId,
-            displayCount,
-            scrollY,
-          }))
+          const scrollY = el?.scrollTop ?? 0
+          if (scrollY > 0) {
+            sessionStorage.setItem('memo-list-state', JSON.stringify({
+              folderId: selectedFolderId,
+              displayCount,
+              scrollY,
+            }))
+          }
         } catch { /* ignore */ }
-      }
+      })
     }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
   }, [selectedFolderId, displayCount])
 
   // 전체 선택 체크박스 indeterminate 상태
