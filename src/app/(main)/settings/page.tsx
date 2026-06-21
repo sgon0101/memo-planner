@@ -8,7 +8,7 @@ import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
   Download, Upload, FileText, FileJson, HardDrive,
-  CloudUpload, Bell, BellOff,
+  CloudUpload, Bell, BellOff, Radio,
 } from 'lucide-react'
 import {
   isNotifSupported, getNotifPermission, isNotifEnabled, setNotifEnabled,
@@ -19,6 +19,7 @@ import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
+import { isRealtimeEnabled, setRealtimeEnabled } from '@/hooks/useRealtimeSync'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 
 export default function SettingsPage() {
@@ -27,6 +28,7 @@ export default function SettingsPage() {
   const supabase = createClient()
 
   const { darkMode, toggleDarkMode } = useUIStore()
+  const [realtimeOn, setRealtimeOn] = useState<boolean>(true)
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
   const [nicknameSaving, setNicknameSaving] = useState(false)
@@ -61,6 +63,11 @@ export default function SettingsPage() {
 
   // Web Push (단계 B — 백그라운드 알림)
   const push = usePushSubscription()
+
+  // Realtime 토글 초기값 — currentUser init 후 LS 읽기 (mount 시 1회)
+  useEffect(() => {
+    setRealtimeOn(isRealtimeEnabled())
+  }, [])
 
   useEffect(() => {
     if (!isNotifSupported()) {
@@ -551,6 +558,39 @@ export default function SettingsPage() {
       </Section>
 
       {/* Google Calendar */}
+      <Section title="동기화" icon={<Radio size={15} />}>
+        <SettingRow
+          label="실시간 디바이스 동기화"
+          description={
+            realtimeOn
+              ? '데스크탑·모바일 간 즉시 반영됩니다. 데이터 사용량 매우 적음.'
+              : 'OFF — 다른 디바이스 변경은 다음 새로고침에 반영됩니다. 데이터 절약 모드.'
+          }
+        >
+          <button
+            onClick={() => {
+              const next = !realtimeOn
+              setRealtimeEnabled(next)
+              setRealtimeOn(next)
+              toast.success(next ? '실시간 동기화 ON — 새로고침 후 적용' : '실시간 동기화 OFF — 새로고침 후 적용')
+            }}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              realtimeOn ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-700',
+            )}
+            aria-pressed={realtimeOn}
+            aria-label="실시간 동기화 토글"
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                realtimeOn ? 'translate-x-6' : 'translate-x-1',
+              )}
+            />
+          </button>
+        </SettingRow>
+      </Section>
+
       <Section title="연동" icon={<CalendarDays size={15} />}>
         <SettingRow
           label="Google Calendar"

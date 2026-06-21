@@ -6,21 +6,23 @@ import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
 import { encryptContent, decryptContent } from '@/lib/crypto/lock'
 import { LIST_COLS, toMemo } from '@/lib/memos/shared'
+import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
+import { broadcast } from '@/lib/sync/broadcast'
+import { lsMemosCache, lsMemosCacheTs, lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
 
 export { toMemo, LIST_COLS } from '@/lib/memos/shared'
 
 export const TRASH_ID = '__trash__'
 
-// localStorage 사용 — sessionStorage는 탭 종료 시 소멸해 모바일 재진입마다 로딩 발생
-// localStorage는 브라우저를 닫아도 유지 → 모바일 첫 진입 시에도 즉시 목록 표시
-const LS_KEY = 'memos-all-cache'
-const LS_TS_KEY = 'memos-all-cache-ts'
+/* localStorage 캐시 — userId namespacing 적용 (PR-4) */
 
 export function readLocalCache(): Memo[] | undefined {
   if (typeof window === 'undefined') return undefined
+  const key = lsMemosCache()
+  if (!key) return undefined
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as Memo[]
     return parsed.length > 0 ? parsed : undefined
@@ -31,8 +33,10 @@ export function readLocalCache(): Memo[] | undefined {
 
 export function readLocalCacheTs(): number {
   if (typeof window === 'undefined') return 0
+  const key = lsMemosCacheTs()
+  if (!key) return 0
   try {
-    const ts = localStorage.getItem(LS_TS_KEY)
+    const ts = localStorage.getItem(key)
     return ts ? parseInt(ts, 10) : 0
   } catch {
     return 0
@@ -40,33 +44,28 @@ export function readLocalCacheTs(): number {
 }
 
 export function writeLocalCache(memos: Memo[]) {
-  if (memos.length === 0) {
-    // 빈 배열은 fetch 실패 신호일 가능성 — 옛 캐시 유지
-    return
-  }
+  if (memos.length === 0) return
+  const key = lsMemosCache()
+  const tsKey = lsMemosCacheTs()
+  if (!key || !tsKey) return
   try {
-    // content(Tiptap JSON)는 저장 제외 — 에디터는 직접 DB fetch, 목록에는 불필요
     const stripped = memos.map((m) => ({ ...m, content: {} as Record<string, unknown> }))
     const json = JSON.stringify(stripped)
-    localStorage.setItem(LS_KEY, json)
-    localStorage.setItem(LS_TS_KEY, String(Date.now()))
+    localStorage.setItem(key, json)
+    localStorage.setItem(tsKey, String(Date.now()))
     if (typeof window !== 'undefined' && (window as unknown as { __WEAVE_DEBUG__?: boolean }).__WEAVE_DEBUG__) {
       console.log(`[writeLocalCache] OK: ${memos.length} memos, ${(json.length / 1024).toFixed(1)} KB`)
     }
   } catch (e) {
-    // 캐시 실패는 디스크 quota / serialization 에러 가능
-    // 콘솔 에러로 노출해 디버그 가능하게 (성공 케이스에는 silent)
     if (typeof window !== 'undefined') {
       console.error('[writeLocalCache] FAILED:', e instanceof Error ? e.message : e)
     }
   }
 }
 
-// 전체 활성 메모 단일 키 — 폴더 필터링은 클라이언트에서 수행
 export const memoKeys = {
   all: () => ['memos', 'all', false] as const,
   trash: () => ['memos', 'trash'] as const,
-  // 하위 호환 — 항상 단일 키 반환 (folderId 무시)
   list: (_folderId: string | null | undefined, isTrash: boolean) =>
     isTrash ? (['memos', 'trash'] as const) : (['memos', 'all', false] as const),
 }
@@ -77,7 +76,6 @@ export function useMemos(folderId: string | null | undefined) {
   const queryClient = useQueryClient()
   const isTrash = folderId === TRASH_ID
 
-  // 전체 활성 메모 1회 fetch (폴더 무관)
   const fetchAll = useCallback(async (): Promise<Memo[]> => {
     const { data, error } = await supabase
       .from('memos')
@@ -86,15 +84,12 @@ export function useMemos(folderId: string | null | undefined) {
       .order('is_pinned', { ascending: false })
       .order('updated_at', { ascending: false })
     if (error) {
-      // throttling / quota 초과 / 네트워크 실패 모두 여기 떨어짐
-      // throw하면 React Query가 retry → 캐시 안 덮어쓰므로 옛 데이터 유지
       console.error('[fetchAll] supabase error:', error)
       throw error
     }
     return (data ?? []).map(toMemo)
   }, [supabase])
 
-  // 휴지통 별도 fetch
   const fetchTrash = useCallback(async (): Promise<Memo[]> => {
     const { data } = await supabase
       .from('memos')
@@ -109,21 +104,16 @@ export function useMemos(folderId: string | null | undefined) {
   const { isLoading, isFetching, data: allData } = useQuery({
     queryKey,
     queryFn: isTrash ? fetchTrash : fetchAll,
-    // 새로고침 시 sessionStorage에서 즉시 복원 → 화면 바로 표시
-    // initialDataUpdatedAt 기준으로 staleTime 계산 → 백그라운드 refetch 여부 결정
     ...(isTrash ? {} : {
       initialData: readLocalCache,
       initialDataUpdatedAt: readLocalCacheTs,
     }),
   })
 
-  // fetch 완료(또는 갱신) 시 localStorage에 저장
   useEffect(() => {
     if (allData && !isTrash) writeLocalCache(allData)
   }, [allData, isTrash])
 
-  // folderId로 클라이언트 필터링 — 추가 fetch 없이 즉각 반응
-  // null·undefined 모두 전체 보기 (기존 fetchMemos 동작과 동일)
   const data = useMemo(() => {
     if (!allData) return undefined
     if (isTrash) return allData
@@ -131,12 +121,10 @@ export function useMemos(folderId: string | null | undefined) {
     return allData.filter((m) => m.folderId === folderId)
   }, [allData, folderId, isTrash])
 
-  // Zustand 보조 동기화 (MemoEditor 등 호환)
   useEffect(() => {
     if (allData) setMemos(allData)
   }, [allData, setMemos])
 
-  // ── 캐시 직접 수정 헬퍼 ───────────────────────────────────────
   const patchCache = useCallback(
     (updater: (old: Memo[]) => Memo[]) => {
       queryClient.setQueryData<Memo[]>(queryKey, (old) => updater(old ?? []))
@@ -144,26 +132,36 @@ export function useMemos(folderId: string | null | undefined) {
     [queryClient, queryKey]
   )
 
-  // ── 낙관적 업데이트 ───────────────────────────────────────────
+  /* PR-4: Silent + auto-force update */
   const optimisticPatch = useCallback(
     async (id: string, patch: Partial<Memo>, dbPatch: Record<string, unknown>) => {
       const snapshot = queryClient.getQueryData<Memo[]>(queryKey) ?? []
       const original = snapshot.find((m) => m.id === id)
+      if (!original) return
+      const knownUpdatedAt = original.updatedAt
 
       patchCache((old) => old.map((m) => m.id === id ? { ...m, ...patch } : m))
       updateMemo(id, patch)
 
-      const { error } = await supabase.from('memos').update(dbPatch).eq('id', id)
-      if (error) {
+      try {
+        const { updated_at } = await safeUpdateOrForce(
+          { table: 'memos', id, patch: dbPatch, knownUpdatedAt },
+          () => console.warn('[weave:conflict] memos', id),
+        )
+        const finalPatch: Partial<Memo> = { ...patch, updatedAt: updated_at }
+        patchCache((old) => old.map((m) => m.id === id ? { ...m, updatedAt: updated_at } : m))
+        updateMemo(id, { updatedAt: updated_at })
+        broadcast({ type: 'memo-update', id, patch: finalPatch, updated_at })
+      } catch (e) {
         const rollback = Object.fromEntries(
-          Object.entries(patch).map(([k]) => [k, original?.[k as keyof Memo]])
+          Object.entries(patch).map(([k]) => [k, original[k as keyof Memo]])
         ) as Partial<Memo>
         patchCache((old) => old.map((m) => m.id === id ? { ...m, ...rollback } : m))
         updateMemo(id, rollback)
-        throw error
+        throw e
       }
     },
-    [patchCache, queryKey, queryClient, updateMemo, supabase]
+    [patchCache, queryKey, queryClient, updateMemo]
   )
 
   const createMemo = useCallback(async () => {
@@ -181,6 +179,7 @@ export function useMemos(folderId: string | null | undefined) {
     const memo = toMemo(row)
     addMemo(memo)
     patchCache((old) => [memo, ...old])
+    broadcast({ type: 'memo-create', memo })
     return memo
   }, [folderId, patchCache, supabase, addMemo])
 
@@ -197,20 +196,19 @@ export function useMemos(folderId: string | null | undefined) {
   )
 
   const softDelete = useCallback(async (id: string) => {
-    await supabase
+    const { error } = await supabase
       .from('memos')
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
+    if (error) throw error
 
-    // ★ 캐시에서 제거하기 전에 폴더 ID를 먼저 확보
-    //   (제거 후 조회하면 항상 undefined → 폴더 카운트가 엉뚱한 버킷(null)에서 차감되던 버그)
     const target = (queryClient.getQueryData<Memo[]>(memoKeys.all()) ?? [])
       .find((m) => m.id === id)
     const targetFolderId = target?.folderId ?? null
 
-    // 전체 캐시에서 제거
     patchCache((old) => old.filter((m) => m.id !== id))
     deleteMemo(id)
+    broadcast({ type: 'memo-delete', id })
 
     queryClient.setQueryData<Array<{ folder_id: string | null }>>(
       ['memo-folder-counts'],
@@ -223,21 +221,24 @@ export function useMemos(folderId: string | null | undefined) {
     )
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
 
-    // ★ 홈 페이지 최근 메모 캐시도 즉시 제거 + invalidate
     queryClient.setQueryData<{ recentMemos: Array<{ id: string }> } | undefined>(
       ['home-memos'],
       (old) => old ? { ...old, recentMemos: old.recentMemos.filter((m) => m.id !== id) } : old,
     )
     queryClient.invalidateQueries({ queryKey: ['home-memos'] })
-    // localStorage 캐시(다음 진입 시 stale data 표시 방지)도 정리
+
     if (typeof window !== 'undefined') {
       try {
-        const raw = localStorage.getItem('home-memos-cache')
-        if (raw) {
-          const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
-          const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== id) }
-          localStorage.setItem('home-memos-cache', JSON.stringify(next))
-          localStorage.setItem('home-memos-cache-ts', String(Date.now()))
+        const k = lsHomeMemosCache()
+        const kts = lsHomeMemosCacheTs()
+        if (k) {
+          const raw = localStorage.getItem(k)
+          if (raw) {
+            const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
+            const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== id) }
+            localStorage.setItem(k, JSON.stringify(next))
+            if (kts) localStorage.setItem(kts, String(Date.now()))
+          }
         }
       } catch { /* ignore */ }
     }
@@ -254,16 +255,32 @@ export function useMemos(folderId: string | null | undefined) {
       if (row?.content) targetContent = row.content as Record<string, unknown>
     }
     const encrypted = await encryptContent(JSON.stringify(targetContent), password)
-    await supabase.from('memos').update({
-      is_locked: true,
-      locked_content: encrypted,
-      content: null,
-      content_text: '',
-    }).eq('id', id)
-    const lockPatch = { isLocked: true, lockedContent: encrypted, content: {}, contentText: '' }
+
+    const snapshot = queryClient.getQueryData<Memo[]>(queryKey) ?? []
+    const original = snapshot.find((m) => m.id === id)
+    const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
+
+    const { updated_at } = await safeUpdateOrForce(
+      {
+        table: 'memos',
+        id,
+        patch: { is_locked: true, locked_content: encrypted, content: null, content_text: '' },
+        knownUpdatedAt,
+      },
+      () => console.warn('[weave:conflict] memos lockMemo', id),
+    )
+
+    const lockPatch: Partial<Memo> = {
+      isLocked: true,
+      lockedContent: encrypted,
+      content: {} as Record<string, unknown>,
+      contentText: '',
+      updatedAt: updated_at,
+    }
     patchCache((old) => old.map((m) => m.id === id ? { ...m, ...lockPatch } : m))
     updateMemo(id, lockPatch)
-  }, [patchCache, supabase, updateMemo])
+    broadcast({ type: 'memo-update', id, patch: lockPatch, updated_at })
+  }, [patchCache, queryClient, queryKey, supabase, updateMemo])
 
   const unlockMemo = useCallback(async (
     id: string,
@@ -272,51 +289,65 @@ export function useMemos(folderId: string | null | undefined) {
   ) => {
     const plaintext = await decryptContent(lockedContent, password)
     const content = JSON.parse(plaintext) as Record<string, unknown>
-    await supabase.from('memos').update({ is_locked: false, locked_content: null, content }).eq('id', id)
-    const unlockPatch = { isLocked: false, lockedContent: null, content }
+
+    const snapshot = queryClient.getQueryData<Memo[]>(queryKey) ?? []
+    const original = snapshot.find((m) => m.id === id)
+    const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
+
+    const { updated_at } = await safeUpdateOrForce(
+      {
+        table: 'memos',
+        id,
+        patch: { is_locked: false, locked_content: null, content },
+        knownUpdatedAt,
+      },
+      () => console.warn('[weave:conflict] memos unlockMemo', id),
+    )
+
+    const unlockPatch: Partial<Memo> = {
+      isLocked: false,
+      lockedContent: null,
+      content,
+      updatedAt: updated_at,
+    }
     patchCache((old) => old.map((m) => m.id === id ? { ...m, ...unlockPatch } : m))
     updateMemo(id, unlockPatch)
-  }, [patchCache, supabase, updateMemo])
+    broadcast({ type: 'memo-update', id, patch: unlockPatch, updated_at })
+  }, [patchCache, queryClient, queryKey, supabase, updateMemo])
 
   const restoreMemo = useCallback(async (id: string) => {
     await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).eq('id', id)
-    // 휴지통 캐시에서 제거
     patchCache((old) => old.filter((m) => m.id !== id))
     deleteMemo(id)
-    // 전체 메모 캐시 무효화 → 복원된 메모가 포함된 최신 목록 fetch
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
     queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+    broadcast({ type: 'invalidate', queryKey: ['memos', 'all', false] })
+    broadcast({ type: 'invalidate', queryKey: ['memo-folder-counts'] })
   }, [patchCache, queryClient, supabase, deleteMemo])
 
   const bulkRestore = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
-    await supabase
-      .from('memos')
-      .update({ is_deleted: false, deleted_at: null })
-      .in('id', ids)
+    await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).in('id', ids)
     patchCache((old) => old.filter((m) => !ids.includes(m.id)))
     ids.forEach((id) => deleteMemo(id))
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
     queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+    broadcast({ type: 'invalidate', queryKey: ['memos', 'all', false] })
   }, [patchCache, queryClient, supabase, deleteMemo])
 
   const permanentDelete = useCallback(async (id: string) => {
     await supabase.from('memos').delete().eq('id', id)
     patchCache((old) => old.filter((m) => m.id !== id))
     deleteMemo(id)
+    broadcast({ type: 'memo-delete', id })
   }, [patchCache, supabase, deleteMemo])
 
   const moveMemoToFolder = useCallback(async (id: string, targetFolderId: string | null) => {
-    await supabase.from('memos').update({ folder_id: targetFolderId }).eq('id', id)
-    // 전체 캐시에서 해당 메모의 folderId 업데이트
-    queryClient.setQueryData<Memo[]>(memoKeys.all(), (old) =>
-      old?.map((m) => m.id === id ? { ...m, folderId: targetFolderId } : m)
-    )
-    updateMemo(id, { folderId: targetFolderId })
+    await optimisticPatch(id, { folderId: targetFolderId }, { folder_id: targetFolderId })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-  }, [queryClient, supabase, updateMemo])
+  }, [optimisticPatch, queryClient])
 
   const emptyTrash = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -324,6 +355,7 @@ export function useMemos(folderId: string | null | undefined) {
     await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
     patchCache(() => [])
     setMemos([])
+    broadcast({ type: 'invalidate', queryKey: ['memos', 'trash'] })
   }, [patchCache, supabase, setMemos])
 
   return {
