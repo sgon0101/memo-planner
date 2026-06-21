@@ -152,6 +152,8 @@ export function useMemos(folderId: string | null | undefined) {
         patchCache((old) => old.map((m) => m.id === id ? { ...m, updatedAt: updated_at } : m))
         updateMemo(id, { updatedAt: updated_at })
         broadcast({ type: 'memo-update', id, patch: finalPatch, updated_at })
+        // 홈 최근 메모 — 다음 /home 진입 시 fresh fetch
+        queryClient.invalidateQueries({ queryKey: ['home-memos'] })
       } catch (e) {
         const rollback = Object.fromEntries(
           Object.entries(patch).map(([k]) => [k, original[k as keyof Memo]])
@@ -180,8 +182,9 @@ export function useMemos(folderId: string | null | undefined) {
     addMemo(memo)
     patchCache((old) => [memo, ...old])
     broadcast({ type: 'memo-create', memo })
+    queryClient.invalidateQueries({ queryKey: ['home-memos'] })
     return memo
-  }, [folderId, patchCache, supabase, addMemo])
+  }, [folderId, patchCache, supabase, addMemo, queryClient])
 
   const togglePin = useCallback(
     (id: string, current: boolean) =>

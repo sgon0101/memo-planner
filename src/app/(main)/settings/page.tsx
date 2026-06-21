@@ -20,6 +20,7 @@ import { printToPdf, markdownToHtml } from '@/lib/export/pdf'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { isRealtimeEnabled, setRealtimeEnabled } from '@/hooks/useRealtimeSync'
+import { lsLastDriveBackup } from '@/lib/cache/lsKeys'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 
 export default function SettingsPage() {
@@ -48,7 +49,7 @@ export default function SettingsPage() {
   } | null>(null)
   const [driveBackupLoading, setDriveBackupLoading] = useState(false)
   const [lastBackup, setLastBackup] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('lastDriveBackup')
+    if (typeof window !== 'undefined') { const k = lsLastDriveBackup(); return k ? localStorage.getItem(k) : null } return null
     return null
   })
   const [autoBackup, setAutoBackup] = useState(false)
@@ -163,7 +164,7 @@ export default function SettingsPage() {
       if (data.lastBackupAt) {
         const str = new Date(data.lastBackupAt).toLocaleString('ko-KR')
         setLastBackup(str)
-        localStorage.setItem('lastDriveBackup', str)
+        { const k = lsLastDriveBackup(); if (k) localStorage.setItem(k, str) }
       }
     } catch { /* 미연결 시 무시 */ }
   }
@@ -326,7 +327,7 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error((data.error as string) ?? '백업 실패')
       const now = new Date().toLocaleString('ko-KR')
       setLastBackup(now)
-      localStorage.setItem('lastDriveBackup', now)
+      { const k = lsLastDriveBackup(); if (k) localStorage.setItem(k, now) }
       const failMsg = data.failCount ? ` / 실패 ${data.failCount}개` : ''
       const msg = `${data.message} (성공 ${data.count}개${failMsg})`
       if (data.failCount) toast.error(msg)

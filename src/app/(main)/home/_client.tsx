@@ -7,14 +7,16 @@ import { createClient } from '@/lib/supabase/client'
 import { memoKeys, readLocalCache, readLocalCacheTs } from '@/hooks/useMemos'
 import type { Memo } from '@/types'
 import HomeClient from '@/components/home/HomeClient'
+// PR-4: namespaced LS keys
+import {
+  lsHomeMemosCache, lsHomeMemosCacheTs,
+  lsHomeStatsCache, lsHomeStatsCacheTs,
+  lsMemosCache, lsMemosTotalCount,
+} from '@/lib/cache/lsKeys'
 
 const HOME_STALE = 5 * 60 * 1000
 
 // 홈 전용 메모 캐시 (최근 5개) — count 쿼리 없음
-const LS_HOME_MEMOS_KEY = 'home-memos-cache'
-const LS_HOME_MEMOS_TS_KEY = 'home-memos-cache-ts'
-const LS_STATS_KEY = 'home-stats-cache'
-const LS_STATS_TS_KEY = 'home-stats-cache-ts'
 
 interface HomeMemos {
   recentMemos: Array<{
@@ -37,7 +39,7 @@ interface DdayPlan {
 function readHomeMemoCache(): HomeMemos | undefined {
   if (typeof window === 'undefined') return undefined
   try {
-    const v = localStorage.getItem(LS_HOME_MEMOS_KEY)
+    const v = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
     return v ? (JSON.parse(v) as HomeMemos) : undefined
   } catch { return undefined }
 }
@@ -45,7 +47,7 @@ function readHomeMemoCache(): HomeMemos | undefined {
 function readHomeMemoTs(): number {
   if (typeof window === 'undefined') return 0
   try {
-    const v = localStorage.getItem(LS_HOME_MEMOS_TS_KEY)
+    const v = (() => { const k = lsHomeMemosCacheTs(); return k ? localStorage.getItem(k) : null })()
     return v ? parseInt(v, 10) : 0
   } catch { return 0 }
 }
@@ -53,7 +55,7 @@ function readHomeMemoTs(): number {
 function readStatsCache() {
   if (typeof window === 'undefined') return undefined
   try {
-    const v = localStorage.getItem(LS_STATS_KEY)
+    const v = (() => { const k = lsHomeStatsCache(); return k ? localStorage.getItem(k) : null })()
     return v ? JSON.parse(v) : undefined
   } catch { return undefined }
 }
@@ -61,7 +63,7 @@ function readStatsCache() {
 function readStatsCacheTs(): number {
   if (typeof window === 'undefined') return 0
   try {
-    const v = localStorage.getItem(LS_STATS_TS_KEY)
+    const v = (() => { const k = lsHomeStatsCacheTs(); return k ? localStorage.getItem(k) : null })()
     return v ? parseInt(v, 10) : 0
   } catch { return 0 }
 }
@@ -76,9 +78,9 @@ export default function HomePageClient() {
   const [prevCount] = useState<number | undefined>(() => {
     if (typeof window === 'undefined') return undefined
     try {
-      const countStr = localStorage.getItem('memos-total-count')
+      const countStr = (() => { const k = lsMemosTotalCount(); return k ? localStorage.getItem(k) : null })()
       if (countStr !== null) return Number(countStr)
-      const raw = localStorage.getItem('memos-all-cache')
+      const raw = (() => { const k = lsMemosCache(); return k ? localStorage.getItem(k) : null })()
       if (!raw) return undefined
       const arr = JSON.parse(raw) as unknown[]
       return Array.isArray(arr) && arr.length > 0 ? arr.length : undefined
@@ -125,8 +127,7 @@ export default function HomePageClient() {
 
   useEffect(() => {
     if (homeMemos) {
-      localStorage.setItem(LS_HOME_MEMOS_KEY, JSON.stringify(homeMemos))
-      localStorage.setItem(LS_HOME_MEMOS_TS_KEY, String(Date.now()))
+      { const k = lsHomeMemosCache(); const kts = lsHomeMemosCacheTs(); if (k && kts) { localStorage.setItem(k, JSON.stringify(homeMemos)); localStorage.setItem(kts, String(Date.now())) } }
     }
   }, [homeMemos])
 
@@ -198,8 +199,7 @@ export default function HomePageClient() {
 
   useEffect(() => {
     if (stats) {
-      localStorage.setItem(LS_STATS_KEY, JSON.stringify(stats))
-      localStorage.setItem(LS_STATS_TS_KEY, String(Date.now()))
+      { const k = lsHomeStatsCache(); const kts = lsHomeStatsCacheTs(); if (k && kts) { localStorage.setItem(k, JSON.stringify(stats)); localStorage.setItem(kts, String(Date.now())) } }
     }
   }, [stats])
 

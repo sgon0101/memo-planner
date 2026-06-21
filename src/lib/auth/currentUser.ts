@@ -14,6 +14,20 @@ let cachedUserId: string | null = null
 let initialized = false
 let unsubscribeFn: (() => void) | null = null
 
+// userId 변경 구독자 — React 훅에서 reactive하게 받기 위함
+const subscribers = new Set<(uid: string | null) => void>()
+function notify() {
+  subscribers.forEach((fn) => { try { fn(cachedUserId) } catch { /* ignore */ } })
+}
+
+/** userId 변경 구독 — return된 함수로 unsubscribe.
+ *  구독 즉시 현재 값으로 callback 1회 실행. */
+export function subscribeUserId(fn: (uid: string | null) => void): () => void {
+  subscribers.add(fn)
+  try { fn(cachedUserId) } catch { /* ignore */ }
+  return () => { subscribers.delete(fn) }
+}
+
 export function getCurrentUserId(): string | null {
   return cachedUserId
 }
@@ -28,6 +42,7 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
   } catch {
     cachedUserId = null
   }
+  notify()  // 초기화 완료 알림
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const newUserId = session?.user?.id ?? null
@@ -39,6 +54,7 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
     }
 
     cachedUserId = newUserId
+    notify()
   })
 
   unsubscribeFn = () => subscription.unsubscribe()
