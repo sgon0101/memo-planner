@@ -132,17 +132,32 @@ export default function MemoList() {
   // sessionStorage에 같은 folderId 상태가 있으면 displayCount/scroll을 복원
   // (메모 클릭 → 메모 보고 뒤로가기 시나리오)
   const [pendingScroll, setPendingScroll] = useState<number | null>(null)
+  // 정렬·필터 상태 — scroll listener effect의 deps에서 참조하므로 effect보다 먼저 선언
+  const [sort, setSort] = useState<SortKey>('updated')
+  const [titleDir, setTitleDir] = useState<TitleDir>('asc')
+  const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [activeWiki, setActiveWiki] = useState<string | null>(null)
+  // 폴더 effect — 같은 폴더면 sessionStorage에서 displayCount/scroll/정렬·필터 모두 복원.
+  // 다른 폴더면 기본값(PAGE_SIZE + 최신순)으로 reset.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('memo-list-state')
       if (saved) {
         try {
-          const { folderId, displayCount: dc, scrollY } = JSON.parse(saved) as { folderId: string | null; displayCount: number; scrollY: number }
-          if (folderId === selectedFolderId && typeof dc === 'number' && typeof scrollY === 'number') {
-            setDisplayCount(dc)
+          const parsed = JSON.parse(saved) as {
+            folderId: string | null; displayCount: number; scrollY: number
+            sort?: SortKey; titleDir?: TitleDir; activeTag?: string | null; activeWiki?: string | null
+          }
+          if (parsed.folderId === selectedFolderId && typeof parsed.displayCount === 'number' && typeof parsed.scrollY === 'number') {
+            setDisplayCount(parsed.displayCount)
             setSelectedTrashIds(new Set())
-            setPendingScroll(scrollY)
+            setPendingScroll(parsed.scrollY)
+            // 정렬·필터 복원 — 같은 폴더 재진입 시 사용자가 마지막에 설정한 상태 유지
+            if (parsed.sort) setSort(parsed.sort)
+            if (parsed.titleDir) setTitleDir(parsed.titleDir)
+            if (parsed.activeTag !== undefined) setActiveTag(parsed.activeTag)
+            if (parsed.activeWiki !== undefined) setActiveWiki(parsed.activeWiki)
             sessionStorage.removeItem('memo-list-state')
             return
           }
@@ -151,39 +166,43 @@ export default function MemoList() {
     }
     setDisplayCount(PAGE_SIZE)
     setSelectedTrashIds(new Set())
+    // 다른 폴더 — 정렬·필터도 기본값으로 reset
+    setSort('updated')
+    setTitleDir('asc')
+    setActiveTag(null)
+    setActiveWiki(null)
   }, [selectedFolderId])
 
-  // 데이터 로드 후 pendingScroll 적용 — ResizeObserver로 scrollHeight 변화를
-  // 즉시 감지해 충분히 커지면 scroll 적용. 10초 안전 timeout.
+  // pendingScroll 적용 — setInterval 100ms 폴링. ref가 늦게 마운트되거나
+  // 데이터(useMemos)가 늦게 들어와도 계속 시도. memos.length를 deps에서 빼
+  // re-run으로 인한 cleanup race condition 차단. 30초 안전 timeout.
   useEffect(() => {
     if (pendingScroll === null) return
-    if (memos.length === 0) return
     const target = pendingScroll
-    const scrollEl = scrollContainerRef.current
-    if (!scrollEl) return
     let applied = false
-    function tryScroll() {
-      if (applied || !scrollEl) return
+    const intervalId = setInterval(() => {
+      if (applied) return
+      const scrollEl = scrollContainerRef.current
+      if (!scrollEl) return
       const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight
       if (maxScroll >= target - 4) {
         scrollEl.scrollTop = target
         applied = true
         setPendingScroll(null)
+        clearInterval(intervalId)
       }
-    }
-    tryScroll()
-    const ro = new ResizeObserver(tryScroll)
-    ro.observe(scrollEl)
-    Array.from(scrollEl.children).forEach((c) => { try { ro.observe(c) } catch { /* ignore */ } })
-    const safety = setTimeout(() => {
-      if (!applied && scrollEl) {
-        scrollEl.scrollTop = target
+    }, 100)
+    const safetyId = setTimeout(() => {
+      if (!applied) {
+        const scrollEl = scrollContainerRef.current
+        if (scrollEl) scrollEl.scrollTop = target
         applied = true
         setPendingScroll(null)
+        clearInterval(intervalId)
       }
-    }, 10000)
-    return () => { ro.disconnect(); clearTimeout(safety) }
-  }, [pendingScroll, memos.length])
+    }, 30000)
+    return () => { clearInterval(intervalId); clearTimeout(safetyId) }
+  }, [pendingScroll])
 
   // 스크롤할 때마다 sessionStorage 업데이트 — unmount cleanup이 발화 안 되는
   // 케이스(Next.js App Router에서 Suspense/cache 등) 대비. 매 frame 1회 throttle.
@@ -204,6 +223,10 @@ export default function MemoList() {
               folderId: selectedFolderId,
               displayCount,
               scrollY,
+              sort,
+              titleDir,
+              activeTag,
+              activeWiki,
             }))
           }
         } catch { /* ignore */ }
@@ -211,7 +234,7 @@ export default function MemoList() {
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [selectedFolderId, displayCount])
+  }, [selectedFolderId, displayCount, sort, titleDir, activeTag, activeWiki])
 
   // 전체 선택 체크박스 indeterminate 상태
   useEffect(() => {
@@ -221,11 +244,7 @@ export default function MemoList() {
   }, [selectedTrashIds.size, memos.length])
 
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<SortKey>('updated')
-  const [titleDir, setTitleDir] = useState<TitleDir>('asc')
   const [view, setView] = useState<ViewMode>('card')
-  const [activeTag, setActiveTag] = useState<string | null>(null)
-  const [activeWiki, setActiveWiki] = useState<string | null>(null)
 
   // 검색 input — 반응형 placeholder + 포커스 시 도움 칩
   const searchInputRef = useRef<HTMLInputElement | null>(null)
