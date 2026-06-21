@@ -296,7 +296,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
 
         if (!skipNavigate) {
-          router.replace(`/memo/${newMemo.id}`)
+          // router.replace는 client-side navigation을 트리거해 페이지 컴포넌트가
+          // 재마운트 → Tiptap editor 재생성 → 사용자가 그 동안 입력한 내용 손실.
+          // history.replaceState는 URL만 silent 업데이트해 깜빡임 없음.
+          // 사용자가 새로고침/공유 시 URL이 정확한 id로 보임.
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', `/memo/${newMemo.id}`)
+          }
         }
       }
 
@@ -455,6 +461,34 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // 페이지 이탈 직전 강제 저장 — 30초 자동저장 사이에 사용자가 빠져나가는 사고 방지.
+  // ① beforeunload: 탭 닫기·새로고침·다른 사이트 이동 직전 (데스크탑 신뢰성 ↑)
+  // ② pagehide:    모바일 Safari 등에서 beforeunload 대신 발화
+  // ③ visibilitychange: 백그라운드 전환·앱 스위치·다른 탭 전환 (모바일 안전망)
+  // unload 콜백 내부의 비동기 호출은 보장이 약하지만 best-effort.
+  useEffect(() => {
+    function fireSave() {
+      if (!hasUnsavedRef.current || !editorRef.current) return
+      const json = editorRef.current.getJSON() as Record<string, unknown>
+      const text = editorRef.current.getText()
+      // skipNavigate: 이탈 중이므로 추가 nav 차단
+      saveRef.current(json, text, { skipNavigate: true }).catch(() => { /* best-effort */ })
+    }
+    function onBeforeUnload() { fireSave() }
+    function onPageHide() { fireSave() }
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') fireSave()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   // 제목 변경 시 unsaved 표시
