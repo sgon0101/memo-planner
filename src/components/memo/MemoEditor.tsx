@@ -725,11 +725,22 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* 저장 상태 표시 */}
+            {/* 저장 상태 표시 — unsaved일 때 모바일에선 클릭 가능한 1-탭 저장 칩으로 변환.
+               데스크탑은 기존 라벨 + 우측에 별도 저장 버튼 그대로. */}
             <div className="flex items-center gap-1.5 min-w-[20px] md:min-w-[80px] justify-end">
               {saveStatus === 'unsaved' && (
                 <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                  {/* 모바일: 탭 가능한 보라색 "저장" 칩 — 자동저장 1.5s 기다리지 않고 즉시 저장 */}
+                  <button
+                    onClick={handleManualSave}
+                    aria-label="지금 저장"
+                    className="md:hidden flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 active:bg-violet-200 dark:active:bg-violet-900/60 transition-colors"
+                  >
+                    <Save size={11} />
+                    저장
+                  </button>
+                  {/* 데스크탑: 기존 dot + 라벨 (별도 저장 버튼이 오른쪽에 있음) */}
+                  <span className="hidden md:inline w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                   <span className="hidden md:inline text-xs text-amber-500">저장 안 됨</span>
                 </>
               )}
