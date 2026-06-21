@@ -126,9 +126,60 @@ export default function MemoList() {
     return () => document.removeEventListener('touchmove', prevent)
   }, [touchDragId])
 
-  // 폴더 변경 시 표시 개수 + 선택 초기화
+  // 폴더 변경 시 표시 개수 + 선택 초기화 + 스크롤 복원
+  // sessionStorage에 같은 folderId 상태가 있으면 displayCount/scroll을 복원
+  // (메모 클릭 → 메모 보고 뒤로가기 시나리오)
+  const [pendingScroll, setPendingScroll] = useState<number | null>(null)
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setDisplayCount(PAGE_SIZE); setSelectedTrashIds(new Set()) }, [selectedFolderId])
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('memo-list-state')
+      if (saved) {
+        try {
+          const { folderId, displayCount: dc, scrollY } = JSON.parse(saved) as { folderId: string | null; displayCount: number; scrollY: number }
+          if (folderId === selectedFolderId && typeof dc === 'number' && typeof scrollY === 'number') {
+            setDisplayCount(dc)
+            setSelectedTrashIds(new Set())
+            setPendingScroll(scrollY)
+            sessionStorage.removeItem('memo-list-state')
+            return
+          }
+        } catch { /* ignore */ }
+      }
+    }
+    setDisplayCount(PAGE_SIZE)
+    setSelectedTrashIds(new Set())
+  }, [selectedFolderId])
+
+  // 데이터 로드 후 pendingScroll 적용 — memos.length 변하면 시도
+  useEffect(() => {
+    if (pendingScroll === null) return
+    if (memos.length === 0) return
+    const id = requestAnimationFrame(() => {
+      const scrollEl = document.querySelector('[data-scroll-root="main"]') as HTMLElement | null
+      if (scrollEl) scrollEl.scrollTop = pendingScroll
+      setPendingScroll(null)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [pendingScroll, memos.length])
+
+  // unmount 시 현재 스크롤+displayCount+folderId 저장 — 다음 mount 때 복원에 사용
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      const scrollEl = document.querySelector('[data-scroll-root="main"]') as HTMLElement | null
+      const scrollY = scrollEl?.scrollTop ?? 0
+      if (scrollY > 0) {
+        try {
+          sessionStorage.setItem('memo-list-state', JSON.stringify({
+            folderId: selectedFolderId,
+            displayCount,
+            scrollY,
+          }))
+        } catch { /* ignore */ }
+      }
+    }
+  }, [selectedFolderId, displayCount])
 
   // 전체 선택 체크박스 indeterminate 상태
   useEffect(() => {
