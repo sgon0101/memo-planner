@@ -6,6 +6,8 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays } fro
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
 import { setUntilOnRRule } from '@/lib/planner/rrulePresets'
+import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
+import { broadcast } from '@/lib/sync/broadcast'
 import type { Plan } from '@/types'
 
 export function toPlan(row: Record<string, unknown>): Plan {
@@ -45,8 +47,6 @@ export function usePlanner() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  // 플랜 변경 시 홈 화면 통계/D-day 쿼리 무효화
-  // → 홈은 staleTime 동안 캐시를 쓰되, 변경이 있었으면 다음 방문 시 재조회
   const invalidateHomeQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['home-stats'] })
     queryClient.invalidateQueries({ queryKey: ['home-dday'] })
@@ -65,7 +65,6 @@ export function usePlanner() {
     const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
       supabase.from('plans').select('*').not('date', 'is', null).gte('date', calStart).lte('date', calEnd),
       supabase.from('plans').select('*').not('start_date', 'is', null).lte('start_date', calEnd).gte('end_date', calStart),
-      // 반복 플랜: 신규 rrule_str 또는 legacy repeat_type 둘 중 하나라도 있는 것
       supabase.from('plans').select('*').or('repeat_type.not.is.null,rrule_str.not.is.null'),
     ])
 
@@ -73,7 +72,6 @@ export function usePlanner() {
     const unique = all.filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
     setPlans(unique.map(toPlan))
 
-    // 반복 플랜 완료 상태 로드 (테이블 없으면 graceful fallback)
     try {
       const { data: completions } = await supabase
         .from('recurring_plan_completions')
@@ -87,9 +85,7 @@ export function usePlanner() {
         }
         setRecurringCompletions(map)
       }
-    } catch {
-      // recurring_plan_completions 테이블이 없으면 무시
-    }
+    } catch { /* table missing — ignore */ }
   }, [currentMonth, currentWeek, selectedDate])
 
   useEffect(() => { load() }, [load])
@@ -123,11 +119,13 @@ export function usePlanner() {
     const plan = toPlan(row)
     addPlan(plan)
     invalidateHomeQueries()
+    broadcast({ type: 'plan-create', plan })
     return plan
   }, [invalidateHomeQueries])
 
+  /** Silent + auto-force update — last-write-wins, broadcast 자동 */
   const editPlan = useCallback(async (id: string, data: Partial<Plan>) => {
-    const patch: Record<string, unknown> = {
+    const dbPatch: Record<string, unknown> = {
       title: data.title,
       description: data.description,
       color: data.color,
@@ -145,27 +143,44 @@ export function usePlanner() {
       notify_lead_min: data.notifyLeadMin,
       dday_target: data.ddayTarget,
     }
-    if (data.linkedMemoIds !== undefined) patch.linked_memo_ids = data.linkedMemoIds
-    await supabase.from('plans').update(patch).eq('id', id)
-    updatePlan(id, data)
+    if (data.linkedMemoIds !== undefined) dbPatch.linked_memo_ids = data.linkedMemoIds
+
+    const original = usePlannerStore.getState().plans.find((p) => p.id === id)
+    const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
+
+    const { updated_at } = await safeUpdateOrForce(
+      { table: 'plans', id, patch: dbPatch, knownUpdatedAt },
+      () => console.warn('[weave:conflict] plans editPlan', id),
+    )
+
+    const patchWithTime: Partial<Plan> = { ...data, updatedAt: updated_at }
+    updatePlan(id, patchWithTime)
     invalidateHomeQueries()
+    broadcast({ type: 'plan-update', id, patch: patchWithTime, updated_at })
   }, [invalidateHomeQueries])
 
   const removePlan = useCallback(async (id: string) => {
     await supabase.from('plans').delete().eq('id', id)
     deletePlan(id)
     invalidateHomeQueries()
+    broadcast({ type: 'plan-delete', id })
   }, [invalidateHomeQueries])
 
   const toggleComplete = useCallback(async (id: string, current: boolean) => {
-    await supabase.from('plans').update({ is_completed: !current }).eq('id', id)
-    updatePlan(id, { isCompleted: !current })
+    const original = usePlannerStore.getState().plans.find((p) => p.id === id)
+    const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
+
+    const { updated_at } = await safeUpdateOrForce(
+      { table: 'plans', id, patch: { is_completed: !current }, knownUpdatedAt },
+      () => console.warn('[weave:conflict] plans toggleComplete', id),
+    )
+
+    const patch: Partial<Plan> = { isCompleted: !current, updatedAt: updated_at }
+    updatePlan(id, patch)
     invalidateHomeQueries()
+    broadcast({ type: 'plan-update', id, patch, updated_at })
   }, [invalidateHomeQueries])
 
-  /** 반복 인스턴스 완료 토글
-   *  is_completed=false는 "이 인스턴스 숨김(skip)" 의미로 예약되어 있으므로
-   *  완료 해제 시에는 row를 delete해서 충돌 방지 (delete = 미완료 상태) */
   const toggleRecurringComplete = useCallback(async (
     originalPlanId: string,
     planDate: string,
@@ -176,14 +191,12 @@ export function usePlanner() {
     if (!user) return
     try {
       if (currentlyCompleted) {
-        // 완료 → 해제: row 삭제 (skip 의미와 충돌 방지)
         await supabase.from('recurring_plan_completions')
           .delete()
           .eq('original_plan_id', originalPlanId)
           .eq('plan_date', planDate)
         deleteRecurringCompletion(key)
       } else {
-        // 미완료 → 완료: upsert true
         await supabase.from('recurring_plan_completions').upsert({
           user_id: user.id,
           original_plan_id: originalPlanId,
@@ -193,14 +206,13 @@ export function usePlanner() {
         setRecurringCompletion(key, true)
       }
     } catch {
-      // 테이블 없으면 로컬만 업데이트
       if (currentlyCompleted) deleteRecurringCompletion(key)
       else setRecurringCompletion(key, true)
     }
     invalidateHomeQueries()
+    broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
   }, [invalidateHomeQueries])
 
-  /** 반복 인스턴스 이 일정만 삭제 (숨김 처리) */
   const skipRecurringInstance = useCallback(async (
     originalPlanId: string,
     planDate: string,
@@ -213,15 +225,13 @@ export function usePlanner() {
         user_id: user.id,
         original_plan_id: originalPlanId,
         plan_date: planDate,
-        is_completed: false,  // false = 이 일정 숨김
+        is_completed: false,
       }, { onConflict: 'original_plan_id,plan_date' })
-    } catch { /* 테이블 없으면 무시 */ }
+    } catch { /* table missing — ignore */ }
     setRecurringCompletion(key, false)
+    broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
   }, [])
 
-  /** 이후 모든 일정 삭제: repeat_end_date + rrule_str의 UNTIL을 해당 날짜 하루 전으로 설정.
-   *  RRULE 기반 신규 플랜은 expandRecurringPlans가 rrule_str을 우선 사용하므로,
-   *  repeat_end_date만 갱신하면 효과가 없음 → rrule_str도 같이 갱신해야 함. */
   const stopRecurringFromDate = useCallback(async (
     originalPlanId: string,
     planDate: string,
@@ -230,7 +240,6 @@ export function usePlanner() {
     prevDay.setDate(prevDay.getDate() - 1)
     const endDate = prevDay.toISOString().split('T')[0]
 
-    // 원본 plan 조회 (rrule_str 보유 여부 판정)
     const original = plans.find((p) => p.id === originalPlanId)
 
     const patch: Record<string, unknown> = { repeat_end_date: endDate }
@@ -240,21 +249,28 @@ export function usePlanner() {
       patch.rrule_str = newRrule
     }
 
-    await supabase.from('plans').update(patch).eq('id', originalPlanId)
-    updatePlan(originalPlanId, {
-      repeatEndDate: endDate,
-      ...(original?.rruleStr ? { rruleStr: newRrule } : {}),
-    })
+    const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
+    const { updated_at } = await safeUpdateOrForce(
+      { table: 'plans', id: originalPlanId, patch, knownUpdatedAt },
+      () => console.warn('[weave:conflict] plans stopRecurringFromDate', originalPlanId),
+    )
 
-    // 이후 날짜의 완료 기록 정리 (있다면)
+    const localPatch: Partial<Plan> = {
+      repeatEndDate: endDate,
+      updatedAt: updated_at,
+      ...(original?.rruleStr ? { rruleStr: newRrule } : {}),
+    }
+    updatePlan(originalPlanId, localPatch)
+    broadcast({ type: 'plan-update', id: originalPlanId, patch: localPatch, updated_at })
+
     try {
       await supabase.from('recurring_plan_completions')
         .delete()
         .eq('original_plan_id', originalPlanId)
         .gte('plan_date', planDate)
-    } catch { /* 테이블 없으면 무시 */ }
-    // 로컬 completions에서도 정리
+    } catch { /* table missing — ignore */ }
     deleteRecurringCompletion(`${originalPlanId}_${planDate}`)
+    broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
   }, [plans])
 
   return {
