@@ -30,7 +30,10 @@
       "Bash(git commit *)",
       "Bash(curl -sL \"https://memo-planner.vercel.app/login\")",
       "Bash(npx next *)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(npx vercel *)",
+      "PowerShell(npm run *)",
+      "PowerShell(git *)"
     ]
   }
 }
