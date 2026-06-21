@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { memoKeys, LIST_COLS, toMemo, writeLocalCache } from '@/hooks/useMemos'
+import { lsMemosTotalCount } from '@/lib/cache/lsKeys'
 
 // 레이아웃 레벨에서 메모 목록을 최대한 일찍 백그라운드 prefetch
 // → 메모 탭 진입 전에 캐시를 채워 즉각 표시 가능하게 함
@@ -29,7 +30,7 @@ export function MemoListPrefetch() {
       .then((memos) => {
         writeLocalCache(memos)
         // 홈 총메모수 즉각 표시용 — 별도 키에 개수만 저장
-        try { if (memos.length > 0) localStorage.setItem('memos-total-count', String(memos.length)) } catch {}
+        try { const k = lsMemosTotalCount(); if (k && memos.length > 0) localStorage.setItem(k, String(memos.length)) } catch {}
       })
       .catch(() => {})
   }, [queryClient])

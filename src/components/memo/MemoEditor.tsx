@@ -38,6 +38,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
 import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
+import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 
 const lowlight = createLowlight(common)
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -232,6 +233,37 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
         )
 
+        // 홈 최근 메모 캐시 즉시 갱신 — 해당 id 항목을 최신 정보로 + 맨 앞 정렬
+        type HomeMemo = { id: string; title: string; contentText: string; updatedAt: string; isStarred: boolean; isPinned: boolean }
+        queryClient.setQueryData<{ recentMemos: HomeMemo[] } | undefined>(
+          ['home-memos'],
+          (old) => {
+            if (!old) return old
+            const existing = old.recentMemos.find((m) => m.id === id)
+            const next: HomeMemo = existing
+              ? { ...existing, title: titleRef.current, contentText: text, updatedAt }
+              : { id, title: titleRef.current, contentText: text, updatedAt, isStarred: false, isPinned: false }
+            const rest = old.recentMemos.filter((m) => m.id !== id)
+            return { ...old, recentMemos: [next, ...rest].slice(0, 5) }
+          },
+        )
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
+            if (raw) {
+              const parsed = JSON.parse(raw) as { recentMemos: HomeMemo[] }
+              const existing = parsed.recentMemos.find((m) => m.id === id)
+              const next: HomeMemo = existing
+                ? { ...existing, title: titleRef.current, contentText: text, updatedAt }
+                : { id, title: titleRef.current, contentText: text, updatedAt, isStarred: false, isPinned: false }
+              const rest = parsed.recentMemos.filter((m) => m.id !== id)
+              const nextCache = { ...parsed, recentMemos: [next, ...rest].slice(0, 5) }
+              { const k = lsHomeMemosCache(); if (k) localStorage.setItem(k, JSON.stringify(nextCache)) }
+              { const k = lsHomeMemosCacheTs(); if (k) localStorage.setItem(k, String(Date.now())) }
+            }
+          } catch { /* ignore */ }
+        }
+
         const now = Date.now()
         if (now - lastVersionSavedAtRef.current > VERSION_COOLDOWN_MS) {
           lastVersionSavedAtRef.current = now
@@ -287,6 +319,32 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           memoKeys.all(),
           (old) => old ? [newMemoForCache, ...old] : [newMemoForCache]
         )
+
+        // 홈 최근 메모 캐시 즉시 추가 — 새 메모는 항상 맨 앞, 5개로 자름
+        type HomeMemoIns = { id: string; title: string; contentText: string; updatedAt: string; isStarred: boolean; isPinned: boolean }
+        const newHomeEntry: HomeMemoIns = {
+          id: newMemo.id,
+          title: newMemo.title,
+          contentText: newMemo.contentText,
+          updatedAt: newMemo.updatedAt,
+          isStarred: newMemo.isStarred,
+          isPinned: newMemo.isPinned,
+        }
+        queryClient.setQueryData<{ recentMemos: HomeMemoIns[] } | undefined>(
+          ['home-memos'],
+          (old) => old
+            ? { ...old, recentMemos: [newHomeEntry, ...old.recentMemos].slice(0, 5) }
+            : { recentMemos: [newHomeEntry] },
+        )
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
+            const parsed = raw ? JSON.parse(raw) as { recentMemos: HomeMemoIns[] } : { recentMemos: [] }
+            const nextCache = { ...parsed, recentMemos: [newHomeEntry, ...parsed.recentMemos].slice(0, 5) }
+            { const k = lsHomeMemosCache(); if (k) localStorage.setItem(k, JSON.stringify(nextCache)) }
+            { const k = lsHomeMemosCacheTs(); if (k) localStorage.setItem(k, String(Date.now())) }
+          } catch { /* ignore */ }
+        }
         // 폴더 카운트 즉시 반영
         const targetFolderId = folderIdRef.current
         queryClient.setQueryData<Array<{ folder_id: string | null }>>(
@@ -709,12 +767,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         queryClient.invalidateQueries({ queryKey: ['home-memos'] })
         if (typeof window !== 'undefined') {
           try {
-            const raw = localStorage.getItem('home-memos-cache')
+            const raw = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
             if (raw) {
               const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
               const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== id) }
-              localStorage.setItem('home-memos-cache', JSON.stringify(next))
-              localStorage.setItem('home-memos-cache-ts', String(Date.now()))
+              { const k = lsHomeMemosCache(); if (k) localStorage.setItem(k, JSON.stringify(next)) }
+              { const k = lsHomeMemosCacheTs(); if (k) localStorage.setItem(k, String(Date.now())) }
             }
           } catch { /* ignore */ }
         }
