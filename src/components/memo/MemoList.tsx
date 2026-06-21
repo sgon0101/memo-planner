@@ -153,16 +153,31 @@ export default function MemoList() {
     setSelectedTrashIds(new Set())
   }, [selectedFolderId])
 
-  // 데이터 로드 후 pendingScroll 적용 — memos.length 변하면 시도
+  // 데이터 로드 후 pendingScroll 적용 — scrollHeight가 목표값보다 작으면(렌더 미완료)
+  // setTimeout으로 재시도. 카드 60개 렌더가 비동기로 펼쳐지는 동안 따라잡음.
   useEffect(() => {
     if (pendingScroll === null) return
     if (memos.length === 0) return
-    const id = requestAnimationFrame(() => {
+    const target = pendingScroll  // null 좁힘 캡처 (중첩 함수에서 non-null 보장)
+    let cancelled = false
+    let attempts = 0
+    const MAX = 30  // 약 3초 (100ms × 30)
+    function tryScroll() {
+      if (cancelled) return
       const scrollEl = scrollContainerRef.current
-      if (scrollEl) scrollEl.scrollTop = pendingScroll
+      if (!scrollEl) { setPendingScroll(null); return }
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight
+      // 아직 목표 scrollY까지 렌더 안 됨 → 다음 frame 재시도
+      if (maxScroll < target - 4 && attempts < MAX) {
+        attempts++
+        setTimeout(tryScroll, 100)
+        return
+      }
+      scrollEl.scrollTop = target
       setPendingScroll(null)
-    })
-    return () => cancelAnimationFrame(id)
+    }
+    const id = requestAnimationFrame(tryScroll)
+    return () => { cancelled = true; cancelAnimationFrame(id) }
   }, [pendingScroll, memos.length])
 
   // 스크롤할 때마다 sessionStorage 업데이트 — unmount cleanup이 발화 안 되는
