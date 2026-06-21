@@ -196,6 +196,11 @@ aside {
   margin: 0;
   padding: 0;
   line-height: 0;
+  /* width fit-content: wrapper 옆 빈 공간을 layout에서 제거.
+     이전엔 react-renderer가 부모 100% width라 이미지 옆 빈 영역 클릭도
+     image selection으로 잡혀 "외부 터치해도 이미지 활성화" 회귀 발생. */
+  width: fit-content;
+  max-width: 100%;
 }
 
 .tiptap div[data-node-view-wrapper] {

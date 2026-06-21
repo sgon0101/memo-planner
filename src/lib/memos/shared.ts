@@ -44,7 +44,9 @@ export function extractFirstImage(content: Record<string, unknown>): string | nu
         const v = attrs?.[k]
         return typeof v === 'string' && v && !v.startsWith('data:') ? v : null
       }
-      const chosen = pick('srcSm') ?? pick('srcMd') ?? pick('src')
+      // 우선순위: srcMd(960w) > src(원본) > srcSm(480w)
+      // srcSm은 너무 저화질 — 카드는 작아도 retina에선 흐릿함. srcMd가 균형.
+      const chosen = pick('srcMd') ?? pick('src') ?? pick('srcSm')
       if (chosen) return chosen
     }
     const children = node.content as Record<string, unknown>[] | undefined

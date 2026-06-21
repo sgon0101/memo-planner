@@ -140,38 +140,6 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       as="div"
       className="relative block max-w-full my-0"
       style={{ width: widthAttr ?? '100%', maxWidth: naturalSize ? `${naturalSize.w}px` : '100%' }}
-      onMouseDown={handleMouseDown}
-      onClick={handleClick}
-      // 모바일 터치 폴백 — onClick 합성 실패 케이스 대비.
-      // touchstart 좌표 기록 → touchend에서 이동 거리 ≤ 10px만 tap으로 판정.
-      // 스크롤(swipe)은 무시되어, 화면을 내릴 때 이미지가 자동 선택되던 UX 이슈 해결.
-      onTouchStart={(e: React.TouchEvent) => {
-        const t = e.touches[0]
-        if (t) touchStartRef.current = { x: t.clientX, y: t.clientY }
-      }}
-      onTouchEnd={(e: React.TouchEvent) => {
-        if (!editor) return
-        // 리사이즈 핸들/툴바 위 탭은 무시
-        const target = e.target as HTMLElement
-        if (target.closest('button') || target.dataset.resizeHandle === '1') return
-
-        // ★ tap vs scroll 판별
-        const start = touchStartRef.current
-        touchStartRef.current = null
-        const end = e.changedTouches[0]
-        if (start && end) {
-          const dx = Math.abs(end.clientX - start.x)
-          const dy = Math.abs(end.clientY - start.y)
-          if (dx > 10 || dy > 10) return  // 스크롤·스와이프 — 선택 차단
-        }
-
-        e.preventDefault()
-        const pos = typeof getPos === 'function' ? getPos() : null
-        if (typeof pos === 'number') {
-          editor.commands.setNodeSelection(pos)
-          editor.view.dom.focus({ preventScroll: true })
-        }
-      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -183,12 +151,38 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
           display: 'block',
           outline: selected ? '2px solid #7C3AED' : 'none',
           borderRadius: 2,
+          cursor: 'pointer',
+        }}
+        // hit 영역을 img로 한정 — wrapper는 fit-content + 외부 click 차단해
+        // 이미지 옆 빈 공간 터치도 image selection으로 묶이던 회귀 fix.
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+        onTouchStart={(e: React.TouchEvent) => {
+          const t = e.touches[0]
+          if (t) touchStartRef.current = { x: t.clientX, y: t.clientY }
+        }}
+        onTouchEnd={(e: React.TouchEvent) => {
+          if (!editor) return
+          const target = e.target as HTMLElement
+          if (target.closest('button') || target.dataset.resizeHandle === '1') return
+          e.preventDefault()
+          const start = touchStartRef.current
+          touchStartRef.current = null
+          const end = e.changedTouches[0]
+          if (start && end) {
+            const dx = Math.abs(end.clientX - start.x)
+            const dy = Math.abs(end.clientY - start.y)
+            if (dx > 10 || dy > 10) return
+          }
+          const pos = typeof getPos === 'function' ? getPos() : null
+          if (typeof pos === 'number') {
+            editor.commands.setNodeSelection(pos)
+            editor.view.dom.focus({ preventScroll: true })
+          }
         }}
         onLoad={() => {
           const img = imgRef.current
           if (!img) return
-          // prev ?? 패턴 — src 동적 교체로 onLoad 재발화해도 1회만 기록
-          // 자연 크기는 src에 관계없이 동일하므로 첫 측정값 유지
           setNaturalSize((prev) => prev ?? { w: img.naturalWidth, h: img.naturalHeight })
         }}
         draggable={false}
