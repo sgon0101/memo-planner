@@ -54,7 +54,7 @@ export async function GET(
 
     if (fetchErr) {
       console.error('[export/memo/id] fetch error:', fetchErr)
-      return Response.json({ error: 'memo fetch 실패: ' + fetchErr.message }, { status: 500 })
+      return Response.json({ error: '메모 조회 실패' }, { status: 500 })
     }
     if (!memoRaw) {
       return Response.json({ error: '메모를 찾을 수 없습니다.' }, { status: 404 })
@@ -134,7 +134,7 @@ export async function GET(
     } catch (e) {
       console.error('[export/memo/id] buildMemoMarkdown error:', e)
       return Response.json(
-        { error: 'Markdown 변환 실패: ' + (e instanceof Error ? e.message : 'unknown') },
+        { error: 'Markdown 변환 실패' },
         { status: 500 }
       )
     }
@@ -149,9 +149,10 @@ export async function GET(
       },
     })
   } catch (err) {
+    // 서버 측에만 상세 로그 남기고, 클라이언트엔 일반 메시지만 노출
     console.error('[export/memo/id] unexpected:', err)
     return Response.json(
-      { error: err instanceof Error ? err.message : 'unknown', stack: err instanceof Error ? err.stack?.slice(0, 500) : undefined },
+      { error: '메모 내보내기 중 오류가 발생했습니다.' },
       { status: 500 }
     )
   }
