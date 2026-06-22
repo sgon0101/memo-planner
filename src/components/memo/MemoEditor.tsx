@@ -40,6 +40,7 @@ import { toast } from '@/components/ui/Toast'
 import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
+import { useAutoEmbed } from '@/hooks/useAutoEmbed'
 
 const lowlight = createLowlight(common)
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -127,6 +128,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   const [title, setTitle] = useState(initialTitle)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const triggerAutoEmbed = useAutoEmbed()
   const [createdId, setCreatedId] = useState<string | null>(isNew ? null : memoId)
   const [showHistory, setShowHistory] = useState(false)
   const [charCount, setCharCount] = useState(0)
@@ -368,6 +370,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       hasUnsavedRef.current = false
       setSaveStatus('saved')
       setSavedAt(new Date())
+      // PR-6: 저장 성공 후 자동 임베딩 트리거 (debounced 5s, fire-and-forget)
+      const idForEmbed = createdIdRef.current
+      if (idForEmbed) triggerAutoEmbed(idForEmbed)
 
       if (savedDisplayTimerRef.current) clearTimeout(savedDisplayTimerRef.current)
       savedDisplayTimerRef.current = setTimeout(() => setSaveStatus('idle'), SAVED_DISPLAY_MS)

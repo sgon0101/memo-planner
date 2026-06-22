@@ -8,7 +8,7 @@ import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
   Download, Upload, FileText, FileJson, HardDrive,
-  CloudUpload, Bell, BellOff, Radio,
+  CloudUpload, Bell, BellOff, Radio, Sparkles,
 } from 'lucide-react'
 import {
   isNotifSupported, getNotifPermission, isNotifEnabled, setNotifEnabled,
@@ -30,6 +30,9 @@ export default function SettingsPage() {
 
   const { darkMode, toggleDarkMode } = useUIStore()
   const [realtimeOn, setRealtimeOn] = useState<boolean>(true)
+  const [embedStatus, setEmbedStatus] = useState<{ total: number; embedded: number; missing: number; percent: number } | null>(null)
+  const [embedLoading, setEmbedLoading] = useState(false)
+  const [backfillBusy, setBackfillBusy] = useState(false)
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
   const [nicknameSaving, setNicknameSaving] = useState(false)
@@ -69,6 +72,53 @@ export default function SettingsPage() {
   useEffect(() => {
     setRealtimeOn(isRealtimeEnabled())
   }, [])
+  // PR-6: 임베딩 진행률 로드
+  useEffect(() => {
+    let mounted = true
+    setEmbedLoading(true)
+    fetch('/api/embeddings/status')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (mounted && d) setEmbedStatus(d) })
+      .catch(() => {})
+      .finally(() => { if (mounted) setEmbedLoading(false) })
+    return () => { mounted = false }
+  }, [])
+
+  const refreshEmbedStatus = async () => {
+    setEmbedLoading(true)
+    try {
+      const r = await fetch('/api/embeddings/status')
+      if (r.ok) setEmbedStatus(await r.json())
+    } catch {} finally { setEmbedLoading(false) }
+  }
+
+  const runEmbedBackfill = async () => {
+    if (backfillBusy) return
+    setBackfillBusy(true)
+    toast.info('임베딩 backfill 시작 — 메모 수에 따라 몇 분 걸릴 수 있어요')
+    try {
+      let totalProcessed = 0
+      // 한 번에 50개씩 반복 처리
+      for (let i = 0; i < 50; i++) {  // 최대 50회 = 2500개 보호
+        const r = await fetch('/api/embeddings/backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        if (!r.ok) break
+        const d = await r.json() as { processed: number; remaining: number }
+        totalProcessed += d.processed
+        if (d.remaining === 0 || d.processed === 0) break
+      }
+      await refreshEmbedStatus()
+      toast.success(`임베딩 backfill 완료 — ${totalProcessed}개 처리됨`)
+    } catch (e) {
+      toast.error('임베딩 backfill 중 오류: ' + (e instanceof Error ? e.message : 'unknown'))
+    } finally {
+      setBackfillBusy(false)
+    }
+  }
+
 
   useEffect(() => {
     if (!isNotifSupported()) {
@@ -588,6 +638,33 @@ export default function SettingsPage() {
                 realtimeOn ? 'translate-x-6' : 'translate-x-1',
               )}
             />
+          </button>
+        </SettingRow>
+      </Section>
+
+      <Section title="검색 인덱싱" icon={<Sparkles size={15} />}>
+        <SettingRow
+          label="의미 검색 인덱스"
+          description={
+            embedLoading && !embedStatus ? '진행률 불러오는 중...' :
+            embedStatus ?
+              `${embedStatus.embedded.toLocaleString()} / ${embedStatus.total.toLocaleString()} 메모 인덱싱됨 (${embedStatus.percent}%)` +
+                (embedStatus.missing > 0 ? ` — ${embedStatus.missing}개 대기 중` : ' — 최신 상태')
+              : '진행률을 불러오지 못했습니다'
+          }
+        >
+          <button
+            onClick={runEmbedBackfill}
+            disabled={backfillBusy || (embedStatus !== null && embedStatus.missing === 0)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+              (backfillBusy || (embedStatus !== null && embedStatus.missing === 0))
+                ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-60 cursor-not-allowed'
+                : 'bg-violet-600 hover:bg-violet-700 text-white'
+            )}
+          >
+            {backfillBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {backfillBusy ? '인덱싱 중...' : '지금 인덱싱'}
           </button>
         </SettingRow>
       </Section>
