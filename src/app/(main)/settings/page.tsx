@@ -38,6 +38,7 @@ export default function SettingsPage() {
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreBusy, setRestoreBusy] = useState(false)
   const [retainCount, setRetainCount] = useState<number>(10)
+  const [backupLockedMemos, setBackupLockedMemos] = useState<'skip' | 'placeholder' | 'ciphertext'>('skip')
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
   const [nicknameSaving, setNicknameSaving] = useState(false)
@@ -83,7 +84,12 @@ export default function SettingsPage() {
     // PR-5: 백업 설정의 retainCount 로드
     fetch('/api/backup/settings')
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d && typeof d.retainCount === 'number') setRetainCount(d.retainCount) })
+      .then((d) => {
+        if (d && typeof d.retainCount === 'number') setRetainCount(d.retainCount)
+        if (d && (d.backupLockedMemos === 'skip' || d.backupLockedMemos === 'placeholder' || d.backupLockedMemos === 'ciphertext')) {
+          setBackupLockedMemos(d.backupLockedMemos)
+        }
+      })
       .catch(() => {})
 
     setEmbedLoading(true)
@@ -146,6 +152,18 @@ export default function SettingsPage() {
       const r = await fetch('/api/embeddings/status')
       if (r.ok) setEmbedStatus(await r.json())
     } catch {} finally { setEmbedLoading(false) }
+  }
+
+  const saveBackupLockedMemos = async (v: 'skip' | 'placeholder' | 'ciphertext') => {
+    setBackupLockedMemos(v)
+    try {
+      await fetch('/api/backup/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupLockedMemos: v }),
+      })
+      toast.success('잠금 메모 백업 정책 저장됨')
+    } catch { /* silent */ }
   }
 
   const saveRetainCount = async (n: number) => {
@@ -915,6 +933,30 @@ export default function SettingsPage() {
                     />
                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 w-12 text-right">{retainCount}개</span>
                   </div>
+                </div>
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">잠금 메모 백업 정책</p>
+                  <div className="flex gap-2">
+                    {(['skip', 'placeholder', 'ciphertext'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => saveBackupLockedMemos(m)}
+                        className={cn(
+                          'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                          backupLockedMemos === m
+                            ? 'bg-violet-600 border-violet-600 text-white'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        )}
+                      >
+                        {m === 'skip' ? '제외' : m === 'placeholder' ? '안내문만' : '암호문 그대로'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                    {backupLockedMemos === 'skip' && '잠긴 메모는 백업에 포함되지 않습니다 (기본 — 가장 안전).'}
+                    {backupLockedMemos === 'placeholder' && '잠긴 메모는 제목만 백업되고 본문은 "🔒 잠긴 메모" 안내문으로 대체됩니다.'}
+                    {backupLockedMemos === 'ciphertext' && '잠긴 메모의 암호문이 그대로 Drive에 저장됩니다. 복원 시 원본 비밀번호 필요.'}
+                  </p>
                 </div>
                 <p className="text-xs font-medium text-gray-600 dark:text-gray-400">백업 주기</p>
                 <div className="flex gap-2">

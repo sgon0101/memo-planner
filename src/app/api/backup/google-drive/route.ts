@@ -178,6 +178,8 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
     wiki_links: string[] | null
     is_starred: boolean
     is_pinned: boolean
+    is_locked: boolean
+    locked_content: string | null
     created_at: string
     updated_at: string
   }> = []
@@ -186,7 +188,7 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
   while (true) {
     const { data: batch, error } = await supabase
       .from('memos')
-      .select('id, title, content, content_text, folder_id, tags, wiki_links, is_starred, is_pinned, created_at, updated_at')
+      .select('id, title, content, content_text, folder_id, tags, wiki_links, is_starred, is_pinned, is_locked, locked_content, created_at, updated_at')
       .eq('user_id', userId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: true })
@@ -232,7 +234,7 @@ export async function POST(req: NextRequest) {
 
     const { data: integration } = await supabase
       .from('user_integrations')
-      .select('access_token, refresh_token')
+      .select('access_token, refresh_token, metadata')
       .eq('user_id', user.id)
       .eq('provider', 'google_drive')
       .single()
@@ -240,6 +242,12 @@ export async function POST(req: NextRequest) {
     if (!integration?.access_token) {
       return NextResponse.json({ error: 'Google Drive가 연결되지 않았습니다.' }, { status: 403 })
     }
+
+    // PR-2: 잠금 메모 백업 정책 (default: skip)
+    const meta = (integration.metadata as Record<string, unknown> | null) ?? {}
+    const lockedPolicyRaw = (meta.backupLockedMemos as string) ?? 'skip'
+    const lockedPolicy: 'skip' | 'placeholder' | 'ciphertext' =
+      lockedPolicyRaw === 'placeholder' || lockedPolicyRaw === 'ciphertext' ? lockedPolicyRaw : 'skip'
 
     let body: { mode?: string } = {}
     try { body = await req.json() } catch { /* body 없으면 기본값 */ }
@@ -269,6 +277,24 @@ export async function POST(req: NextRequest) {
         '---',
       ]
       for (const memo of memos) {
+        // PR-2: 잠금 메모 정책 처리
+        if (memo.is_locked) {
+          if (lockedPolicy === 'skip') continue
+          if (lockedPolicy === 'placeholder') {
+            lines.push(
+              `# ${memo.title ?? '제목 없음'}\n\n🔒 잠긴 메모 — 본문 백업 제외\n\n---\n`
+            )
+            continue
+          }
+          if (lockedPolicy === 'ciphertext') {
+            lines.push(
+              `# ${memo.title ?? '제목 없음'}\n\n` +
+              `🔒 잠긴 메모 — 암호문\n\n` +
+              `\`\`\`\n${memo.locked_content ?? '(empty)'}\n\`\`\`\n\n---\n`
+            )
+            continue
+          }
+        }
         try {
           const md = buildMemoMarkdown(
             {
@@ -358,6 +384,26 @@ export async function POST(req: NextRequest) {
       const existingNames = new Set<string>()
 
       for (const memo of group) {
+        // PR-2: 잠금 메모 정책
+        if (memo.is_locked) {
+          if (lockedPolicy === 'skip') continue
+          let placeholderMd: string
+          if (lockedPolicy === 'ciphertext') {
+            placeholderMd =
+              `# ${memo.title ?? '제목 없음'}\n\n` +
+              `🔒 잠긴 메모 — 암호문\n\n` +
+              `\`\`\`\n${memo.locked_content ?? '(empty)'}\n\`\`\`\n`
+          } else { // placeholder
+            placeholderMd = `# ${memo.title ?? '제목 없음'}\n\n🔒 잠긴 메모 — 본문 백업 제외\n`
+          }
+          uploadTasks.push({
+            md: placeholderMd,
+            fileName: safeFilenameUnique(memo.title ?? '', existingNames),
+            parentId: memoFolderId,
+          })
+          continue
+        }
+
         const resolvedContent = resolveContent(memo.content, memo.content_text)
 
         let md: string

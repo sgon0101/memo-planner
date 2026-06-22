@@ -35,7 +35,8 @@
       "PowerShell(npm run *)",
       "PowerShell(git *)",
       "PowerShell(\"--- diff --stat ---\")",
-      "PowerShell(git fetch *)"
+      "PowerShell(git fetch *)",
+      "PowerShell(gh pr *)"
     ]
   }
 }
