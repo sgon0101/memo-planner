@@ -137,41 +137,69 @@ export default function MemoList() {
   const [titleDir, setTitleDir] = useState<TitleDir>('asc')
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [activeWiki, setActiveWiki] = useState<string | null>(null)
-  // 폴더 effect — 같은 폴더면 sessionStorage에서 displayCount/scroll/정렬·필터 모두 복원.
-  // 다른 폴더면 기본값(PAGE_SIZE + 최신순)으로 reset.
+  // 폴더 effect — mount는 sessionStorage 복원, 진짜 폴더 변경 시만 reset.
+  // hydration/store 동기화로 selectedFolderId가 mount 직후 두 번 갱신되어
+  // 두 번째 발화에서 reset 분기를 타며 displayCount가 PAGE_SIZE로 돌아가던
+  // race condition 차단 (prevFolderIdRef로 첫 마운트 vs 진짜 변경 구분).
+  const prevFolderIdRef = useRef<string | null | undefined>(undefined)
+  // 복원된 displayCount 보호 — 다른 effect/handler가 PAGE_SIZE로 reset해도
+  // 이 ref가 살아있는 한 무시하고 복원값 유지. 진짜 폴더 변경 시에만 null로.
+  const restoredCountRef = useRef<number | null>(null)
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('memo-list-state')
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as {
-            folderId: string | null; displayCount: number; scrollY: number
-            sort?: SortKey; titleDir?: TitleDir; activeTag?: string | null; activeWiki?: string | null
-          }
-          if (parsed.folderId === selectedFolderId && typeof parsed.displayCount === 'number' && typeof parsed.scrollY === 'number') {
-            setDisplayCount(parsed.displayCount)
-            setSelectedTrashIds(new Set())
-            setPendingScroll(parsed.scrollY)
-            // 정렬·필터 복원 — 같은 폴더 재진입 시 사용자가 마지막에 설정한 상태 유지
-            if (parsed.sort) setSort(parsed.sort)
-            if (parsed.titleDir) setTitleDir(parsed.titleDir)
-            if (parsed.activeTag !== undefined) setActiveTag(parsed.activeTag)
-            if (parsed.activeWiki !== undefined) setActiveWiki(parsed.activeWiki)
-            sessionStorage.removeItem('memo-list-state')
-            return
-          }
-        } catch { /* ignore */ }
+    const prev = prevFolderIdRef.current
+    prevFolderIdRef.current = selectedFolderId
+
+    if (prev === undefined) {
+      // 첫 마운트 — sessionStorage 복원 시도
+      if (typeof window !== 'undefined') {
+        const saved = sessionStorage.getItem('memo-list-state')
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved) as {
+              folderId: string | null; displayCount: number; scrollY: number
+              sort?: SortKey; titleDir?: TitleDir; activeTag?: string | null; activeWiki?: string | null
+            }
+            if (parsed.folderId === selectedFolderId && typeof parsed.displayCount === 'number' && typeof parsed.scrollY === 'number') {
+              setDisplayCount(parsed.displayCount)
+              restoredCountRef.current = parsed.displayCount  // 보호 ref
+              setSelectedTrashIds(new Set())
+              setPendingScroll(parsed.scrollY)
+              if (parsed.sort) setSort(parsed.sort)
+              if (parsed.titleDir) setTitleDir(parsed.titleDir)
+              if (parsed.activeTag !== undefined) setActiveTag(parsed.activeTag)
+              if (parsed.activeWiki !== undefined) setActiveWiki(parsed.activeWiki)
+              sessionStorage.removeItem('memo-list-state')
+              return
+            }
+          } catch { /* ignore */ }
+        }
       }
+      // 복원할 게 없으면 기본값 (mount 시점)
+      setDisplayCount(PAGE_SIZE)
+      setSelectedTrashIds(new Set())
+      return
     }
-    setDisplayCount(PAGE_SIZE)
-    setSelectedTrashIds(new Set())
-    // 다른 폴더 — 정렬·필터도 기본값으로 reset
-    setSort('updated')
-    setTitleDir('asc')
-    setActiveTag(null)
-    setActiveWiki(null)
+
+    // 진짜 폴더 변경 — 정렬·필터도 기본값으로 reset, 보호 ref도 해제
+    if (prev !== selectedFolderId) {
+      restoredCountRef.current = null
+      setDisplayCount(PAGE_SIZE)
+      setSelectedTrashIds(new Set())
+      setSort('updated')
+      setTitleDir('asc')
+      setActiveTag(null)
+      setActiveWiki(null)
+    }
   }, [selectedFolderId])
+
+  // displayCount 보호 — 복원 후 다른 effect가 PAGE_SIZE로 reset하면 다시 복원값으로
+  useEffect(() => {
+    if (restoredCountRef.current === null) return
+    if (displayCount < restoredCountRef.current) {
+      setDisplayCount(restoredCountRef.current)
+    }
+  }, [displayCount])
 
   // pendingScroll 적용 — setInterval 100ms 폴링. ref가 늦게 마운트되거나
   // 데이터(useMemos)가 늦게 들어와도 계속 시도. memos.length를 deps에서 빼
