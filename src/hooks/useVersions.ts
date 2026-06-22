@@ -35,9 +35,14 @@ export function useVersions(memoId: string | null) {
   const saveVersion = useCallback(async (
     content: Record<string, unknown>,
     contentText: string,
-    title: string
+    title: string,
+    /** PR-2: 잠금 메모면 버전 평문 저장 skip (보안) */
+    isLocked: boolean = false,
   ) => {
     if (!memoId || memoId === 'new') return
+    // 잠금 메모는 평문 버전 이력을 만들지 않음
+    if (isLocked) return
+
     await supabase.from('memo_versions').insert({ memo_id: memoId, content, content_text: contentText, title })
 
     // 오래된 버전 정리 (MAX_VERSIONS 초과 시)

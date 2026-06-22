@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useMemoStore } from '@/store/memoStore'
-import { encryptContent, decryptContent } from '@/lib/crypto/lock'
+import { encryptContent, decryptContent, decryptAndMaybeUpgrade } from '@/lib/crypto/lock'
 import { LIST_COLS, toMemo } from '@/lib/memos/shared'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
 import { broadcast } from '@/lib/sync/broadcast'
@@ -283,6 +283,12 @@ export function useMemos(folderId: string | null | undefined) {
     patchCache((old) => old.map((m) => m.id === id ? { ...m, ...lockPatch } : m))
     updateMemo(id, lockPatch)
     broadcast({ type: 'memo-update', id, patch: lockPatch, updated_at })
+
+    // PR-2: 잠금 시점에 기존 평문 버전 이력 일괄 삭제 (보안)
+    // 사용자 알림 토스트 없이 silent — 잠금이 데이터 보호의 의도이므로
+    try {
+      await supabase.from('memo_versions').delete().eq('memo_id', id)
+    } catch { /* silent */ }
   }, [patchCache, queryClient, queryKey, supabase, updateMemo])
 
   const unlockMemo = useCallback(async (
@@ -290,8 +296,17 @@ export function useMemos(folderId: string | null | undefined) {
     lockedContent: string,
     password: string
   ) => {
-    const plaintext = await decryptContent(lockedContent, password)
+    // PR-2: 옛 v1 ciphertext면 자동으로 v2(600k iter)로 업그레이드
+    const { plaintext, upgraded } = await decryptAndMaybeUpgrade(lockedContent, password)
     const content = JSON.parse(plaintext) as Record<string, unknown>
+
+    // 옛 v1이었으면 v2 ciphertext를 DB에도 미리 한 번 갱신
+    // (다음에 다시 잠그면 v2가 적용되지만, locked_content 자체도 일관성 위해 갱신)
+    if (upgraded) {
+      try {
+        await supabase.from('memos').update({ locked_content: upgraded }).eq('id', id)
+      } catch { /* silent — 다음 unlock에서 재시도 */ }
+    }
 
     const snapshot = queryClient.getQueryData<Memo[]>(queryKey) ?? []
     const original = snapshot.find((m) => m.id === id)

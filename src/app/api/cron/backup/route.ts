@@ -108,6 +108,8 @@ async function fetchAllMemos(supabase: any, userId: string) {
     wiki_links: string[] | null
     is_starred: boolean
     is_pinned: boolean
+    is_locked: boolean
+    locked_content: string | null
     created_at: string
     updated_at: string
   }> = []
@@ -116,7 +118,7 @@ async function fetchAllMemos(supabase: any, userId: string) {
   while (true) {
     const { data: batch, error } = await supabase
       .from('memos')
-      .select('id, title, content, content_text, folder_id, tags, wiki_links, is_starred, is_pinned, created_at, updated_at')
+      .select('id, title, content, content_text, folder_id, tags, wiki_links, is_starred, is_pinned, is_locked, locked_content, created_at, updated_at')
       .eq('user_id', userId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: true })
@@ -176,6 +178,10 @@ export async function GET(req: Request) {
   for (const integration of integrations) {
     const meta = (integration.metadata as Record<string, unknown>) ?? {}
     if (!meta.autoBackup) continue
+    // PR-2: 잠금 메모 정책
+    const lockedPolicyRaw = (meta.backupLockedMemos as string) ?? 'skip'
+    const lockedPolicy: 'skip' | 'placeholder' | 'ciphertext' =
+      lockedPolicyRaw === 'placeholder' || lockedPolicyRaw === 'ciphertext' ? lockedPolicyRaw : 'skip'
     if (!isDue(meta.nextBackupAt as string | null)) continue
     if (!integration.access_token) continue
 
@@ -234,6 +240,26 @@ export async function GET(req: Request) {
         const existingNames = new Set<string>()
 
         for (const memo of group) {
+          // PR-2: 잠금 메모 정책 (cron — meta에서 읽음)
+          if (memo.is_locked) {
+            if (lockedPolicy === 'skip') continue
+            let placeholderMd: string
+            if (lockedPolicy === 'ciphertext') {
+              placeholderMd =
+                `# ${memo.title ?? '제목 없음'}\n\n` +
+                `🔒 잠긴 메모 — 암호문\n\n` +
+                `\`\`\`\n${memo.locked_content ?? '(empty)'}\n\`\`\`\n`
+            } else {
+              placeholderMd = `# ${memo.title ?? '제목 없음'}\n\n🔒 잠긴 메모 — 본문 백업 제외\n`
+            }
+            uploadTasks.push({
+              md: placeholderMd,
+              fileName: safeFilenameUnique(memo.title ?? '', existingNames),
+              parentId,
+            })
+            continue
+          }
+
           let md: string
           try {
             md = buildMemoMarkdown(

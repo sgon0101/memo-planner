@@ -5,6 +5,8 @@ export interface BackupSettings {
   autoBackup: boolean
   period: 'daily' | 'weekly' | 'monthly'
   retainCount: number
+  /** PR-2: 잠금 메모 백업 정책. skip=백업 제외, placeholder=잠금 안내문만, ciphertext=암호문 그대로 */
+  backupLockedMemos: 'skip' | 'placeholder' | 'ciphertext'
   lastBackupAt: string | null
   nextBackupAt: string | null
 }
@@ -41,6 +43,7 @@ export async function GET() {
       autoBackup: (meta.autoBackup as boolean) ?? false,
       period: (meta.period as BackupSettings['period']) ?? 'weekly',
       retainCount: Math.max(1, Math.min(100, (meta.retainCount as number) ?? 10)),
+      backupLockedMemos: (meta.backupLockedMemos as BackupSettings['backupLockedMemos']) ?? 'skip',
       lastBackupAt: (meta.lastBackupAt as string) ?? null,
       nextBackupAt: (meta.nextBackupAt as string) ?? null,
     }
@@ -70,6 +73,9 @@ export async function POST(req: NextRequest) {
     const autoBackup = body.autoBackup ?? (prevMeta.autoBackup as boolean) ?? false
     const retainCountRaw = body.retainCount ?? (prevMeta.retainCount as number) ?? 10
     const retainCount = Math.max(1, Math.min(100, retainCountRaw))
+    const blmRaw = body.backupLockedMemos ?? (prevMeta.backupLockedMemos as string) ?? 'skip'
+    const backupLockedMemos: BackupSettings['backupLockedMemos'] =
+      blmRaw === 'placeholder' || blmRaw === 'ciphertext' ? blmRaw : 'skip'
 
     const nextBackupAt = autoBackup ? calcNextBackupAt(period) : null
 
@@ -78,6 +84,7 @@ export async function POST(req: NextRequest) {
       autoBackup,
       period,
       retainCount,
+      backupLockedMemos,
       nextBackupAt,
     }
 
@@ -87,7 +94,7 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .eq('provider', 'google_drive')
 
-    return NextResponse.json({ autoBackup, period, retainCount, nextBackupAt, lastBackupAt: prevMeta.lastBackupAt ?? null })
+    return NextResponse.json({ autoBackup, period, retainCount, backupLockedMemos, nextBackupAt, lastBackupAt: prevMeta.lastBackupAt ?? null })
   } catch {
     return NextResponse.json({ error: '설정 저장에 실패했습니다.' }, { status: 500 })
   }
