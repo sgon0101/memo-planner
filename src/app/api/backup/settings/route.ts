@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 export interface BackupSettings {
   autoBackup: boolean
   period: 'daily' | 'weekly' | 'monthly'
+  retainCount: number
   lastBackupAt: string | null
   nextBackupAt: string | null
 }
@@ -39,6 +40,7 @@ export async function GET() {
     const settings: BackupSettings = {
       autoBackup: (meta.autoBackup as boolean) ?? false,
       period: (meta.period as BackupSettings['period']) ?? 'weekly',
+      retainCount: Math.max(1, Math.min(100, (meta.retainCount as number) ?? 10)),
       lastBackupAt: (meta.lastBackupAt as string) ?? null,
       nextBackupAt: (meta.nextBackupAt as string) ?? null,
     }
@@ -66,6 +68,8 @@ export async function POST(req: NextRequest) {
     const prevMeta = (existing?.metadata as Record<string, unknown>) ?? {}
     const period = body.period ?? (prevMeta.period as string) ?? 'weekly'
     const autoBackup = body.autoBackup ?? (prevMeta.autoBackup as boolean) ?? false
+    const retainCountRaw = body.retainCount ?? (prevMeta.retainCount as number) ?? 10
+    const retainCount = Math.max(1, Math.min(100, retainCountRaw))
 
     const nextBackupAt = autoBackup ? calcNextBackupAt(period) : null
 
@@ -73,6 +77,7 @@ export async function POST(req: NextRequest) {
       ...prevMeta,
       autoBackup,
       period,
+      retainCount,
       nextBackupAt,
     }
 
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .eq('provider', 'google_drive')
 
-    return NextResponse.json({ autoBackup, period, nextBackupAt, lastBackupAt: prevMeta.lastBackupAt ?? null })
+    return NextResponse.json({ autoBackup, period, retainCount, nextBackupAt, lastBackupAt: prevMeta.lastBackupAt ?? null })
   } catch {
     return NextResponse.json({ error: '설정 저장에 실패했습니다.' }, { status: 500 })
   }
