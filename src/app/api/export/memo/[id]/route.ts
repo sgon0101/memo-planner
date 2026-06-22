@@ -86,10 +86,12 @@ export async function GET(
           folder_name: folderName,
         },
       }
+      const fnJson = safeFilename(safeTitle) + '.json'
+      const dispJson = `attachment; filename="memo.json"; filename*=UTF-8''${encodeURIComponent(fnJson)}`
       return new Response(JSON.stringify(payload, null, 2), {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${safeFilename(safeTitle)}.json"`,
+          'Content-Disposition': dispJson,
         },
       })
     }
@@ -137,10 +139,13 @@ export async function GET(
       )
     }
 
+    // Content-Disposition은 ASCII만 허용 → RFC 6266 filename* (UTF-8 percent-encoded)
+    const fnMd = safeFilename(safeTitle)
+    const dispMd = `attachment; filename="memo.md"; filename*=UTF-8''${encodeURIComponent(fnMd)}`
     return new Response(mdContent, {
       headers: {
         'Content-Type': 'text/markdown; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${safeFilename(safeTitle)}"`,
+        'Content-Disposition': dispMd,
       },
     })
   } catch (err) {
