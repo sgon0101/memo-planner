@@ -145,6 +145,10 @@ export default function MemoList() {
   // 복원된 displayCount 보호 — 다른 effect/handler가 PAGE_SIZE로 reset해도
   // 이 ref가 살아있는 한 무시하고 복원값 유지. 진짜 폴더 변경 시에만 null로.
   const restoredCountRef = useRef<number | null>(null)
+  // 복원 도중 setSort/setTitleDir/setActiveTag/setActiveWiki 호출이
+  // 검색·정렬 reset effect를 트리거해 displayCount를 PAGE_SIZE로 돌리는 race 차단.
+  // 복원 시 true로 set → 다음 reset effect 1회 skip → 자동으로 false.
+  const skipFiltersResetRef = useRef(false)
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const prev = prevFolderIdRef.current
@@ -161,8 +165,11 @@ export default function MemoList() {
               sort?: SortKey; titleDir?: TitleDir; activeTag?: string | null; activeWiki?: string | null
             }
             if (parsed.folderId === selectedFolderId && typeof parsed.displayCount === 'number' && typeof parsed.scrollY === 'number') {
+              // ★ 정렬·필터 set 호출이 reset effect 트리거 → displayCount PAGE_SIZE로
+              //   되돌리는 걸 차단. setSort 등을 호출하기 전에 skip flag 세움.
+              skipFiltersResetRef.current = true
               setDisplayCount(parsed.displayCount)
-              restoredCountRef.current = parsed.displayCount  // 보호 ref
+              restoredCountRef.current = parsed.displayCount
               setSelectedTrashIds(new Set())
               setPendingScroll(parsed.scrollY)
               if (parsed.sort) setSort(parsed.sort)
@@ -387,7 +394,15 @@ export default function MemoList() {
 
   // 검색/정렬/태그 변경 시 표시 개수 초기화 (검색 필터가 항상 우선 적용)
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setDisplayCount(PAGE_SIZE) }, [search, sort, titleDir, activeTag, activeWiki])
+  // 검색·정렬·필터 변경 시 displayCount reset. 단, 복원 직후의 setSort 등
+  // 자동 trigger는 skipFiltersResetRef로 1회 skip.
+  useEffect(() => {
+    if (skipFiltersResetRef.current) {
+      skipFiltersResetRef.current = false
+      return
+    }
+    setDisplayCount(PAGE_SIZE)
+  }, [search, sort, titleDir, activeTag, activeWiki])
 
   // 카드 컬럼 수 (4~6), localStorage에 저장
   const [cols, setCols] = useState<4 | 5 | 6>(() => {
