@@ -33,6 +33,11 @@ export default function SettingsPage() {
   const [embedStatus, setEmbedStatus] = useState<{ total: number; embedded: number; missing: number; percent: number } | null>(null)
   const [embedLoading, setEmbedLoading] = useState(false)
   const [backfillBusy, setBackfillBusy] = useState(false)
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false)
+  const [restoreFolders, setRestoreFolders] = useState<Array<{ id: string; name: string; createdAt: string }>>([])
+  const [restoreLoading, setRestoreLoading] = useState(false)
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const [retainCount, setRetainCount] = useState<number>(10)
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
   const [nicknameSaving, setNicknameSaving] = useState(false)
@@ -75,6 +80,12 @@ export default function SettingsPage() {
   // PR-6: 임베딩 진행률 로드
   useEffect(() => {
     let mounted = true
+    // PR-5: 백업 설정의 retainCount 로드
+    fetch('/api/backup/settings')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d && typeof d.retainCount === 'number') setRetainCount(d.retainCount) })
+      .catch(() => {})
+
     setEmbedLoading(true)
     fetch('/api/embeddings/status')
       .then((r) => r.ok ? r.json() : null)
@@ -84,12 +95,68 @@ export default function SettingsPage() {
     return () => { mounted = false }
   }, [])
 
+
+
+  // PR-5: Drive 복원 모달 열기
+  const openRestoreModal = async () => {
+    setRestoreModalOpen(true)
+    setRestoreLoading(true)
+    try {
+      const r = await fetch('/api/restore/google-drive')
+      if (r.ok) {
+        const d = await r.json() as { folders: Array<{ id: string; name: string; createdAt: string }> }
+        setRestoreFolders(d.folders || [])
+      } else {
+        toast.error('백업 목록을 불러오지 못했습니다')
+      }
+    } catch (e) {
+      toast.error('백업 목록 조회 실패: ' + (e instanceof Error ? e.message : 'unknown'))
+    } finally {
+      setRestoreLoading(false)
+    }
+  }
+
+  const doRestore = async (folderId: string, mode: 'skip' | 'newer-wins' | 'overwrite') => {
+    if (restoreBusy) return
+    setRestoreBusy(true)
+    try {
+      toast.info('복원 시작 — 폴더 크기에 따라 몇 분 걸릴 수 있어요')
+      const r = await fetch('/api/restore/google-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId, mode }),
+      })
+      const d = await r.json()
+      if (!r.ok) {
+        toast.error('복원 실패: ' + (d.error ?? 'unknown'))
+      } else {
+        toast.success(`복원 완료 — 새로/덮어쓴 메모 ${d.restored}건, 건너뜀 ${d.skipped}, 오류 ${d.errors}`)
+        setRestoreModalOpen(false)
+      }
+    } catch (e) {
+      toast.error('복원 중 오류: ' + (e instanceof Error ? e.message : 'unknown'))
+    } finally {
+      setRestoreBusy(false)
+    }
+  }
+
   const refreshEmbedStatus = async () => {
     setEmbedLoading(true)
     try {
       const r = await fetch('/api/embeddings/status')
       if (r.ok) setEmbedStatus(await r.json())
     } catch {} finally { setEmbedLoading(false) }
+  }
+
+  const saveRetainCount = async (n: number) => {
+    setRetainCount(n)
+    try {
+      await fetch('/api/backup/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retainCount: n }),
+      })
+    } catch { /* silent */ }
   }
 
   const runEmbedBackfill = async () => {
@@ -811,6 +878,19 @@ export default function SettingsPage() {
               </button>
             </SettingRow>
             <SettingRow
+              label="Drive에서 복원"
+              description="저장된 백업 폴더 중 하나를 골라 메모를 다시 가져옵니다"
+            >
+              <button
+                onClick={openRestoreModal}
+                disabled={restoreBusy}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors disabled:opacity-50"
+              >
+                {restoreBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                복원
+              </button>
+            </SettingRow>
+            <SettingRow
               label="자동 백업"
               description="설정한 주기마다 Drive에 자동으로 백업합니다"
             >
@@ -820,7 +900,22 @@ export default function SettingsPage() {
               />
             </SettingRow>
             {autoBackup && (
-              <div className="px-4 py-3 bg-white dark:bg-gray-900 space-y-3">
+              <div className="px-4 py-3 bg-white dark:bg-gray-900 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">최근 N개 유지 (그 이상은 자동 삭제)</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={1}
+                      max={50}
+                      value={retainCount}
+                      onChange={(e) => setRetainCount(parseInt(e.target.value, 10))}
+                      onPointerUp={() => saveRetainCount(retainCount)}
+                      className="flex-1 accent-violet-600"
+                    />
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 w-12 text-right">{retainCount}개</span>
+                  </div>
+                </div>
                 <p className="text-xs font-medium text-gray-600 dark:text-gray-400">백업 주기</p>
                 <div className="flex gap-2">
                   {(['daily', 'weekly', 'monthly'] as const).map((p) => (
@@ -914,6 +1009,89 @@ export default function SettingsPage() {
       {/* 버전 */}
       <p className="text-xs text-center text-gray-400">Weave v0.1.0</p>
       <confirm.Render />
+
+      {/* PR-5: Drive 복원 모달 */}
+      {restoreModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => !restoreBusy && setRestoreModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 space-y-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Drive 백업에서 복원</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                폴더 하나를 골라 그 안의 메모들을 Weave에 다시 가져옵니다.
+              </p>
+            </div>
+
+            {restoreLoading ? (
+              <div className="py-8 flex flex-col items-center gap-2 text-gray-500">
+                <Loader2 className="animate-spin" size={20} />
+                <span className="text-xs">백업 목록 불러오는 중...</span>
+              </div>
+            ) : restoreFolders.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-500">
+                저장된 백업 폴더가 없어요.
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                {restoreFolders.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-violet-300 dark:hover:border-violet-700 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{f.name}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {new Date(f.createdAt).toLocaleString('ko-KR')}
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => doRestore(f.id, 'skip')}
+                        disabled={restoreBusy}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
+                        title="기존 메모는 유지, 누락분만 새로 추가"
+                      >
+                        추가만
+                      </button>
+                      <button
+                        onClick={() => doRestore(f.id, 'newer-wins')}
+                        disabled={restoreBusy}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50"
+                        title="더 최신 버전이면 덮어쓰기"
+                      >
+                        최신우선
+                      </button>
+                      <button
+                        onClick={() => doRestore(f.id, 'overwrite')}
+                        disabled={restoreBusy}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                        title="기존 메모를 무조건 덮어씀"
+                      >
+                        덮어쓰기
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                onClick={() => !restoreBusy && setRestoreModalOpen(false)}
+                disabled={restoreBusy}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

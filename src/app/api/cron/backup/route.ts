@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
+import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 
 export const maxDuration = 300
@@ -274,6 +274,24 @@ export async function GET(req: Request) {
         `성공: ${successCount}/${uploadTasks.length}` +
         (failCount > 0 ? `, 실패: ${failCount}` : '')
       )
+
+      // ── Retention: 최근 N개만 유지 (기본 10) ──────────────────
+      const retainCount = Math.max(1, Math.min(100, (meta.retainCount as number) ?? 10))
+      try {
+        const allBackups = await listBackupFolders(drive, ROOT_FOLDER_ID, '메모플래너_')
+        // listBackupFolders가 createdTime desc로 정렬되므로 [retainCount:] 가 오래된 것
+        const toDelete = allBackups.slice(retainCount)
+        if (toDelete.length > 0) {
+          console.log(`[cron/backup] retention — 삭제 대상 ${toDelete.length}개`)
+          for (const f of toDelete) {
+            try { await deleteDriveFile(drive, f.id) } catch (e) {
+              console.warn(`[cron/backup] retention 삭제 실패: ${f.name}`, e)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[cron/backup] retention 단계 실패:', e)
+      }
 
       await supabase.from('user_integrations').update({
         metadata: {
