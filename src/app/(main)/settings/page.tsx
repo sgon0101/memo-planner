@@ -55,9 +55,12 @@ export default function SettingsPage() {
     fileCount: number
     originalBytes: number
     compressedBytes: number
-    quotaBytes?: number
-    percent?: number
-    remainingBytes?: number
+  } | null>(null)
+  // PR-3: quota는 별도 state — 기존 storageStats fetch가 덮어쓰지 못하게
+  const [quotaInfo, setQuotaInfo] = useState<{
+    quotaBytes: number
+    percent: number
+    remainingBytes: number
   } | null>(null)
   const [driveBackupLoading, setDriveBackupLoading] = useState(false)
   const [lastBackup, setLastBackup] = useState<string | null>(() => {
@@ -88,15 +91,7 @@ export default function SettingsPage() {
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (!mounted || !d) return
-        setStorageStats((prev) => prev ? {
-          ...prev,
-          quotaBytes: d.quotaBytes,
-          percent: d.percent,
-          remainingBytes: d.remainingBytes,
-        } : {
-          fileCount: d.fileCount,
-          originalBytes: 0,
-          compressedBytes: d.totalBytes,
+        setQuotaInfo({
           quotaBytes: d.quotaBytes,
           percent: d.percent,
           remainingBytes: d.remainingBytes,
@@ -1039,15 +1034,15 @@ export default function SettingsPage() {
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
                   <span>{formatBytes(storageStats.compressedBytes)} 사용 중</span>
                   <span>
-                    {typeof storageStats.quotaBytes === 'number'
-                      ? `${formatBytes(storageStats.quotaBytes)} 한도`
+                    {quotaInfo
+                      ? `${formatBytes(quotaInfo.quotaBytes)} 한도`
                       : '10GB'}
                   </span>
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-gray-100 dark:bg-gray-800">
                   <div
                     className="h-1.5 rounded-full bg-violet-500 transition-all"
-                    style={{ width: `${Math.min((storageStats.quotaBytes ? (storageStats.compressedBytes / storageStats.quotaBytes) * 100 : (storageStats.compressedBytes / (10 * 1024 ** 3)) * 100), 100).toFixed(2)}%` }}
+                    style={{ width: `${Math.min((quotaInfo ? (storageStats.compressedBytes / quotaInfo.quotaBytes) * 100 : (storageStats.compressedBytes / (10 * 1024 ** 3)) * 100), 100).toFixed(2)}%` }}
                   />
                 </div>
               </div>
