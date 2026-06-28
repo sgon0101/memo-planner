@@ -47,7 +47,7 @@ export function useFolders() {
   }, [data, setFolders])
 
   const createFolder = useCallback(async (name: string, parentId: string | null = null) => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     const maxOrder = folders.filter((f) => f.parentId === parentId).length
     const { data, error } = await supabase
       .from('folders')
@@ -145,7 +145,7 @@ export function useFolders() {
   }, [folders, queryClient, supabase, updateFolder])
 
   const removeFolder = useCallback(async (id: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     await supabase
       .from('memos')
       .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder_id: null })

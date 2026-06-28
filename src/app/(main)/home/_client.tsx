@@ -138,7 +138,8 @@ export default function HomePageClient() {
   const { data: userName = '' } = useQuery({
     queryKey: ['user-name'],
     queryFn: async () => {
-      const { data: { user } } = await createClient().auth.getUser()
+      const { data: { session } } = await createClient().auth.getSession()
+      const user = session?.user ?? null
       return (user?.user_metadata?.display_name as string | undefined)
         || user?.email?.split('@')[0]
         || ''

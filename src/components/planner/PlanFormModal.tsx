@@ -193,7 +193,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
 
   async function handleSaveTemplate() {
     if (!title.trim()) return
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     // 현재 폼의 모든 옵션을 템플릿에 함께 저장 (반복/알림/설명 포함)
     const baseDate = isRange ? startDate : singleDate
     const tplRrule = buildRRule(recurrence, baseDate)

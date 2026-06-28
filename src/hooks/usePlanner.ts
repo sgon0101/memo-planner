@@ -241,7 +241,7 @@ export function usePlanner() {
     currentlyCompleted: boolean,
   ) => {
     const key = `${originalPlanId}_${planDate}`
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
     try {
       if (currentlyCompleted) {
@@ -272,7 +272,7 @@ export function usePlanner() {
     planDate: string,
   ) => {
     const key = `${originalPlanId}_${planDate}`
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
     try {
       await supabase.from('recurring_plan_completions').upsert({

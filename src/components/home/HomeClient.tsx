@@ -89,7 +89,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
     if (!quickTitle.trim()) return
     setCreating(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
       const { data, error } = await supabase
         .from('memos')
         .insert({
