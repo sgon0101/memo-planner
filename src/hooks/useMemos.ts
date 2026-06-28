@@ -180,11 +180,17 @@ export function useMemos(folderId: string | null | undefined) {
   /**
    * PR-M1-B: 메모 신규 작성 — online이면 즉시 server insert, offline이면 임시 ID + 큐.
    * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapId로 진짜 ID 교체.
+   *
+   * PR-M1-B 핫픽스: getUser()는 offline에서 토큰 refresh fetch 실패로 throw → user_id=''로 큐 적재 후 복귀 시 RLS 400.
+   * getSession()은 cookie/localStorage에서 sync 읽기 → 네트워크 호출 없음, offline-safe.
    */
   const createMemo = useCallback(async () => {
     const tempId = makeTempId('memo')
-    const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id ?? ''
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) {
+      throw new Error('로그인 세션이 만료되었어요. 다시 로그인해주세요.')
+    }
     const nowIso = new Date().toISOString()
     const fields = {
       user_id: userId,

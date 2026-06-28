@@ -240,8 +240,12 @@ export async function flushQueue(): Promise<FlushResult> {
       flushed++
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'unknown'
-      if (item.attempts + 1 >= MAX_ATTEMPTS) {
-        console.warn('[weave:queue:giveup]', JSON.stringify(item.payload).slice(0, 100), msg)
+      // 400/RLS/FK 등 영구 실패는 retry 무의미 — 즉시 give-up
+      // postgrest 에러는 보통 code 'PGRST...' 또는 status 400/401/403/409/422 포함
+      const isPermanent =
+        /\b(400|401|403|404|409|422|PGRST|violates|duplicate key|row-level security|denied)\b/i.test(msg)
+      if (isPermanent || item.attempts + 1 >= MAX_ATTEMPTS) {
+        console.warn('[weave:queue:giveup]', isPermanent ? 'PERMANENT' : 'MAX_ATTEMPTS', JSON.stringify(item.payload).slice(0, 100), msg)
         await removePending(item.id)
         gaveUp++
       } else {
