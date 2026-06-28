@@ -289,7 +289,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           body: JSON.stringify({ memoId: id }),
         }).catch(() => { /* 임베딩 실패는 silent */ })
       } else {
-        const { data: { user } } = await supabase.auth.getUser()
+        // PR-M1-B 핫픽스: getUser()는 offline에서 토큰 refresh fetch fail로 throw → user_id=''로 큐 적재 후 RLS 400
+        // getSession()은 cookie/localStorage sync 읽기 → 네트워크 호출 없음
+        const { data: { session } } = await supabase.auth.getSession()
+        const userId = session?.user?.id
+        if (!userId) {
+          throw new Error('로그인 세션이 만료되었어요. 다시 로그인해주세요.')
+        }
         // 새 메모 INSERT에도 썸네일 추출 — 이미지 첨부 후 1.5s 안에 페이지를 벗어나면
         // 다음 update 분기가 안 돌아 thumbnail_url이 null로 굳던 버그 방지
         const firstImageUrl = extractFirstImage(content)
@@ -299,7 +305,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         // PR-M1-B: tempId 부여 → online이면 즉시 server insert, offline이면 큐
         const tempId = makeTempId('memo')
         const insertFields = {
-          user_id: user?.id ?? '',
+          user_id: userId,
           title: titleRef.current,
           content,
           content_text: text,

@@ -95,10 +95,15 @@ export function usePlanner() {
   /**
    * PR-M1-B: 플랜 신규 작성 — online이면 즉시 server insert, offline이면 임시 ID + 큐.
    * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapPlanId로 진짜 ID 교체.
+   *
+   * PR-M1-B 핫픽스: getUser→getSession (offline에서 토큰 refresh fail로 user_id=''가 큐에 들어가던 버그)
    */
   const createPlan = useCallback(async (data: Partial<Plan>) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id ?? ''
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) {
+      throw new Error('로그인 세션이 만료되었어요. 다시 로그인해주세요.')
+    }
     const tempId = makeTempId('plan')
     const nowIso = new Date().toISOString()
 
