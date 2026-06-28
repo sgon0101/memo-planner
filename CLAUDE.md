@@ -563,6 +563,9 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-06-28 | PR-M1-B 작성+본문 큐 | 오프라인 작성+본문 큐 — 임시 ID + ID 매핑 + 본문 overwrite. `queueDB` v2(op 4종 + id_map store) · `withQueue` v2(insert·body 헬퍼 + flush op별 분기) · `memoStore.swapId`/`plannerStore.swapPlanId` · `SyncBootstrap` flush 후 zustand+RQ 캐시 swap + URL silent 교체 + broadcast · `useMemos.createMemo`/`usePlanner.createPlan`/`MemoEditor.save`(insert+update) 큐 경유 · 이미지 첨부 오프라인 차단 토스트(R2 큐화는 M1-C) | 100% |
 | 2026-06-28 | PR-M1-B 핫픽스 | `getUser()`→`getSession()` (오프라인 user_id 누락) — `getUser()`는 offline에서 토큰 refresh fetch fail로 throw → `user_id=''`로 큐 적재 → 복귀 시 RLS 400 → 5회 retry 후 give-up → UI 영구 고착. `getSession()`은 cookie sync 읽기라 offline-safe. `useMemos.createMemo`/`usePlanner.createPlan`/`MemoEditor.save`(insert) 동일 패턴 + 세션 없으면 throw. `flushQueue`: 400/401/403/PGRST 등 영구 실패는 즉시 give-up | 100% |
 | 2026-06-28 | 오프라인 정리1+2 | `flushQueue` 영구실패 검출 강화 + `getUser→getSession` 클라이언트 일괄 — `withQueue.extractErrorSignature`로 PostgrestError 같은 plain object 에러의 code/status/details/hint 추출(‘unknown’으로 잡혀 무한 retry되던 케이스 차단) + 영구 fail 정규식 보강(invalid input syntax/null value/not null) · 클라이언트 12개 파일(home/_client·settings·HomeClient·PlanDetailPanel·PlanFormModal·QuickCaptureModal·useFolders·useGraphData·usePlanner·currentUser·scheduler 등) `getUser()`→`getSession()` 일괄 전환(서버 라우트는 보안상 유지) · ※편집 중 `usePlanner.ts` truncation 손상 발생 → HEAD 원본으로 복원 후 빌드 검증 | 100% |
+| 2026-06-28 | 오프라인 후속 정리 | `emptyTrash` getUser→getSession(정리 잔여) + flush idMap swap을 LS 캐시까지 전파 + give-up 시 stale 정리 — `lib/sync/cacheCleanup.ts` 신규(`applyIdSwapToLocalStorage`/`removeTempIdsFromCaches`) · `broadcast` SyncEvent `queue-giveup` 추가 · `withQueue` GaveUpEntry · `SyncBootstrap` applyGaveUp + LS swap · `useBroadcastListener` queue-giveup case (dev 커밋 9cd2c83·f683d3b) | 100% |
+| 2026-06-28 | PR-M1-C 이미지 큐화 | 이미지 첨부 R2 오프라인 큐화 — `queueDB` v3(image-upload op + image_blobs store + 6 helpers) · `withQueue` v3(`uploadImageOrQueue` + flushQueue 2-라운드: image→content swap→나머지) · `imageSwap.ts` 신규(`swapImageNodesInContent`) · `broadcast` image-swap 이벤트 · `cacheCleanup.applyImageSwapToCaches` + `memoStore.lastImageSwap` notify · `ResizableImageView` localBlobId 시 IDB blob URL 표시 · `MemoEditor` Image addAttributes localBlobId + uploadImageOrQueue + lastImageSwap 구독해 Tiptap attrs 갱신 · `EditorToolbar` 차단 토스트 제거 + uploadImageOrQueue (dev 커밋 b3c1c60) | 100% |
+| 2026-06-28 | truncation 방지 도구 | `scripts/verify-changes.sh` 추가(null/끝/큰deletion/tsc 4단계 자동 검증, force-add) + CLAUDE.md §6 검증 스크립트 사용법 추가 — Edit/Write 도구로 큰 파일 편집 시 끝부분 잘림 재발 방지 (`docs/pr-m1c-apply-guide.md`는 /docs/ gitignore로 로컬 유지) | 100% |
 | 2026-06-28 | PR-M1-B 오프라인 작성+본문 | queueDB v2 (op 4종 `update`/`memo-insert`/`plan-insert`/`memo-body-update` + `id_map` store + `makeTempId`/`isTempId`/`recordIdMapping`/`resolveTempId`/`enqueueBodyOverwrite`), withQueue v2 (`createMemoOrQueue`/`createPlanOrQueue`/`updateMemoBodyOrQueue` + `flushQueue` op별 분기 + tempId→realId 자동 매핑), memoStore.swapId / plannerStore.swapPlanId, SyncBootstrap `applyIdMappings` (zustand+RQ 캐시 swap + URL silent 교체 + 멀티탭 broadcast invalidate), `useMemos.createMemo`/`usePlanner.createPlan`/`MemoEditor.save`(insert+update 분기) 큐 경유, 이미지 첨부 오프라인 차단 토스트(MemoEditor·EditorToolbar) — tsc+ESLint 통과 | 100% |
 
 ---
@@ -696,6 +699,26 @@ assert '\x00' not in new
 with open('PATH','wb') as f: f.write(new.encode('utf-8'))
 ```
 Edit/Write 도구로 큰 파일(MemoEditor·EditorToolbar·MemoList·globals.css)을 직접 수정하면 끝부분이 잘리거나 null byte가 섞이는 패턴이 반복됨.
+
+### 6. 편집 후 자동 검증 스크립트 (truncation 방지)
+
+Edit/Write/sed 등으로 파일을 수정한 뒤에는 **반드시** 검증 스크립트를 돌린다. 실제로 `usePlanner.ts`가 함수 중간에서 잘려 EOF가 되는 truncation이 재발한 적이 있음(2026-06-28).
+
+```bash
+# 변경된 모든 파일 자동 검증 (null byte / 파일 끝 정상성 / 큰 deletion 경고 / tsc)
+bash scripts/verify-changes.sh
+
+# 특정 파일만
+bash scripts/verify-changes.sh src/lib/sync/withQueue.ts src/hooks/useMemos.ts
+```
+
+검사 4단계:
+1. **null byte 0개** — CSS/TSX 손상의 주원인
+2. **파일 끝 정상성** — TS는 `}`/`)`/`;`/`]`, CSS는 `}`, JSON은 `}`/`]`로 끝나야 함 (아니면 truncation 의심)
+3. **HEAD 대비 큰 deletion(-50L+) 경고** — 의도치 않은 잘림 탐지
+4. **tsc --noEmit** 통과
+
+> Edit/Write 도구의 구조적 한계: 큰 파일을 직접 수정하면 끝부분 잘림·null byte 혼입이 반복되므로, 도구로 편집했더라도 이 스크립트로 한 번 더 확인한 뒤 commit/push 한다. 손상 발견 시 `git show HEAD:PATH` 원본에서 잘린 부분을 복원.
 
 ---
 
