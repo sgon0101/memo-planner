@@ -2,6 +2,7 @@
 
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { useState, useRef, useEffect } from 'react'
+import { getImageBlob } from '@/lib/sync/queueDB'
 
 const PRESETS = [
   { label: '소', value: '25%' },
@@ -54,9 +55,38 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
   const srcFull = node.attrs.src as string
   const srcMd = (node.attrs.srcMd as string | null) ?? null
   const srcSm = (node.attrs.srcSm as string | null) ?? null
+  // PR-M1-C: 오프라인 임시 이미지 — IDB의 image_blobs에서 blob을 꺼내 blob URL 생성
+  const localBlobId = (node.attrs.localBlobId as string | null) ?? null
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  // localBlobId가 있으면 IDB에서 blob 가져와 URL 생성. unmount 시 revoke.
+  useEffect(() => {
+    let cancelled = false
+    let url: string | null = null
+    if (!localBlobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localBlobId 사라지면 blobUrl 해제
+      setBlobUrl(null)
+      return
+    }
+    getImageBlob(localBlobId).then((entry) => {
+      if (cancelled || !entry) return
+      url = URL.createObjectURL(entry.blob)
+      setBlobUrl(url)
+    })
+    return () => {
+      cancelled = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [localBlobId])
 
   // 실제 렌더 크기를 감시해 최적 해상도 URL 동적 선택
+  // blobUrl이 있으면 (오프라인 임시 이미지) 그것을 우선 사용 — 변형본이 아직 없으므로 단일 URL
   useEffect(() => {
+    if (blobUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- blobUrl로 직접 표시 (resize observer 불필요)
+      setActiveSrc(blobUrl)
+      return
+    }
     const el = containerRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => {
@@ -65,7 +95,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     observer.observe(el)
     setActiveSrc(pickSrc(el.offsetWidth, srcFull, srcMd, srcSm))
     return () => observer.disconnect()
-  }, [srcFull, srcMd, srcSm])
+  }, [srcFull, srcMd, srcSm, blobUrl])
 
   // 선택될 때 툴바가 화면 위로 잘리는지 측정 → 아래로 배치
   useEffect(() => {

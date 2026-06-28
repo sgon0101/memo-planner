@@ -420,7 +420,9 @@ export function useMemos(folderId: string | null | undefined) {
   }, [optimisticPatch, queryClient])
 
   const emptyTrash = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    // 정리 잔여: getUser→getSession (offline-safe)
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user ?? null
     if (!user) return
     await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
     patchCache(() => [])
