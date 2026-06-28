@@ -41,7 +41,7 @@ import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import { useAutoEmbed } from '@/hooks/useAutoEmbed'
-import { createMemoOrQueue, updateMemoBodyOrQueue } from '@/lib/sync/withQueue'
+import { createMemoOrQueue, updateMemoBodyOrQueue, uploadImageOrQueue } from '@/lib/sync/withQueue'
 import { makeTempId, isTempId } from '@/lib/sync/queueDB'
 
 const lowlight = createLowlight(common)
@@ -125,6 +125,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const supabase = createClient()
   const queryClient = useQueryClient()
   const { setCurrentMemo, updateMemo, addMemo, deleteMemo } = useMemoStore()
+  const lastImageSwap = useMemoStore((s) => s.lastImageSwap)
   const { folders } = useFolders()
   useMemos(undefined) // 전체 메모 캐시 사전 로드 → MemoSidePanel 즉각 표시
 
@@ -450,6 +451,12 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
               renderHTML: (attrs) => (attrs.srcSm ? { 'data-src-sm': attrs.srcSm } : {}),
               parseHTML: (el) => el.getAttribute('data-src-sm'),
             },
+            // PR-M1-C: 오프라인 임시 이미지 식별자 (IDB image_blobs lookup용)
+            localBlobId: {
+              default: null,
+              renderHTML: (attrs) => (attrs.localBlobId ? { 'data-local-blob-id': attrs.localBlobId } : {}),
+              parseHTML: (el) => el.getAttribute('data-local-blob-id'),
+            },
           }
         },
         addNodeView() {
@@ -554,6 +561,32 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   // eslint-disable-next-line react-hooks/refs
   editorRef.current = editor
 
+  // PR-M1-C: image-swap 알림 수신 → Tiptap doc 안 image node 중 localBlobId 매칭되는 것들 attrs 갱신
+  useEffect(() => {
+    if (!lastImageSwap || !editorRef.current) return
+    const editor = editorRef.current
+    const mapById = new Map(lastImageSwap.mappings.map((m) => [m.localBlobId, m]))
+    if (mapById.size === 0) return
+    let changed = false
+    editor.commands.command(({ tr, state }) => {
+      state.doc.descendants((node, pos) => {
+        if (node.type.name !== 'image') return
+        const lb = node.attrs.localBlobId as string | null
+        if (!lb) return
+        const m = mapById.get(lb)
+        if (!m) return
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          src: m.src,
+          srcMd: m.srcMd,
+          srcSm: m.srcSm,
+          localBlobId: null,
+        })
+        changed = true
+      })
+      return changed
+    })
+  }, [lastImageSwap])
 
   // 30초 자동 저장
   useEffect(() => {
@@ -639,38 +672,39 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   async function handleImageUpload(file: File) {
     if (!editor) return
-    // PR-M1-B: 이미지 업로드는 오프라인에서 큐 불가 (M1-C에서 R2 큐 지원 예정)
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      toast.warning('오프라인에서는 이미지를 첨부할 수 없어요. 온라인 복귀 후 다시 시도해주세요.')
-      return
-    }
-    const formData = new FormData()
-    formData.append('file', file)
+    // PR-M1-C: online이면 즉시 R2, offline이면 IDB+큐 (localBlobId만 attrs에 박힘)
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('업로드 실패')
-      const { url, thumbnailUrl, mediumUrl, savedPercent, originalSize, compressedSize } = await res.json()
+      const result = await uploadImageOrQueue(file)
+      if (result.queued) {
+        // offline — localBlobId만 박고 ResizableImageView가 IDB blob URL 생성
+        editor.chain().focus().insertContent({
+          type: 'image',
+          attrs: { src: '', localBlobId: result.localBlobId, width: '50%' },
+        }).run()
+        showUploadToast('오프라인 상태 — 이미지가 임시 저장됐어요. 온라인 복귀 시 자동 업로드돼요.')
+        return
+      }
+      // online — 진짜 R2 URL들로 즉시 표시
       editor.chain().focus().insertContent({
         type: 'image',
         attrs: {
-          src: url,
-          srcMd: mediumUrl ?? null,
-          srcSm: thumbnailUrl ?? null,
+          src: result.src,
+          srcMd: result.srcMd ?? null,
+          srcSm: result.srcSm ?? null,
           width: '50%',
         },
       }).run()
-      const orig = (originalSize / 1024 / 1024).toFixed(1)
-      const comp = (compressedSize / 1024 / 1024).toFixed(1)
-      if (savedPercent > 0) {
-        showUploadToast(`이미지가 ${savedPercent}% 압축됐어요 (${orig}MB → ${comp}MB)`)
+      const orig = ((result.originalSize ?? 0) / 1024 / 1024).toFixed(1)
+      const comp = ((result.compressedSize ?? 0) / 1024 / 1024).toFixed(1)
+      if ((result.savedPercent ?? 0) > 0) {
+        showUploadToast(`이미지가 ${result.savedPercent}% 압축됐어요 (${orig}MB → ${comp}MB)`)
       } else {
         showUploadToast('이미지가 업로드됐어요')
       }
-    } catch {
-      // 폴백: base64 삽입
-      const reader = new FileReader()
-      reader.onload = () => { editor.chain().focus().insertContent({ type: 'image', attrs: { src: reader.result as string, width: '50%' } }).run() }
-      reader.readAsDataURL(file)
+    } catch (e) {
+      // server validation/quota 실패 등 — 토스트로 알리고 종료
+      const msg = e instanceof Error ? e.message : '이미지 업로드 실패'
+      toast.error(msg.includes('upload failed: 413') ? '스토리지 한도를 초과했어요. 설정에서 정리 후 다시 시도해주세요.' : '이미지 업로드에 실패했어요. 잠시 후 다시 시도해주세요.')
     }
   }
 

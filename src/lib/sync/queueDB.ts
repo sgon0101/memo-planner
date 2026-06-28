@@ -3,12 +3,14 @@
  *
  * v1 (M1-A): update op만
  * v2 (M1-B): memo-insert / plan-insert / memo-body-update 추가 + id_map store
+ * v3 (M1-C): image-upload 추가 + image_blobs store (오프라인 이미지 첨부)
  *
  * Op 타입:
  *   - update          : 기존 row의 patch update (별표·고정·완료·폴더이동 등)
  *   - memo-insert     : 신규 메모 server insert (임시 ID 사용)
  *   - plan-insert     : 신규 플랜 server insert (임시 ID 사용)
  *   - memo-body-update: 메모 본문/제목 자동저장 (overwrite — 같은 memoId 최신만)
+ *   - image-upload    : 첨부 이미지 R2 업로드 (blob은 image_blobs store에 보관)
  */
 
 'use client'
@@ -41,6 +43,13 @@ export type PendingOp =
       fields: Record<string, unknown>  // title/content/content_text/tags/wiki_links 등
       knownUpdatedAt: string
     }
+  | {
+      op: 'image-upload'
+      // blob 자체는 image_blobs store에 별도 저장 — 큐 row엔 ID + 메타데이터만
+      localBlobId: string
+      mimeType: string
+      fileName: string
+    }
 
 export interface PendingWrite {
   id: string
@@ -57,6 +66,14 @@ export interface IdMapping {
   createdAt: number
 }
 
+export interface ImageBlobEntry {
+  localBlobId: string
+  blob: Blob
+  mimeType: string
+  fileName: string
+  createdAt: number
+}
+
 interface WeaveOfflineDB extends DBSchema {
   pending_writes: {
     key: string
@@ -67,10 +84,14 @@ interface WeaveOfflineDB extends DBSchema {
     key: string  // tempId
     value: IdMapping
   }
+  image_blobs: {
+    key: string  // localBlobId
+    value: ImageBlobEntry
+  }
 }
 
 const DB_NAME = 'weave-offline-queue'
-const DB_VERSION = 2  // M1-A의 v1에서 업그레이드
+const DB_VERSION = 3  // M1-C에서 image_blobs store 추가
 export const MAX_ATTEMPTS = 5
 
 let dbPromise: Promise<IDBPDatabase<WeaveOfflineDB>> | null = null
@@ -92,8 +113,12 @@ function getDB() {
           if (!db.objectStoreNames.contains('id_map')) {
             db.createObjectStore('id_map', { keyPath: 'tempId' })
           }
-          // 옛 v1 row(table/recordId 직접 필드)는 그대로 두고 — 새 enqueue부터는
-          // payload 형식 사용. flushQueue가 backward-compat 처리.
+        }
+        // v2 → v3: image_blobs store 추가 (M1-C)
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains('image_blobs')) {
+            db.createObjectStore('image_blobs', { keyPath: 'localBlobId' })
+          }
         }
       },
     })
@@ -254,4 +279,75 @@ export function makeTempId(prefix: 'memo' | 'plan'): string {
 
 export function isTempId(id: string | null | undefined): boolean {
   return !!id && id.startsWith('tmp_')
+}
+
+// ─── M1-C: image_blobs API ──────────────────────────────────────
+
+/** 오프라인 이미지 첨부용 localBlobId 생성 — `blob_<uuid_no_dashes>` */
+export function makeLocalBlobId(): string {
+  return `blob_${crypto.randomUUID().replace(/-/g, '')}`
+}
+
+/** localBlobId인지 — ResizableImageView가 attrs에서 식별용 */
+export function isLocalBlobId(id: string | null | undefined): boolean {
+  return !!id && id.startsWith('blob_')
+}
+
+export async function putImageBlob(entry: ImageBlobEntry): Promise<void> {
+  const db = await getDB()
+  await db.put('image_blobs', entry)
+}
+
+export async function getImageBlob(localBlobId: string): Promise<ImageBlobEntry | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    const db = await getDB()
+    const v = await db.get('image_blobs', localBlobId)
+    return v ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function removeImageBlob(localBlobId: string): Promise<void> {
+  try {
+    const db = await getDB()
+    await db.delete('image_blobs', localBlobId)
+  } catch { /* silent */ }
+}
+
+export async function listImageBlobs(): Promise<ImageBlobEntry[]> {
+  if (typeof window === 'undefined') return []
+  try {
+    const db = await getDB()
+    return await db.getAll('image_blobs')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 이미지 첨부 큐 적재 — blob을 image_blobs에 저장 + pending_writes에 image-upload op 적재.
+ * caller는 반환된 localBlobId를 Tiptap image node의 attrs.localBlobId로 박는다.
+ */
+export async function enqueueImageUpload(
+  file: File,
+): Promise<{ localBlobId: string; pendingId: string }> {
+  const localBlobId = makeLocalBlobId()
+  const mimeType = file.type || 'application/octet-stream'
+  const fileName = file.name || 'image'
+  await putImageBlob({
+    localBlobId,
+    blob: file,
+    mimeType,
+    fileName,
+    createdAt: Date.now(),
+  })
+  const pendingId = await enqueue({
+    op: 'image-upload',
+    localBlobId,
+    mimeType,
+    fileName,
+  })
+  return { localBlobId, pendingId }
 }

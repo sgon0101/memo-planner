@@ -15,6 +15,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { lsHomeMemosCache, lsHomeMemosCacheTs, lsMemosCache, lsMemosCacheTs } from '@/lib/cache/lsKeys'
+import { swapImageNodesInContent } from '@/lib/sync/imageSwap'
 import type { Memo } from '@/types'
 
 /** 임시 ID인지 — queueDB.isTempId와 동일 패턴 (의존 끊기 위해 inline) */
@@ -144,6 +145,36 @@ export function removeTempIdsFromCaches(
       }
     } catch { /* ignore */ }
   }
+}
+
+/**
+ * PR-M1-C: 이미지 R2 업로드 완료 후 zustand store + React Query 캐시 안 메모 content의 image node attrs swap.
+ * (현재 에디터에 열린 메모의 Tiptap editor는 별도로 MemoEditor의 broadcast listener가 갱신)
+ */
+export function applyImageSwapToCaches(
+  mappings: Array<{ localBlobId: string; src: string; srcMd: string | null; srcSm: string | null }>,
+  queryClient: QueryClient,
+): void {
+  if (mappings.length === 0) return
+  const imgMap = new Map(mappings.map((m) => [m.localBlobId, { src: m.src, srcMd: m.srcMd, srcSm: m.srcSm }]))
+
+  // zustand currentMemo 갱신
+  const memoState = useMemoStore.getState()
+  const cur = memoState.currentMemo
+  if (cur && cur.content) {
+    const { content: newContent, swappedCount } = swapImageNodesInContent(cur.content, imgMap)
+    if (swappedCount > 0) {
+      memoState.updateMemo(cur.id, { content: newContent as Record<string, unknown> })
+    }
+  }
+  // React Query memos all cache는 content를 stripped로 보관 → swap 영향 없음 (LIST_COLS)
+  // home-memos는 미리보기만 → 영향 없음
+  // → cache swap은 사실상 currentMemo만으로 충분
+
+  // MemoEditor가 lastImageSwap 구독해 Tiptap editor의 image node attrs 갱신
+  memoState.notifyImageSwap(mappings)
+
+  void queryClient // referenced for future use
 }
 
 /** 디버그용 — 미사용 export 방지 */

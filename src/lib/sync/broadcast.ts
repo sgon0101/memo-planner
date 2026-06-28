@@ -33,6 +33,8 @@ export type SyncEvent =
   | { type: 'folder-delete'; id: string }
   /** PR-M1-B 후속: flush가 영구 실패로 give-up한 tempId들 — 다른 탭의 store/LS에서도 정리 */
   | { type: 'queue-giveup';  tempIds: string[] }
+  /** PR-M1-C: 오프라인 이미지가 R2 업로드 완료 — 본문 image node attrs swap (localBlobId → 진짜 URL) */
+  | { type: 'image-swap';    mappings: Array<{ localBlobId: string; src: string; srcMd: string | null; srcSm: string | null }> }
   /** 무엇이 바뀐지 구체적이지 않을 때 — 단순히 React Query 키 invalidate 신호 */
   | { type: 'invalidate';    queryKey: (string | number | boolean)[] }
 

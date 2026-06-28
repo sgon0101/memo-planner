@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils'
 import LinkInputPopover from './LinkInputPopover'
 import { toast } from '@/components/ui/Toast'
+import { uploadImageOrQueue } from '@/lib/sync/withQueue'
 
 interface ToolbarProps {
   editor: Editor
@@ -700,31 +701,30 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
-    // PR-M1-B: 이미지 업로드는 오프라인에서 큐 불가 (M1-C에서 R2 큐 지원 예정)
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      toast.warning('오프라인에서는 이미지를 첨부할 수 없어요. 온라인 복귀 후 다시 시도해주세요.')
-      return
-    }
     setImageUploading(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('업로드 실패')
-      const { url, thumbnailUrl, mediumUrl } = await res.json()
-      editor.chain().focus().insertContent({
-        type: 'image',
-        attrs: {
-          src: url,
-          srcMd: mediumUrl ?? null,
-          srcSm: thumbnailUrl ?? null,
-          width: '50%',
-        },
-      }).run()
-    } catch {
-      const reader = new FileReader()
-      reader.onload = () => { editor.chain().focus().insertContent({ type: 'image', attrs: { src: reader.result as string, width: '50%' } }).run() }
-      reader.readAsDataURL(file)
+      // PR-M1-C: online이면 즉시 R2, offline이면 IDB+큐
+      const result = await uploadImageOrQueue(file)
+      if (result.queued) {
+        editor.chain().focus().insertContent({
+          type: 'image',
+          attrs: { src: '', localBlobId: result.localBlobId, width: '50%' },
+        }).run()
+        toast.success('오프라인 상태 — 이미지가 임시 저장됐어요. 온라인 복귀 시 자동 업로드돼요.')
+      } else {
+        editor.chain().focus().insertContent({
+          type: 'image',
+          attrs: {
+            src: result.src,
+            srcMd: result.srcMd ?? null,
+            srcSm: result.srcSm ?? null,
+            width: '50%',
+          },
+        }).run()
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '이미지 업로드 실패'
+      toast.error(msg.includes('upload failed: 413') ? '스토리지 한도를 초과했어요.' : '이미지 업로드에 실패했어요.')
     } finally {
       setImageUploading(false)
     }

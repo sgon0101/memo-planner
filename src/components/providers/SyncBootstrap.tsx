@@ -21,7 +21,7 @@ import { flushQueue, type FlushResult } from '@/lib/sync/withQueue'
 import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { broadcast } from '@/lib/sync/broadcast'
-import { applyIdSwapToLocalStorage, removeTempIdsFromCaches } from '@/lib/sync/cacheCleanup'
+import { applyIdSwapToLocalStorage, removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
 import { toast } from '@/components/ui/Toast'
 import type { Memo } from '@/types'
 
@@ -101,6 +101,19 @@ function applyGaveUp(
   }
 }
 
+/**
+ * PR-M1-C: 오프라인 이미지 R2 업로드 완료 후 zustand+RQ+LS 본문 swap + 다른 탭 broadcast.
+ * 현재 에디터에 열린 메모의 Tiptap editor는 MemoEditor에서 broadcast listener로 직접 갱신.
+ */
+function applyImageMappings(
+  mappings: FlushResult['imageMappings'],
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  if (mappings.length === 0) return
+  applyImageSwapToCaches(mappings, queryClient)
+  broadcast({ type: 'image-swap', mappings })
+}
+
 export function SyncBootstrap() {
   const queryClient = useQueryClient()
 
@@ -119,6 +132,7 @@ export function SyncBootstrap() {
     const runFlush = () => {
       flushQueue()
         .then((result) => {
+          applyImageMappings(result.imageMappings, queryClient)
           applyIdMappings(result.idMappings, queryClient)
           applyGaveUp(result.gaveUpEntries, queryClient)
         })
