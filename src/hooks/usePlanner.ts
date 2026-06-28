@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
 import { setUntilOnRRule } from '@/lib/planner/rrulePresets'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
+import { writeOrQueue } from '@/lib/sync/withQueue'
 import { broadcast } from '@/lib/sync/broadcast'
 import type { Plan } from '@/types'
 
@@ -148,15 +149,20 @@ export function usePlanner() {
     const original = usePlannerStore.getState().plans.find((p) => p.id === id)
     const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
 
-    const { updated_at } = await safeUpdateOrForce(
-      { table: 'plans', id, patch: dbPatch, knownUpdatedAt },
-      () => console.warn('[weave:conflict] plans editPlan', id),
-    )
-
-    const patchWithTime: Partial<Plan> = { ...data, updatedAt: updated_at }
-    updatePlan(id, patchWithTime)
-    invalidateHomeQueries()
-    broadcast({ type: 'plan-update', id, patch: patchWithTime, updated_at })
+    // PR-M1-A: online이면 직접, offline이면 큐
+    const result = await writeOrQueue({
+      table: 'plans', recordId: id, patch: dbPatch, knownUpdatedAt,
+    })
+    if (result.queued) {
+      const tempUpdatedAt = new Date().toISOString()
+      updatePlan(id, { ...data, updatedAt: tempUpdatedAt })
+    } else {
+      const updated_at = result.updated_at!
+      const patchWithTime: Partial<Plan> = { ...data, updatedAt: updated_at }
+      updatePlan(id, patchWithTime)
+      invalidateHomeQueries()
+      broadcast({ type: 'plan-update', id, patch: patchWithTime, updated_at })
+    }
   }, [invalidateHomeQueries])
 
   const removePlan = useCallback(async (id: string) => {
@@ -170,15 +176,20 @@ export function usePlanner() {
     const original = usePlannerStore.getState().plans.find((p) => p.id === id)
     const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
 
-    const { updated_at } = await safeUpdateOrForce(
-      { table: 'plans', id, patch: { is_completed: !current }, knownUpdatedAt },
-      () => console.warn('[weave:conflict] plans toggleComplete', id),
-    )
-
-    const patch: Partial<Plan> = { isCompleted: !current, updatedAt: updated_at }
-    updatePlan(id, patch)
-    invalidateHomeQueries()
-    broadcast({ type: 'plan-update', id, patch, updated_at })
+    // PR-M1-A
+    const result = await writeOrQueue({
+      table: 'plans', recordId: id, patch: { is_completed: !current }, knownUpdatedAt,
+    })
+    if (result.queued) {
+      const tempUpdatedAt = new Date().toISOString()
+      updatePlan(id, { isCompleted: !current, updatedAt: tempUpdatedAt })
+    } else {
+      const updated_at = result.updated_at!
+      const patch: Partial<Plan> = { isCompleted: !current, updatedAt: updated_at }
+      updatePlan(id, patch)
+      invalidateHomeQueries()
+      broadcast({ type: 'plan-update', id, patch, updated_at })
+    }
   }, [invalidateHomeQueries])
 
   const toggleRecurringComplete = useCallback(async (

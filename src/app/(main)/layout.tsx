@@ -11,6 +11,7 @@ import AutofillBlocker from '@/components/layout/AutofillBlocker'
 import QueryProvider from '@/components/providers/QueryProvider'
 import { MemoListPrefetch } from '@/components/providers/MemoListPrefetch'
 import { SyncBootstrap } from '@/components/providers/SyncBootstrap'
+import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import QuickCaptureFAB from '@/components/quick-capture/QuickCaptureFAB'
 import QuickCaptureModal from '@/components/quick-capture/QuickCaptureModal'
 
@@ -30,6 +31,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   return (
     <QueryProvider>
     <SyncBootstrap />
+    <OfflineBanner />
     <MemoListPrefetch />
     <DarkModeProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">

@@ -7,6 +7,7 @@ import { useMemoStore } from '@/store/memoStore'
 import { encryptContent, decryptContent, decryptAndMaybeUpgrade } from '@/lib/crypto/lock'
 import { LIST_COLS, toMemo } from '@/lib/memos/shared'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
+import { writeOrQueue } from '@/lib/sync/withQueue'
 import { broadcast } from '@/lib/sync/broadcast'
 import { lsMemosCache, lsMemosCacheTs, lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
@@ -144,16 +145,25 @@ export function useMemos(folderId: string | null | undefined) {
       updateMemo(id, patch)
 
       try {
-        const { updated_at } = await safeUpdateOrForce(
-          { table: 'memos', id, patch: dbPatch, knownUpdatedAt },
-          () => console.warn('[weave:conflict] memos', id),
-        )
-        const finalPatch: Partial<Memo> = { ...patch, updatedAt: updated_at }
-        patchCache((old) => old.map((m) => m.id === id ? { ...m, updatedAt: updated_at } : m))
-        updateMemo(id, { updatedAt: updated_at })
-        broadcast({ type: 'memo-update', id, patch: finalPatch, updated_at })
-        // 홈 최근 메모 — 다음 /home 진입 시 fresh fetch
-        queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+        // PR-M1-A: online이면 직접 update, offline이면 큐
+        const result = await writeOrQueue({
+          table: 'memos', recordId: id, patch: dbPatch, knownUpdatedAt,
+        })
+        if (result.queued) {
+          // 오프라인 — optimistic UI 유지, broadcast/홈 invalidate는 flush 때
+          // updated_at은 임시로 now()
+          const tempUpdatedAt = new Date().toISOString()
+          patchCache((old) => old.map((m) => m.id === id ? { ...m, updatedAt: tempUpdatedAt } : m))
+          updateMemo(id, { updatedAt: tempUpdatedAt })
+        } else {
+          // online 직접 update 성공
+          const updated_at = result.updated_at!
+          const finalPatch: Partial<Memo> = { ...patch, updatedAt: updated_at }
+          patchCache((old) => old.map((m) => m.id === id ? { ...m, updatedAt: updated_at } : m))
+          updateMemo(id, { updatedAt: updated_at })
+          broadcast({ type: 'memo-update', id, patch: finalPatch, updated_at })
+          queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+        }
       } catch (e) {
         const rollback = Object.fromEntries(
           Object.entries(patch).map(([k]) => [k, original[k as keyof Memo]])
