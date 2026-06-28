@@ -227,7 +227,7 @@ function QuickCaptureInner({
 
   async function handleSaveTemplate() {
     if (!planTitle.trim()) return
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     const baseDate = isRange ? startDate : singleDate
     await supabase.from('plan_templates').insert({
       user_id: user?.id, title: planTitle.trim(), color,
@@ -277,7 +277,7 @@ function QuickCaptureInner({
       if (!memoTitle.trim() && !memoBody.trim()) { setError('제목 또는 본문을 입력해주세요'); return }
       setSaving(true)
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
         if (!user) throw new Error('로그인이 필요합니다')
         const paragraphs = memoBody.split('\n').map((line) =>
           line ? { type: 'paragraph', content: [{ type: 'text', text: line }] } : { type: 'paragraph' }

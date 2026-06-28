@@ -183,7 +183,7 @@ export function useGraphData() {
   // 네트워크 페치 — 마운트·folderFilter 변경·Realtime 이벤트 시만 호출
   const fetchRawData = useCallback(async () => {
     const s = settingsRef.current
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
 
     // 폴더 목록 로드 (GraphSettings 드롭다운용)

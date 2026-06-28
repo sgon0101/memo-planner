@@ -39,6 +39,36 @@ function isOnline(): boolean {
   return navigator.onLine
 }
 
+/**
+ * PostgrestError 같은 plain object 에러에서도 message/code/details/status를 모두 추출.
+ * Error 인스턴스가 아닐 때 e.message만 보면 영구 fail 검출이 안 됨 → 'unknown'으로 잡혀 무한 retry.
+ */
+function extractErrorSignature(e: unknown): string {
+  if (e == null) return 'null'
+  if (typeof e === 'string') return e
+  if (e instanceof Error) {
+    const obj = e as unknown as Record<string, unknown>
+    const code = obj.code ? ` code=${String(obj.code)}` : ''
+    const status = obj.status ? ` status=${String(obj.status)}` : ''
+    return `${e.message}${code}${status}`
+  }
+  if (typeof e === 'object') {
+    const o = e as Record<string, unknown>
+    const parts: string[] = []
+    if (o.message) parts.push(String(o.message))
+    if (o.code) parts.push(`code=${String(o.code)}`)
+    if (o.status) parts.push(`status=${String(o.status)}`)
+    if (o.statusCode) parts.push(`status=${String(o.statusCode)}`)
+    if (o.details) parts.push(`details=${String(o.details)}`)
+    if (o.hint) parts.push(`hint=${String(o.hint)}`)
+    if (parts.length === 0) {
+      try { return JSON.stringify(o).slice(0, 200) } catch { return 'object' }
+    }
+    return parts.join(' ')
+  }
+  return String(e)
+}
+
 // ─── M1-A 호환: 단순 update ──────────────────────────────────────
 
 export interface WriteOrQueueOpts {
@@ -239,17 +269,18 @@ export async function flushQueue(): Promise<FlushResult> {
       await removePending(item.id)
       flushed++
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'unknown'
+      // PostgrestError는 instanceof Error가 아니라 plain object → e.message뿐 아니라
+      // e.code('PGRST...'), e.details, e.hint, e.status까지 모두 살펴야 영구 fail 검출 가능
+      const msg = extractErrorSignature(e)
       // 400/RLS/FK 등 영구 실패는 retry 무의미 — 즉시 give-up
-      // postgrest 에러는 보통 code 'PGRST...' 또는 status 400/401/403/409/422 포함
       const isPermanent =
-        /\b(400|401|403|404|409|422|PGRST|violates|duplicate key|row-level security|denied)\b/i.test(msg)
+        /\b(400|401|403|404|409|422|PGRST|violates|duplicate key|row-level security|denied|invalid input syntax|null value|not.null)\b/i.test(msg)
       if (isPermanent || item.attempts + 1 >= MAX_ATTEMPTS) {
-        console.warn('[weave:queue:giveup]', isPermanent ? 'PERMANENT' : 'MAX_ATTEMPTS', JSON.stringify(item.payload).slice(0, 100), msg)
+        console.warn('[weave:queue:giveup]', isPermanent ? 'PERMANENT' : 'MAX_ATTEMPTS', JSON.stringify(item.payload).slice(0, 120), msg.slice(0, 200))
         await removePending(item.id)
         gaveUp++
       } else {
-        await markFailed(item.id, msg)
+        await markFailed(item.id, msg.slice(0, 200))
         failed++
       }
     }

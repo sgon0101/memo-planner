@@ -41,7 +41,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
     if (tplSaveState === 'saving') return
     setTplSaveState('saving')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
       if (!user) throw new Error('로그인 필요')
       await supabase.from('plan_templates').insert({
         user_id: user.id,

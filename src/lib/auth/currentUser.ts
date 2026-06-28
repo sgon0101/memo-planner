@@ -37,8 +37,10 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
   initialized = true
 
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    cachedUserId = user?.id ?? null
+    // getUser()는 토큰 refresh fetch를 시도해 offline에서 throw → namespace 캐시 실패
+    // getSession()은 cookie/localStorage sync 읽기라 offline-safe
+    const { data: { session } } = await supabase.auth.getSession()
+    cachedUserId = session?.user?.id ?? null
   } catch {
     cachedUserId = null
   }

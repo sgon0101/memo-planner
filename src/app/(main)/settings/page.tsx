@@ -351,7 +351,8 @@ export default function SettingsPage() {
   async function fetchIntegrationStatus() {
     setIntegrationsLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user ?? null
       if (!user) return
       const { data: integrations } = await supabase
         .from('user_integrations')
@@ -366,21 +367,23 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setEmail(data.user.email ?? '')
-        setNickname((data.user.user_metadata?.display_name as string | undefined) ?? '')
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user
+      if (u) {
+        setEmail(u.email ?? '')
+        setNickname((u.user_metadata?.display_name as string | undefined) ?? '')
       }
     })
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 비동기 로더 호출 (로더가 loading 상태를 동기 설정)
     fetchIntegrationStatus()
     fetchBackupSettings()
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
+    supabase.auth.getSession().then(async ({ data }) => {
+      const u = data.session?.user
+      if (!u) return
       const { data: files } = await supabase
         .from('uploaded_files')
         .select('original_size, compressed_size')
-        .eq('user_id', data.user.id)
+        .eq('user_id', u.id)
       if (files) {
         setStorageStats({
           fileCount: files.length,
@@ -443,7 +446,8 @@ export default function SettingsPage() {
   async function disconnectDrive() {
     setDriveLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user ?? null
       if (!user) return
       await supabase.from('user_integrations').delete().eq('user_id', user.id).eq('provider', 'google_drive')
       setDriveConnected(false)
