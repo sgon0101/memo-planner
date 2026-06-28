@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { startOfWeek, endOfWeek, format as fmtDate } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { memoKeys, readLocalCache, readLocalCacheTs } from '@/hooks/useMemos'
@@ -13,6 +13,7 @@ import {
   lsHomeStatsCache, lsHomeStatsCacheTs,
   lsMemosCache, lsMemosTotalCount,
 } from '@/lib/cache/lsKeys'
+import { subscribeUserId } from '@/lib/auth/currentUser'
 
 const HOME_STALE = 5 * 60 * 1000
 
@@ -69,13 +70,15 @@ function readStatsCacheTs(): number {
 }
 
 export default function HomePageClient() {
+  const queryClient = useQueryClient()
+
   // 전체 메모 캐시 구독 (MemoListPrefetch가 레이아웃에서 채움)
   // enabled: false → 직접 fetch 없이 캐시 변경 시에만 반응
   // initialData: localStorage에서 즉시 복원 → 이전 세션 값 즉각 표시
   // 이전 방문 시 저장된 개수를 즉시 읽어 표시 (prefetch 완료 전에도 표시)
   // 1순위: memos-total-count (직접 저장된 카운트, 최신 배포 이후)
   // 2순위: memos-all-cache length (메모 목록 방문 시 저장, 기기 간 호환)
-  const [prevCount] = useState<number | undefined>(() => {
+  const [prevCount, setPrevCount] = useState<number | undefined>(() => {
     if (typeof window === 'undefined') return undefined
     try {
       const countStr = (() => { const k = lsMemosTotalCount(); return k ? localStorage.getItem(k) : null })()
@@ -202,6 +205,45 @@ export default function HomePageClient() {
       { const k = lsHomeStatsCache(); const kts = lsHomeStatsCacheTs(); if (k && kts) { localStorage.setItem(k, JSON.stringify(stats)); localStorage.setItem(kts, String(Date.now())) } }
     }
   }, [stats])
+
+  // ★ userId reactive 복원 — userId가 async로 늦게 들어오면 mount 시점 useState/useQuery
+  // initialData가 모두 null 키로 localStorage를 못 읽어 0.몇초 빈 화면이 보이던 회귀 fix.
+  // subscribeUserId로 userId 들어오자마자 캐시를 즉시 채워 화면 갱신.
+  useEffect(() => {
+    return subscribeUserId((uid) => {
+      if (!uid) return
+      try {
+        // 1) totalMemos
+        if (prevCount === undefined) {
+          const k = lsMemosTotalCount()
+          if (k) {
+            const v = localStorage.getItem(k)
+            if (v !== null) setPrevCount(Number(v))
+          }
+          if (prevCount === undefined) {
+            const ck = lsMemosCache()
+            if (ck) {
+              const raw = localStorage.getItem(ck)
+              if (raw) {
+                const arr = JSON.parse(raw) as unknown[]
+                if (Array.isArray(arr) && arr.length > 0) setPrevCount(arr.length)
+              }
+            }
+          }
+        }
+        // 2) home-memos 캐시 즉시 복원
+        const homeData = readHomeMemoCache()
+        if (homeData) queryClient.setQueryData(['home-memos'], homeData)
+        // 3) home-stats 캐시 즉시 복원
+        const statsData = readStatsCache()
+        if (statsData) queryClient.setQueryData(['home-stats'], statsData)
+        // 4) allMemos 캐시 (memos-all)
+        const allMemosData = readLocalCache()
+        if (allMemosData) queryClient.setQueryData(memoKeys.all(), allMemosData)
+      } catch { /* ignore */ }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient])
 
   // 다가오는 D-day — 미래(또는 오늘) 8개
   const { data: ddayPlans = [] } = useQuery<DdayPlan[]>({
