@@ -18,6 +18,8 @@ interface PlannerStore {
   deleteRecurringCompletion: (key: string) => void
   addPlan: (plan: Plan) => void
   updatePlan: (id: string, patch: Partial<Plan>) => void
+  /** PR-M1-B: 오프라인 큐 flush 후 임시 ID → 진짜 ID 교체 */
+  swapPlanId: (oldId: string, newId: string, extraPatch?: Partial<Plan>) => void
   deletePlan: (id: string) => void
   selectDate: (date: string) => void
   setViewMode: (mode: 'month' | 'week' | 'day') => void
@@ -49,6 +51,12 @@ export const usePlannerStore = create<PlannerStore>()(
       addPlan: (plan) => set((s) => ({ plans: [...s.plans, plan] })),
       updatePlan: (id, patch) =>
         set((s) => ({ plans: s.plans.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
+      swapPlanId: (oldId, newId, extraPatch) =>
+        set((s) => ({
+          plans: s.plans.map((p) =>
+            p.id === oldId ? { ...p, id: newId, ...(extraPatch ?? {}) } : p
+          ),
+        })),
       deletePlan: (id) => set((s) => ({ plans: s.plans.filter((p) => p.id !== id) })),
       selectDate: (date) => set({ selectedDate: date }),
       setViewMode: (viewMode) => set({ viewMode }),

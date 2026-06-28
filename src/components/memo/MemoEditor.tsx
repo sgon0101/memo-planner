@@ -41,6 +41,8 @@ import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
 import type { Memo, MemoVersion } from '@/types'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import { useAutoEmbed } from '@/hooks/useAutoEmbed'
+import { createMemoOrQueue, updateMemoBodyOrQueue } from '@/lib/sync/withQueue'
+import { makeTempId, isTempId } from '@/lib/sync/queueDB'
 
 const lowlight = createLowlight(common)
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -218,15 +220,21 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const thumbnailUrl = (firstImageUrl && !firstImageUrl.startsWith('data:'))
           ? firstImageUrl
           : null
-        await supabase.from('memos').update({
-          title: titleRef.current,
-          content,
-          content_text: text,
-          wiki_links: wikiLinks,
-          tags,
-          updated_at: updatedAt,
-          thumbnail_url: thumbnailUrl,
-        }).eq('id', id)
+        // PR-M1-B: 오프라인 또는 tempId면 큐로 fall through (overwrite — 같은 memoId는 최신만 보관)
+        const storeMemo = useMemoStore.getState().memos.find((m) => m.id === id)
+        const knownUpdatedAt = storeMemo?.updatedAt ?? updatedAt
+        await updateMemoBodyOrQueue({
+          recordId: id,
+          fields: {
+            title: titleRef.current,
+            content,
+            content_text: text,
+            wiki_links: wikiLinks,
+            tags,
+            thumbnail_url: thumbnailUrl,
+          },
+          knownUpdatedAt,
+        })
 
         // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
         const patch = { title: titleRef.current, contentText: text, updatedAt, thumbnailUrl, tags, wikiLinks }
@@ -288,31 +296,53 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         const insertThumb = (firstImageUrl && !firstImageUrl.startsWith('data:'))
           ? firstImageUrl
           : null
-        const { data, error } = await supabase
-          .from('memos')
-          .insert({
-            user_id: user?.id,
-            title: titleRef.current,
-            content,
-            content_text: text,
-            tags: extractTags(text),
-            wiki_links: extractWikiLinks(text),
-            folder_id: folderIdRef.current,
-            thumbnail_url: insertThumb,
-          })
-          .select()
-          .single()
-        if (error) throw error
-        const newMemo = toMemo(data)
+        // PR-M1-B: tempId 부여 → online이면 즉시 server insert, offline이면 큐
+        const tempId = makeTempId('memo')
+        const insertFields = {
+          user_id: user?.id ?? '',
+          title: titleRef.current,
+          content,
+          content_text: text,
+          tags: extractTags(text),
+          wiki_links: extractWikiLinks(text),
+          folder_id: folderIdRef.current,
+          thumbnail_url: insertThumb,
+        }
+        const createResult = await createMemoOrQueue(insertFields, tempId)
+        const newMemo: Memo = createResult.row
+          ? toMemo(createResult.row)
+          : {
+              id: tempId,
+              userId: insertFields.user_id,
+              folderId: insertFields.folder_id ?? null,
+              title: insertFields.title,
+              content: insertFields.content as Record<string, unknown>,
+              contentText: insertFields.content_text,
+              isPinned: false,
+              isStarred: false,
+              isLocked: false,
+              lockedContent: null,
+              isDeleted: false,
+              deletedAt: null,
+              tags: insertFields.tags,
+              wikiLinks: insertFields.wiki_links,
+              linkedPlanIds: [],
+              thumbnailUrl: insertFields.thumbnail_url,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
         createdIdRef.current = newMemo.id
         setCreatedId(newMemo.id)
 
-        // 새 메모 임베딩 fire-and-forget
-        void fetch('/api/embeddings/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ memoId: newMemo.id }),
-        }).catch(() => { /* 임베딩 실패는 silent */ })
+        // 새 메모 임베딩 — online에서 진짜 ID일 때만 (tempId면 flush 후 자동 백필이 따로 없으니
+        // 추후 update 시 자동임베드가 트리거됨)
+        if (!isTempId(newMemo.id)) {
+          void fetch('/api/embeddings/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memoId: newMemo.id }),
+          }).catch(() => { /* 임베딩 실패는 silent */ })
+        }
         setCurrentMemo(newMemo)
         addMemo(newMemo)
 
@@ -603,6 +633,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
   async function handleImageUpload(file: File) {
     if (!editor) return
+    // PR-M1-B: 이미지 업로드는 오프라인에서 큐 불가 (M1-C에서 R2 큐 지원 예정)
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.warning('오프라인에서는 이미지를 첨부할 수 없어요. 온라인 복귀 후 다시 시도해주세요.')
+      return
+    }
     const formData = new FormData()
     formData.append('file', file)
     try {

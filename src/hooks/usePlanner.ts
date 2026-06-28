@@ -7,7 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
 import { setUntilOnRRule } from '@/lib/planner/rrulePresets'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
-import { writeOrQueue } from '@/lib/sync/withQueue'
+import { writeOrQueue, createPlanOrQueue } from '@/lib/sync/withQueue'
+import { makeTempId } from '@/lib/sync/queueDB'
 import { broadcast } from '@/lib/sync/broadcast'
 import type { Plan } from '@/types'
 
@@ -91,33 +92,70 @@ export function usePlanner() {
 
   useEffect(() => { load() }, [load])
 
+  /**
+   * PR-M1-B: 플랜 신규 작성 — online이면 즉시 server insert, offline이면 임시 ID + 큐.
+   * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapPlanId로 진짜 ID 교체.
+   */
   const createPlan = useCallback(async (data: Partial<Plan>) => {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: row, error } = await supabase
-      .from('plans')
-      .insert({
-        user_id: user?.id,
-        title: data.title ?? '새 플랜',
-        description: data.description ?? '',
-        color: data.color ?? '#7F77DD',
-        date: data.date ?? null,
-        start_date: data.startDate ?? null,
-        end_date: data.endDate ?? null,
-        start_time: data.startTime ?? null,
-        end_time: data.endTime ?? null,
-        is_all_day: data.isAllDay ?? true,
-        repeat_type: data.repeatType ?? null,
-        repeat_end_date: data.repeatEndDate ?? null,
-        rrule_str: data.rruleStr ?? null,
-        notify_enabled: data.notifyEnabled ?? false,
-        notify_lead_min: data.notifyLeadMin ?? 10,
-        dday_target: data.ddayTarget ?? null,
-        linked_memo_ids: data.linkedMemoIds ?? [],
-      })
-      .select()
-      .single()
-    if (error) throw error
-    const plan = toPlan(row)
+    const userId = user?.id ?? ''
+    const tempId = makeTempId('plan')
+    const nowIso = new Date().toISOString()
+
+    const fields = {
+      user_id: userId,
+      title: data.title ?? '새 플랜',
+      description: data.description ?? '',
+      color: data.color ?? '#7F77DD',
+      date: data.date ?? null,
+      start_date: data.startDate ?? null,
+      end_date: data.endDate ?? null,
+      start_time: data.startTime ?? null,
+      end_time: data.endTime ?? null,
+      is_all_day: data.isAllDay ?? true,
+      repeat_type: data.repeatType ?? null,
+      repeat_end_date: data.repeatEndDate ?? null,
+      rrule_str: data.rruleStr ?? null,
+      notify_enabled: data.notifyEnabled ?? false,
+      notify_lead_min: data.notifyLeadMin ?? 10,
+      dday_target: data.ddayTarget ?? null,
+      linked_memo_ids: data.linkedMemoIds ?? [],
+    }
+
+    const result = await createPlanOrQueue(fields, tempId)
+
+    if (result.queued) {
+      // offline — 임시 ID로 즉시 표시
+      const tempPlan: Plan = {
+        id: tempId,
+        userId,
+        title: fields.title,
+        description: fields.description,
+        color: fields.color,
+        date: fields.date,
+        startDate: fields.start_date,
+        endDate: fields.end_date,
+        startTime: fields.start_time,
+        endTime: fields.end_time,
+        isAllDay: fields.is_all_day,
+        isCompleted: false,
+        repeatType: fields.repeat_type,
+        repeatEndDate: fields.repeat_end_date,
+        rruleStr: fields.rrule_str,
+        notifyEnabled: fields.notify_enabled,
+        notifyLeadMin: fields.notify_lead_min,
+        ddayTarget: fields.dday_target,
+        googleEventId: null,
+        linkedMemoIds: fields.linked_memo_ids,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }
+      addPlan(tempPlan)
+      // broadcast/home invalidate는 flush 후
+      return tempPlan
+    }
+
+    const plan = toPlan(result.row!)
     addPlan(plan)
     invalidateHomeQueries()
     broadcast({ type: 'plan-create', plan })
