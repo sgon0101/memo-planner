@@ -16,6 +16,7 @@ import { onBroadcast, type SyncEvent } from '@/lib/sync/broadcast'
 import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { useFolderStore } from '@/store/folderStore'
+import { removeTempIdsFromCaches } from '@/lib/sync/cacheCleanup'
 import type { Memo } from '@/types'
 
 export function useBroadcastListener(): void {
@@ -104,6 +105,12 @@ export function useBroadcastListener(): void {
           queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
           break
         }
+        // ─── PR-M1-B 후속: 다른 탭의 큐 give-up cleanup 수신 ─────
+        case 'queue-giveup': {
+          removeTempIdsFromCaches(event.tempIds, queryClient)
+          break
+        }
+
 
         // ─── Generic invalidate ───────────────────────────────────────
         case 'invalidate': {

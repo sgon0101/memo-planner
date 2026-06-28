@@ -31,6 +31,8 @@ export type SyncEvent =
   | { type: 'folder-update'; id: string; patch: Partial<Folder>; updated_at: string }
   | { type: 'folder-create'; folder: Folder }
   | { type: 'folder-delete'; id: string }
+  /** PR-M1-B 후속: flush가 영구 실패로 give-up한 tempId들 — 다른 탭의 store/LS에서도 정리 */
+  | { type: 'queue-giveup';  tempIds: string[] }
   /** 무엇이 바뀐지 구체적이지 않을 때 — 단순히 React Query 키 invalidate 신호 */
   | { type: 'invalidate';    queryKey: (string | number | boolean)[] }
 

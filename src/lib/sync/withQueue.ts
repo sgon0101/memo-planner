@@ -245,23 +245,38 @@ export async function updateMemoBodyOrQueue(opts: {
 
 // ─── flushQueue — op별 분기 + idMap ──────────────────────────────
 
+export interface GaveUpEntry {
+  tempId: string | null
+  op: PendingOp['op']
+  reason: string
+}
+
 export interface FlushResult {
   flushed: number
   failed: number
   gaveUp: number
   /** 임시 ID → 진짜 ID 매핑 (UI가 이걸로 zustand store + URL 갱신) */
   idMappings: Array<{ tempId: string; realId: string }>
+  /** PR-M1-B 후속: 영구 실패로 제거된 큐 row 정보 — UI 청소용 */
+  gaveUpEntries: GaveUpEntry[]
+}
+
+function payloadTempId(p: PendingOp): string | null {
+  if (p.op === 'memo-insert' || p.op === 'plan-insert') return p.tempId
+  if (p.op === 'update' || p.op === 'memo-body-update') return isTempId(p.recordId) ? p.recordId : null
+  return null
 }
 
 export async function flushQueue(): Promise<FlushResult> {
-  if (!isOnline()) return { flushed: 0, failed: 0, gaveUp: 0, idMappings: [] }
+  if (!isOnline()) return { flushed: 0, failed: 0, gaveUp: 0, idMappings: [], gaveUpEntries: [] }
 
   const pending = await listPending()
-  if (pending.length === 0) return { flushed: 0, failed: 0, gaveUp: 0, idMappings: [] }
+  if (pending.length === 0) return { flushed: 0, failed: 0, gaveUp: 0, idMappings: [], gaveUpEntries: [] }
 
   const supabase = createClient()
   let flushed = 0, failed = 0, gaveUp = 0
   const idMappings: Array<{ tempId: string; realId: string }> = []
+  const gaveUpEntries: GaveUpEntry[] = []
 
   for (const item of pending) {
     try {
@@ -279,6 +294,7 @@ export async function flushQueue(): Promise<FlushResult> {
         console.warn('[weave:queue:giveup]', isPermanent ? 'PERMANENT' : 'MAX_ATTEMPTS', JSON.stringify(item.payload).slice(0, 120), msg.slice(0, 200))
         await removePending(item.id)
         gaveUp++
+        gaveUpEntries.push({ tempId: payloadTempId(item.payload), op: item.payload.op, reason: msg.slice(0, 200) })
       } else {
         await markFailed(item.id, msg.slice(0, 200))
         failed++
@@ -286,7 +302,7 @@ export async function flushQueue(): Promise<FlushResult> {
     }
   }
 
-  return { flushed, failed, gaveUp, idMappings }
+  return { flushed, failed, gaveUp, idMappings, gaveUpEntries }
 }
 
 // 헬퍼 — 단일 큐 row 처리

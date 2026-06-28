@@ -21,6 +21,8 @@ import { flushQueue, type FlushResult } from '@/lib/sync/withQueue'
 import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { broadcast } from '@/lib/sync/broadcast'
+import { applyIdSwapToLocalStorage, removeTempIdsFromCaches } from '@/lib/sync/cacheCleanup'
+import { toast } from '@/components/ui/Toast'
 import type { Memo } from '@/types'
 
 const RETRY_INTERVAL_MS = 30_000  // 30초마다 큐 잔여 retry
@@ -41,9 +43,16 @@ function applyIdMappings(
   for (const { tempId, realId } of mappings) {
     if (tempId.startsWith('tmp_memo_')) {
       memoSwap(tempId, realId)
-      // React Query 캐시 — memos all list만 (다른 키는 fetch가 진실)
+      // React Query 캐시 — memos all list
       queryClient.setQueryData<Memo[]>(['memos', 'all', false], (old) =>
         old ? old.map((m) => (m.id === tempId ? { ...m, id: realId } : m)) : old,
+      )
+      // PR-M1-B 후속: home-memos 캐시도 함께 swap (stale tempId 노출 방지)
+      queryClient.setQueryData<{ recentMemos: Array<{ id: string }> } | undefined>(
+        ['home-memos'],
+        (old) => old
+          ? { ...old, recentMemos: old.recentMemos.map((m) => m.id === tempId ? { ...m, id: realId } : m) }
+          : old,
       )
       // 현재 URL이 임시 ID로 열려 있으면 진짜 ID로 silent 교체 (재마운트 X)
       if (typeof window !== 'undefined') {
@@ -57,6 +66,8 @@ function applyIdMappings(
       planSwap(tempId, realId)
     }
   }
+  // PR-M1-B 후속: LS 캐시도 swap — RQ initialData가 다음 마운트에서 stale tempId를 다시 끌어오는 경로 차단
+  applyIdSwapToLocalStorage(mappings)
   // home cache + plans 등은 invalidate로 새로 fetch
   queryClient.invalidateQueries({ queryKey: ['home-memos'] })
   queryClient.invalidateQueries({ queryKey: ['home-stats'] })
@@ -64,6 +75,30 @@ function applyIdMappings(
   // 다른 탭에도 신호
   broadcast({ type: 'invalidate', queryKey: ['memos', 'all', false] })
   broadcast({ type: 'invalidate', queryKey: ['plans'] })
+}
+
+/**
+ * PR-M1-B 후속: flush가 영구 실패로 give-up한 tempId 메모를 모든 캐시에서 일괄 제거 + 사용자 알림.
+ */
+function applyGaveUp(
+  entries: FlushResult['gaveUpEntries'],
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  if (entries.length === 0) return
+  const tempIds = entries.map((e) => e.tempId).filter((x): x is string => !!x)
+  if (tempIds.length === 0) return
+  removeTempIdsFromCaches(tempIds, queryClient)
+  // 다른 탭에도 신호 — useBroadcastListener의 'queue-giveup'이 같은 cleanup 실행
+  broadcast({ type: 'queue-giveup', tempIds })
+  // 사용자에게 1회 알림
+  const memoCount = tempIds.filter((t) => t.startsWith('tmp_memo_')).length
+  const planCount = tempIds.filter((t) => t.startsWith('tmp_plan_')).length
+  const parts: string[] = []
+  if (memoCount > 0) parts.push(`메모 ${memoCount}건`)
+  if (planCount > 0) parts.push(`플랜 ${planCount}건`)
+  if (parts.length > 0) {
+    toast.warning(`${parts.join(' · ')}을 동기화하지 못해 임시 항목을 정리했어요.`)
+  }
 }
 
 export function SyncBootstrap() {
@@ -83,7 +118,10 @@ export function SyncBootstrap() {
     if (!online) return
     const runFlush = () => {
       flushQueue()
-        .then((result) => applyIdMappings(result.idMappings, queryClient))
+        .then((result) => {
+          applyIdMappings(result.idMappings, queryClient)
+          applyGaveUp(result.gaveUpEntries, queryClient)
+        })
         .catch(() => {})
     }
     runFlush()  // online 복귀 즉시
