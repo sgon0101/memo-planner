@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LinkInputPopover from './LinkInputPopover'
+import { toast } from '@/components/ui/Toast'
 
 interface ToolbarProps {
   editor: Editor
@@ -699,6 +700,11 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
+    // PR-M1-B: 이미지 업로드는 오프라인에서 큐 불가 (M1-C에서 R2 큐 지원 예정)
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.warning('오프라인에서는 이미지를 첨부할 수 없어요. 온라인 복귀 후 다시 시도해주세요.')
+      return
+    }
     setImageUploading(true)
     try {
       const formData = new FormData()

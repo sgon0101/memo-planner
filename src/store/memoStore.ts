@@ -9,6 +9,8 @@ interface MemoStore {
   setCurrentMemo: (memo: Memo | null) => void
   addMemo: (memo: Memo) => void
   updateMemo: (id: string, patch: Partial<Memo>) => void
+  /** PR-M1-B: 오프라인 큐 flush 후 임시 ID → 진짜 ID 교체 */
+  swapId: (oldId: string, newId: string, extraPatch?: Partial<Memo>) => void
   deleteMemo: (id: string) => void
 }
 
@@ -28,6 +30,16 @@ export const useMemoStore = create<MemoStore>((set) => ({
     set((s) => ({
       memos: s.memos.map((m) => (m.id === id ? { ...m, ...patch } : m)),
       currentMemo: s.currentMemo?.id === id ? { ...s.currentMemo, ...patch } : s.currentMemo,
+    })),
+  swapId: (oldId, newId, extraPatch) =>
+    set((s) => ({
+      memos: s.memos.map((m) =>
+        m.id === oldId ? { ...m, id: newId, ...(extraPatch ?? {}) } : m
+      ),
+      currentMemo:
+        s.currentMemo?.id === oldId
+          ? { ...s.currentMemo, id: newId, ...(extraPatch ?? {}) }
+          : s.currentMemo,
     })),
   deleteMemo: (id) =>
     set((s) => ({

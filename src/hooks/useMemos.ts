@@ -7,7 +7,8 @@ import { useMemoStore } from '@/store/memoStore'
 import { encryptContent, decryptContent, decryptAndMaybeUpgrade } from '@/lib/crypto/lock'
 import { LIST_COLS, toMemo } from '@/lib/memos/shared'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
-import { writeOrQueue } from '@/lib/sync/withQueue'
+import { writeOrQueue, createMemoOrQueue } from '@/lib/sync/withQueue'
+import { makeTempId } from '@/lib/sync/queueDB'
 import { broadcast } from '@/lib/sync/broadcast'
 import { lsMemosCache, lsMemosCacheTs, lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
@@ -176,19 +177,54 @@ export function useMemos(folderId: string | null | undefined) {
     [patchCache, queryKey, queryClient, updateMemo]
   )
 
+  /**
+   * PR-M1-B: 메모 신규 작성 — online이면 즉시 server insert, offline이면 임시 ID + 큐.
+   * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapId로 진짜 ID 교체.
+   */
   const createMemo = useCallback(async () => {
-    const { data: row, error } = await supabase
-      .from('memos')
-      .insert({
+    const tempId = makeTempId('memo')
+    const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id ?? ''
+    const nowIso = new Date().toISOString()
+    const fields = {
+      user_id: userId,
+      title: '',
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+      content_text: '',
+      folder_id: folderId ?? null,
+    }
+
+    const result = await createMemoOrQueue(fields, tempId)
+
+    if (result.queued) {
+      // offline — 임시 ID + 임시 timestamp로 UI 즉시 표시
+      const tempMemo: Memo = {
+        id: tempId,
+        userId,
+        folderId: folderId ?? null,
         title: '',
-        content: { type: 'doc', content: [{ type: 'paragraph' }] },
-        content_text: '',
-        folder_id: folderId ?? null,
-      })
-      .select()
-      .single()
-    if (error) throw error
-    const memo = toMemo(row)
+        content: { type: 'doc', content: [{ type: 'paragraph' }] } as Record<string, unknown>,
+        contentText: '',
+        isPinned: false,
+        isStarred: false,
+        isLocked: false,
+        lockedContent: null,
+        isDeleted: false,
+        deletedAt: null,
+        tags: [],
+        wikiLinks: [],
+        linkedPlanIds: [],
+        thumbnailUrl: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }
+      addMemo(tempMemo)
+      patchCache((old) => [tempMemo, ...old])
+      // broadcast / home invalidate는 flush 후에
+      return tempMemo
+    }
+
+    const memo = toMemo(result.row!)
     addMemo(memo)
     patchCache((old) => [memo, ...old])
     broadcast({ type: 'memo-create', memo })
