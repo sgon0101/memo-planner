@@ -17,6 +17,7 @@ import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { useFolderStore } from '@/store/folderStore'
 import { removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
+import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
 
 export function useBroadcastListener(): void {
@@ -57,7 +58,27 @@ export function useBroadcastListener(): void {
           )
           useMemoStore.getState().deleteMemo(event.id)
           queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-          queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+          // PR-M2-fix: home-memos는 setQueryData(filter) + LS 직접 청소
+          // (invalidate만 두면 다음 mount 시 server replication lag로 stale 받음)
+          queryClient.setQueryData<{ recentMemos: Array<{ id: string }> } | undefined>(
+            ['home-memos'],
+            (old) => old ? { ...old, recentMemos: old.recentMemos.filter((m) => m.id !== event.id) } : old,
+          )
+          if (typeof window !== 'undefined') {
+            try {
+              const k = lsHomeMemosCache()
+              const kts = lsHomeMemosCacheTs()
+              if (k) {
+                const raw = localStorage.getItem(k)
+                if (raw) {
+                  const parsed = JSON.parse(raw) as { recentMemos: Array<{ id: string }> }
+                  const next = { ...parsed, recentMemos: parsed.recentMemos.filter((m) => m.id !== event.id) }
+                  localStorage.setItem(k, JSON.stringify(next))
+                  if (kts) localStorage.setItem(kts, String(Date.now()))
+                }
+              }
+            } catch { /* ignore */ }
+          }
           break
         }
 

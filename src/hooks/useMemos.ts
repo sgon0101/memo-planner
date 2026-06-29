@@ -280,7 +280,9 @@ export function useMemos(folderId: string | null | undefined) {
       ['home-memos'],
       (old) => old ? { ...old, recentMemos: old.recentMemos.filter((m) => m.id !== id) } : old,
     )
-    queryClient.invalidateQueries({ queryKey: ['home-memos'] })
+    // PR-M2-fix: invalidate 제거 — 다음 mount 시 server replication lag로 stale 5개를 받아
+    // setQueryData → useEffect → LS stale write 시키는 race condition 차단.
+    // setQueryData + LS 직접 청소만으로 same-tab 즉시 반영 보장. cross-tab은 broadcast 'memo-delete'가 처리.
 
     if (typeof window !== 'undefined') {
       try {
