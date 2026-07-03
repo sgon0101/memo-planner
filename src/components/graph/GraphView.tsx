@@ -18,6 +18,11 @@ const toCharge         = (v: number) => -(v * 30)   // -30 – -300
 const toDistance       = (v: number) => v * 20       // 20 – 200 px
 const toCenterStrength = (v: number) => v * 0.01     // 0.01 – 0.1
 
+// 황금각(≈137.5°) — 정렬 순서와 각도의 상관을 끊어 방향 편향 없는 균등 disc 배치 (phyllotaxis)
+// 기존 단일 회전 나선(angle = i/N·2π)은 linkCount 정렬과 결합해 허브가 전부 동쪽(각도 0 부근)에
+// 심어졌고, 링크 인력이 연결 덩어리 전체를 그쪽으로 끌어 프리셋마다 방향성 몰림을 만들었음
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+
 // 링크 strength — d3 표준형: 양 끝 degree 중 작은 쪽에 반비례
 // (기존 1/(1+maxDeg*0.5)는 허브 링크의 인력을 사실상 0으로 만들어 구조가 무너졌음)
 const linkStrength = (l: GraphLink) => {
@@ -393,10 +398,10 @@ export default function GraphView() {
     const N = nodesNeedingInit.length
     for (let i = 0; i < N; i++) {
       const n = nodesNeedingInit[i]
-      const angle = (i / N) * Math.PI * 2
-      const rFactor = 0.4 + (i / N) * 0.6
-      n.x = cx + Math.cos(angle) * R * rFactor
-      n.y = cy + Math.sin(angle) * R * rFactor
+      const angle = i * GOLDEN_ANGLE                 // 각도 편향 없는 균등 분포
+      const r = R * Math.sqrt((i + 1) / N)           // 허브(작은 i) 안쪽 → leaf 바깥, 균등 밀도
+      n.x = cx + Math.cos(angle) * r
+      n.y = cy + Math.sin(angle) * r
     }
     sim.alpha(1.0).restart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -538,10 +543,10 @@ export default function GraphView() {
       const N = nodesNeedingInit.length
       for (let i = 0; i < N; i++) {
         const n = nodesNeedingInit[i]
-        const angle = (i / N) * Math.PI * 2
-        const rFactor = 0.4 + (i / N) * 0.6  // 안쪽(허브) → 바깥(leaf)
-        n.x = cx + Math.cos(angle) * R * rFactor
-        n.y = cy + Math.sin(angle) * R * rFactor
+        const angle = i * GOLDEN_ANGLE               // 각도 편향 없는 균등 분포
+        const r = R * Math.sqrt((i + 1) / N)         // 허브 안쪽 → leaf 바깥
+        n.x = cx + Math.cos(angle) * r
+        n.y = cy + Math.sin(angle) * r
       }
     }
 
