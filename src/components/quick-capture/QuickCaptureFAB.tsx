@@ -15,11 +15,16 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Plus, FileText, Calendar } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
 
 export default function QuickCaptureFAB() {
+  // AI 대화 페이지에선 입력창 send 버튼과 겹쳐서 UX 방해 — FAB 숨김
+  const pathname = usePathname()
+  const hideFAB = pathname?.startsWith('/insights')
+
   const open = useUIStore((s) => s.openQuickCapture)
   const modalOpen = useUIStore((s) => s.quickCaptureOpen)
   const [expanded, setExpanded] = useState(false)
@@ -139,6 +144,8 @@ export default function QuickCaptureFAB() {
   }
 
   if (modalOpen) return null
+
+  if (hideFAB) return null
 
   return (
     <>

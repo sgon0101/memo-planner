@@ -106,7 +106,14 @@ export default function GraphView() {
     if (typeof window === 'undefined') return true
     return window.matchMedia('(min-width: 768px)').matches
   })
-  const [search, setSearch] = useState('')
+  // 뒤로가기 후 그래프 검색어 복원 — sessionStorage 유지
+  const [search, setSearch] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    try { return sessionStorage.getItem('weave:graph-search') || '' } catch { return '' }
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem('weave:graph-search', search) } catch {}
+  }, [search])
   const [searchMatches, setSearchMatches] = useState<GraphNode[]>([])
   const [searchMatchIdx, setSearchMatchIdx] = useState(0)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; type: 'memo' | 'wiki' | 'tag'; linkCount: number } | null>(null)

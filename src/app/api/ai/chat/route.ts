@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const stream = anthropic.messages.stream({
     model: HAIKU_MODEL,
-    max_tokens: 800,
+    max_tokens: 2048,  // 800 → 2048: 답변이 중간에 잘리던 이슈 해결 (한국어 800 토큰 ≈ 400~500자로 부족)
     messages: [
       ...historyMessages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       {

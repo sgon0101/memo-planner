@@ -278,7 +278,14 @@ export default function MemoList() {
     selectAllRef.current.indeterminate = selectedTrashIds.size > 0 && selectedTrashIds.size < total
   }, [selectedTrashIds.size, memos.length])
 
-  const [search, setSearch] = useState('')
+  // 뒤로가기 후 검색어 복원 — sessionStorage 유지
+  const [search, setSearch] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    try { return sessionStorage.getItem('weave:memo-list-search') || '' } catch { return '' }
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem('weave:memo-list-search', search) } catch {}
+  }, [search])
   const [view, setView] = useState<ViewMode>('card')
 
   // 검색 input — 반응형 placeholder + 포커스 시 도움 칩
