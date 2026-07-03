@@ -320,6 +320,38 @@ export default function GraphView() {
     setSimStatus('active')
   }, [])
 
+  // 프리셋 감지 — presetVersion이 오를 때마다 원형 재배치 + transform 리셋 + alpha 재시작
+  const presetVersion = useGraphStore((s) => s.presetVersion)
+  useEffect(() => {
+    if (presetVersion === 0) return
+    const sim = simRef.current
+    if (!sim) return
+    const simNodes = sim.nodes()
+    for (const n of simNodes) {
+      if (n.fx == null && n.fy == null) {
+        n.x = undefined
+        n.y = undefined
+        n.vx = 0
+        n.vy = 0
+      }
+    }
+    const cx = size.w / 2, cy = size.h / 2
+    const R = Math.min(size.w, size.h) * 0.35
+    const nodesNeedingInit = simNodes.filter((n) => n.x == null || n.y == null)
+    nodesNeedingInit.sort((a, b) => (b.linkCount || 0) - (a.linkCount || 0))
+    const N = nodesNeedingInit.length
+    for (let i = 0; i < N; i++) {
+      const n = nodesNeedingInit[i]
+      const angle = (i / N) * Math.PI * 2
+      const rFactor = 0.4 + (i / N) * 0.6
+      n.x = cx + Math.cos(angle) * R * rFactor
+      n.y = cy + Math.sin(angle) * R * rFactor
+    }
+    transformRef.current = { x: 0, y: 0, k: 1 }
+    sim.alpha(1.0).restart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetVersion])
+
   // 시뮬레이션 인스턴스 — 마운트·size 변경 시만 재생성
   useEffect(() => {
     const s = settingsRef.current
@@ -576,6 +608,11 @@ export default function GraphView() {
           }
         }
       }
+    }
+
+    if (sliderChanged) {
+      // 힘 변경 후 노드가 새 값을 반영하도록 alpha 부스트 — 없으면 slider 흔들어도 반응 미미
+      sim.alpha(Math.max(sim.alpha(), 0.3)).restart()
     }
 
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
