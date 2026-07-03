@@ -10,7 +10,7 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   label: i.toString().padStart(2, '0'),
 }))
 
-const MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50].map((m) => ({
+const MINUTE_OPTIONS = [0, 15, 30, 45].map((m) => ({
   value: m,
   label: m.toString().padStart(2, '0'),
 }))

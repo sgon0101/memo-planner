@@ -191,9 +191,6 @@ export function buildMemoMarkdown(meta: MemoMeta, content: Record<string, unknow
     '---',
     '',
     tiptapToMarkdown(content),
-    '',
-    '---',
-    '*Weave에서 내보낸 메모입니다*',
   ]
   return lines.join('\n')
 }

@@ -19,7 +19,7 @@ interface WeekViewProps {
   today: string
   selectedDate: string
   onSelectDate: (date: string) => void
-  onNewPlan: (date: string, time?: string) => void
+  onNewPlan: (date: string, startTime?: string, endTime?: string) => void
   onEditPlan: (plan: Plan) => void
 }
 
@@ -315,8 +315,66 @@ export default function WeekView({
     const y = e.clientY - rect.top
     const hours = Math.max(0, Math.min(23, Math.floor(y / HOUR_H)))
     const minutes = Math.floor(((y % HOUR_H) / HOUR_H) * 60 / 15) * 15
-    const time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
-    onNewPlan(dayStr, time)
+    const startTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    // 종료 시간 = 시작 + 1시간 (23:xx 이후는 23:59로 자름)
+    let endHours = hours + 1
+    let endMinutes = minutes
+    if (endHours >= 24) { endHours = 23; endMinutes = 59 }
+    const endTime = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`
+    onNewPlan(dayStr, startTime, endTime)
+  }
+
+  // ─── 컬럼 드래그로 시간 범위 지정 (Sunsama/Notion 스타일) ─────
+  // pointerdown → 시작 y 기록 → move로 프리뷰 → up 시 startTime~endTime 확정
+  // 짧은 클릭(<8px)은 onClick(handleColumnClick)이 담당하도록 up에서 판단.
+  const [rangeSelect, setRangeSelect] = useState<
+    { dayStr: string; startMin: number; currentMin: number; startY: number; colRect: DOMRect; pointerId: number } | null
+  >(null)
+
+  function pxToRangeMinutes(y: number, colRect: DOMRect): number {
+    const rel = y - colRect.top
+    const raw = Math.max(0, Math.min(24 * 60 - 1, Math.round((rel / HOUR_H) * 60)))
+    return snapMinutes(raw)
+  }
+
+  function handleColumnPointerDown(e: React.PointerEvent<HTMLDivElement>, dayStr: string) {
+    if (e.button !== 0) return
+    // plan block에서 시작한 pointer는 무시 (그건 plan drag/resize)
+    const target = e.target as HTMLElement
+    if (target.closest('[data-plan-block]')) return
+    const col = e.currentTarget
+    const rect = col.getBoundingClientRect()
+    const startMin = pxToRangeMinutes(e.clientY, rect)
+    setRangeSelect({ dayStr, startMin, currentMin: startMin, startY: e.clientY, colRect: rect, pointerId: e.pointerId })
+    try { col.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  }
+
+  function handleColumnPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!rangeSelect || e.pointerId !== rangeSelect.pointerId) return
+    const currentMin = pxToRangeMinutes(e.clientY, rangeSelect.colRect)
+    if (currentMin === rangeSelect.currentMin) return
+    setRangeSelect({ ...rangeSelect, currentMin })
+  }
+
+  function handleColumnPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (!rangeSelect || e.pointerId !== rangeSelect.pointerId) return
+    const sel = rangeSelect
+    setRangeSelect(null)
+    try { e.currentTarget.releasePointerCapture(sel.pointerId) } catch { /* ignore */ }
+    // 짧은 클릭(<8px)이면 handleColumnClick 흐름으로 위임 — onClick이 발화됨
+    if (Math.abs(e.clientY - sel.startY) < 8) return
+    if (justDragged.current) return
+    const s = Math.min(sel.startMin, sel.currentMin)
+    const eMin = Math.max(sel.startMin, sel.currentMin)
+    // 최소 15분 보장 — 드래그 아래로 15분 미만이면 15분으로 자동 확장
+    const finalEnd = eMin - s < 15 ? Math.min(24 * 60 - 1, s + 15) : eMin
+    onNewPlan(sel.dayStr, minutesToTime(s), minutesToTime(finalEnd))
+  }
+
+  function handleColumnPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    if (!rangeSelect) return
+    try { e.currentTarget.releasePointerCapture(rangeSelect.pointerId) } catch { /* ignore */ }
+    setRangeSelect(null)
   }
 
   // 시간 그리드의 스크롤바 폭 측정 — 헤더/종일 행에 동일 폭 padding 적용해 컬럼 정렬
@@ -464,7 +522,30 @@ export default function WeekView({
                   isToday && 'bg-violet-50/30 dark:bg-violet-950/10',
                 )}
                 onClick={(e) => handleColumnClick(e, dayStr)}
+                onPointerDown={(e) => handleColumnPointerDown(e, dayStr)}
+                onPointerMove={handleColumnPointerMove}
+                onPointerUp={handleColumnPointerUp}
+                onPointerCancel={handleColumnPointerCancel}
+                style={{ touchAction: 'none' }}
               >
+                {/* 드래그 프리뷰 — 반투명 violet 박스 + 상/하단 시간 라벨 */}
+                {rangeSelect && rangeSelect.dayStr === dayStr && (() => {
+                  const s = Math.min(rangeSelect.startMin, rangeSelect.currentMin)
+                  const e = Math.max(rangeSelect.startMin, rangeSelect.currentMin)
+                  const top = (s / 60) * HOUR_H
+                  const height = Math.max(4, ((e - s) / 60) * HOUR_H)
+                  const startLabel = minutesToTime(s)
+                  const endLabel = minutesToTime(Math.max(e, s + 15))
+                  return (
+                    <div
+                      className="absolute left-0 right-0 bg-violet-500/20 border-2 border-violet-500/70 border-dashed rounded pointer-events-none z-20 flex flex-col justify-between text-[10px] text-violet-700 dark:text-violet-200 font-medium"
+                      style={{ top: `${top}px`, height: `${height}px` }}
+                    >
+                      <span className="px-1">{startLabel}</span>
+                      <span className="px-1 text-right">{endLabel}</span>
+                    </div>
+                  )
+                })()}
                 {HOURS.map((h) => (
                   <div
                     key={h}

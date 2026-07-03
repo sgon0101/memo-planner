@@ -14,7 +14,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 interface DayViewProps {
   date: string
   plans: Plan[]
-  onNewPlan: (date: string, time?: string) => void
+  onNewPlan: (date: string, startTime?: string, endTime?: string) => void
   onEditPlan: (plan: Plan) => void
 }
 
@@ -97,7 +97,11 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const hours = Math.floor(y / HOUR_H)
     const minutes = Math.floor(((y % HOUR_H) / HOUR_H) * 60 / 15) * 15
     const time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
-    onNewPlan(date, time)
+    let endHours = hours + 1
+    let endMinutes = minutes
+    if (endHours >= 24) { endHours = 23; endMinutes = 59 }
+    const endTime = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`
+    onNewPlan(date, time, endTime)
   }
 
   // ── document level drag handlers ─────────────────────

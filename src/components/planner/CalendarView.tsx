@@ -78,7 +78,7 @@ export default function CalendarView() {
     }
   }, [expandedPlans, searchParams, selectDate, setViewMode])
 
-  const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string }>({
+  const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string; initialEndTime?: string }>({
     open: false, date: '',
   })
   const [syncing, setSyncing] = useState(false)
@@ -460,9 +460,9 @@ export default function CalendarView() {
               today={today}
               selectedDate={selectedDate}
               onSelectDate={selectDate}
-              onNewPlan={(date, time) => {
+              onNewPlan={(date, startTime, endTime) => {
                 selectDate(date)
-                setFormState({ open: true, date, initialTime: time })
+                setFormState({ open: true, date, initialTime: startTime, initialEndTime: endTime })
               }}
               onEditPlan={(plan) => setFormState({ open: true, date: plan.date ?? selectedDate, plan })}
             />
@@ -473,7 +473,7 @@ export default function CalendarView() {
             <DayView
               date={selectedDate || today}
               plans={expandedPlans}
-              onNewPlan={(date, time) => setFormState({ open: true, date, initialTime: time })}
+              onNewPlan={(date, startTime, endTime) => setFormState({ open: true, date, initialTime: startTime, initialEndTime: endTime })}
               onEditPlan={(plan) => setFormState({ open: true, date: plan.date ?? selectedDate, plan })}
             />
           )}
@@ -509,6 +509,7 @@ export default function CalendarView() {
           date={formState.date}
           plan={formState.plan}
           initialStartTime={formState.initialTime}
+            initialEndTime={formState.initialEndTime}
           onClose={() => setFormState({ open: false, date: '' })}
           onSaved={() => { setFormState({ open: false, date: '' }); load() }}
         />
