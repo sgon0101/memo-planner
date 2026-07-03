@@ -320,9 +320,7 @@ export default function GraphView() {
     setSimStatus('active')
   }, [])
 
-  // 프리셋 감지 — presetVersion이 오를 때마다 원형 재배치 + alpha 재시작
-  // 사용자가 확대/이동해둔 zoom(transformRef)은 유지하고, 원형 중심을 "현재 뷰포트 중심"의
-  // 시뮬 좌표계로 역변환해서 계산 → 어떤 zoom 상태에서 눌러도 재배치가 화면 안에 그려짐
+  // 프리셋 감지 — presetVersion이 오를 때마다 원형 재배치 + transform 리셋 + alpha 재시작
   const presetVersion = useGraphStore((s) => s.presetVersion)
   useEffect(() => {
     if (presetVersion === 0) return
@@ -337,12 +335,8 @@ export default function GraphView() {
         n.vy = 0
       }
     }
-    // 현재 사용자 zoom 유지 — 뷰포트(스크린) 중심을 시뮬 좌표계로 역변환
-    const t = transformRef.current
-    const cx = (size.w / 2 - t.x) / t.k
-    const cy = (size.h / 2 - t.y) / t.k
-    // 반경도 zoom 배율에 반비례 — 확대해뒀으면 작은 원, 축소해뒀으면 큰 원
-    const R = (Math.min(size.w, size.h) * 0.35) / t.k
+    const cx = size.w / 2, cy = size.h / 2
+    const R = Math.min(size.w, size.h) * 0.35
     const nodesNeedingInit = simNodes.filter((n) => n.x == null || n.y == null)
     nodesNeedingInit.sort((a, b) => (b.linkCount || 0) - (a.linkCount || 0))
     const N = nodesNeedingInit.length
@@ -353,7 +347,7 @@ export default function GraphView() {
       n.x = cx + Math.cos(angle) * R * rFactor
       n.y = cy + Math.sin(angle) * R * rFactor
     }
-    // transform 리셋 제거 — 사용자의 zoom/pan 상태 유지
+    transformRef.current = { x: 0, y: 0, k: 1 }
     sim.alpha(1.0).restart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetVersion])
