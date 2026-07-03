@@ -45,10 +45,13 @@ interface GraphStore {
   settings: GraphSettings
   selectedNodeId: string | null
   highlightNodeId: string | null
+  /** 프리셋 적용 시 증가 — GraphView가 감지해 원형 재배치 + alpha 재시작 */
+  presetVersion: number
   setNodes: (nodes: GraphNode[]) => void
   setLinks: (links: GraphLink[]) => void
   setSettings: (patch: Partial<GraphSettings>) => void
   resetSettings: () => void
+  applyPreset: (key: PresetKey) => void
   setSelectedNode: (id: string | null) => void
   setHighlightNode: (id: string | null) => void
 }
@@ -80,10 +83,15 @@ export const useGraphStore = create<GraphStore>((set) => ({
   settings: DEFAULT_SETTINGS,
   selectedNodeId: null,
   highlightNodeId: null,
+  presetVersion: 0,
   setNodes: (nodes) => set({ nodes }),
   setLinks: (links) => set({ links }),
   setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
-  resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
+  resetSettings: () => set((s) => ({ settings: DEFAULT_SETTINGS, presetVersion: s.presetVersion + 1 })),
+  applyPreset: (key) => set((s) => ({
+    settings: { ...s.settings, ...GRAPH_PRESETS[key] },
+    presetVersion: s.presetVersion + 1,
+  })),
   setSelectedNode: (id) => set({ selectedNodeId: id }),
   setHighlightNode: (id) => set({ highlightNodeId: id }),
 }))

@@ -1,7 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useGraphStore, GRAPH_PRESETS, type PresetKey } from '@/store/graphStore'
+import { useGraphStore, type PresetKey } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
 import { GRAPH_COLORS } from '@/lib/graph/colors'
 
@@ -28,7 +28,7 @@ function Slider({ label, min, max, value, onChange }: {
 }
 
 export default function GraphSettings({ onReset }: Props) {
-  const { settings, setSettings } = useGraphStore()
+  const { settings, setSettings, applyPreset } = useGraphStore()
   const { folders } = useFolderStore()
 
   return (
@@ -50,7 +50,7 @@ export default function GraphSettings({ onReset }: Props) {
               <button
                 key={key}
                 type="button"
-                onClick={() => setSettings(GRAPH_PRESETS[key])}
+                onClick={() => applyPreset(key)}
                 title={hint}
                 className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/20 text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
               >
