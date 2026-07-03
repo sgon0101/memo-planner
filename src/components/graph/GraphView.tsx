@@ -63,8 +63,9 @@ function getLabelOpacity(zoom: number): number {
 }
 
 // 레이아웃 캐시 — 옵시디언 방식: 수렴 후 위치 저장, 재방문 시 즉시 복원
-const LAYOUT_CACHE_KEY        = 'graph-layout-v1'
-const LAYOUT_CACHE_FILTER_KEY = 'graph-layout-filter-v1'
+// v2: 월드 중심 (0,0) 좌표계 — v1 캐시(구 코드의 쏠린 좌표) 무효화
+const LAYOUT_CACHE_KEY        = 'graph-layout-v2'
+const LAYOUT_CACHE_FILTER_KEY = 'graph-layout-filter-v2'
 
 function saveLayout(nodes: GraphNode[], folderFilter: string | null) {
   try {
@@ -158,11 +159,18 @@ export default function GraphView() {
     return () => mq.removeEventListener('change', check)
   }, [])
 
-  // 캔버스 크기 추적
+  // 캔버스 크기 추적 + 첫 실측 시 카메라 초기화 (월드 원점 (0,0) → 화면 중앙)
+  const cameraInitRef = useRef(false)
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
       for (const e of entries) {
-        setSize({ w: Math.floor(e.contentRect.width), h: Math.floor(e.contentRect.height) })
+        const w = Math.floor(e.contentRect.width)
+        const h = Math.floor(e.contentRect.height)
+        if (!cameraInitRef.current && w > 0 && h > 0) {
+          transformRef.current = { x: w / 2, y: h / 2, k: 1 }
+          cameraInitRef.current = true
+        }
+        setSize({ w, h })
       }
     })
     if (containerRef.current) obs.observe(containerRef.current)
@@ -371,11 +379,14 @@ export default function GraphView() {
         n.vy = 0
       }
     }
-    // 현재 사용자 zoom 유지 — 뷰포트(스크린) 중심을 시뮬 좌표계로 역변환
+    // 월드 원점(0,0) 주위 재배치 + 카메라를 원점 중앙으로 재조준 (zoom은 유지)
+    // — 기존 '뷰포트 중심' 배치는 중심력 목표점과 어긋나 전체가 한 방향으로 흘러가는 몰림을 만들었음
     const t = transformRef.current
-    const cx = (size.w / 2 - t.x) / t.k
-    const cy = (size.h / 2 - t.y) / t.k
-    // 반경도 zoom 배율에 반비례 — 확대해뒀으면 작은 원, 축소해뒀으면 큰 원
+    const cx = 0
+    const cy = 0
+    t.x = size.w / 2
+    t.y = size.h / 2
+    // 반경은 zoom 배율에 반비례 — 확대해뒀으면 작은 원, 축소해뒀으면 큰 원
     const R = (Math.min(size.w, size.h) * 0.35) / t.k
     const nodesNeedingInit = simNodes.filter((n) => n.x == null || n.y == null)
     nodesNeedingInit.sort((a, b) => (b.linkCount || 0) - (a.linkCount || 0))
@@ -387,12 +398,13 @@ export default function GraphView() {
       n.x = cx + Math.cos(angle) * R * rFactor
       n.y = cy + Math.sin(angle) * R * rFactor
     }
-    // transform 리셋 제거 — 사용자의 zoom/pan 상태 유지
     sim.alpha(1.0).restart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetVersion])
 
-  // 시뮬레이션 인스턴스 — 마운트·size 변경 시만 재생성
+  // 시뮬레이션 인스턴스 — 마운트 시 1회 생성
+  // 월드 중심은 (0,0) 고정, 화면 중앙 정렬은 카메라(transform)가 담당 (Obsidian 방식)
+  // → 리사이즈/패널 토글로 중심점이 이동하며 생기던 흐름(drift) 원천 차단
   useEffect(() => {
     const s = settingsRef.current
 
@@ -407,8 +419,8 @@ export default function GraphView() {
       // forceCenter(무게중심 평행이동)는 고정 노드(fx/fy)와 결합 시 매 tick 편향이 누적돼
       // 자유 노드들이 한쪽으로 쏠림. 노드별 개별 인력인 forceX/forceY로 교체 (Obsidian 방식)
       // → 고정 노드와 충돌 없음 + 분리된 컴포넌트도 각자 중앙 유지
-      .force('x', d3.forceX<GraphNode>(size.w / 2).strength(toCenterStrength(s.centerTension)))
-      .force('y', d3.forceY<GraphNode>(size.h / 2).strength(toCenterStrength(s.centerTension)))
+      .force('x', d3.forceX<GraphNode>(0).strength(toCenterStrength(s.centerTension)))
+      .force('y', d3.forceY<GraphNode>(0).strength(toCenterStrength(s.centerTension)))
       .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) + 4).iterations(2))
       .alphaDecay(0.03)      // 0.1은 수렴 전 동결 → 나쁜 배치에서 멈춤
       .velocityDecay(0.45)
@@ -432,10 +444,10 @@ export default function GraphView() {
     return () => {
       sim.stop()
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      rafRef.current = null  // 재생성 시 새 시뮬레이션의 RAF 루프가 정상 시작되도록 초기화
+      rafRef.current = null
       if (labelAnimRafRef.current) cancelAnimationFrame(labelAnimRafRef.current)
     }
-  }, [size.w, size.h])
+  }, [])
 
   // nodes/links 변경 시 incremental update — 기존 위치 복사 후 조건부 alpha
   useEffect(() => {
@@ -443,11 +455,11 @@ export default function GraphView() {
     if (!sim) return
     if (nodes.length === 0) return  // 빈 데이터 스킵
 
-    // size state가 아직 초기값(800×600)일 수 있으므로 DOM에서 직접 읽음
+    // 뷰포트 크기는 배치 반경 스케일에만 사용 — 월드 중심은 (0,0) 고정
     const actualW = containerRef.current?.clientWidth  || size.w
     const actualH = containerRef.current?.clientHeight || size.h
-    const cx = actualW / 2
-    const cy = actualH / 2
+    const cx = 0
+    const cy = 0
 
     const oldNodesById = new Map(sim.nodes().map((n) => [n.id, n]))
 
@@ -517,9 +529,8 @@ export default function GraphView() {
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
 
     // 초기 원형 배치 — 첫 tick부터 겹침 최소 (좌표 없는 노드만)
-    // 허브는 안쪽 링, leaf는 바깥 링에 위치해 자연스러운 방사 시작
-    // cx/cy는 위에서 DOM 기준으로 계산됨 (actualW/H)
-    const R = Math.min(size.w, size.h) * 0.35
+    // 허브는 안쪽 링, leaf는 바깥 링에 위치해 자연스러운 방사 시작 (월드 원점 기준)
+    const R = Math.min(actualW, actualH) * 0.35
     const nodesNeedingInit = nodes.filter((n) => n.x == null || n.y == null)
     if (nodesNeedingInit.length > 0) {
       // 링크 수로 정렬: 허브가 중앙 근처
@@ -585,7 +596,9 @@ export default function GraphView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSimStatus('active')
 
-  }, [nodes, links, size.w, size.h])
+  // 사이즈 변경은 시뮬과 무관(월드 좌표 고정) — nodes/links만 반응
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, links])
 
   // 물리 파라미터 변경 → 시뮬레이션 force 즉시 업데이트 (재빌드 없이)
   useEffect(() => {
@@ -1031,14 +1044,12 @@ export default function GraphView() {
       sessionStorage.removeItem(LAYOUT_CACHE_FILTER_KEY)
     } catch { /* 무시 */ }
 
-    // 2. 줌/팬 리셋
-    transformRef.current = { x: 0, y: 0, k: 1 }
-
-    // 3. 화면 크기 측정 (DOM 직접 읽기)
+    // 2. 화면 크기 측정 (DOM 직접 읽기) + 줌/팬 리셋 — 월드 원점(0,0)이 화면 중앙
     const actualW = containerRef.current?.clientWidth || size.w
     const actualH = containerRef.current?.clientHeight || size.h
-    const cx = actualW / 2
-    const cy = actualH / 2
+    transformRef.current = { x: actualW / 2, y: actualH / 2, k: 1 }
+    const cx = 0
+    const cy = 0
 
     // 4. 모든 노드 좌표를 화면 가득 직사각형 분산 (undefined 아님 → draw 스킵 방지)
     sim.nodes().forEach((n) => {
