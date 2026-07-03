@@ -72,7 +72,14 @@ done
 
 echo ""
 echo "=== 4) tsc ==="
-npx tsc --noEmit --skipLibCheck 2>&1 | grep -v 'next-env.d.ts' | head -20
+# tsc 출력을 변수로 잡아 에러 유무를 FAIL에 반영 (파이프 exit code는 head 것이라 무의미 → 출력 내용으로 판정)
+TSC_OUT=$(npx tsc --noEmit --skipLibCheck 2>&1 | grep -v 'next-env.d.ts')
+if [ -n "$TSC_OUT" ]; then
+  echo "$TSC_OUT" | head -20
+  FAIL=1
+else
+  echo "  (에러 없음)"
+fi
 
 if [ "$FAIL" -ne 0 ]; then
   echo ""
