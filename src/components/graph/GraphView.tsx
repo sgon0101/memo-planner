@@ -327,10 +327,16 @@ export default function GraphView() {
     const sim = d3.forceSimulation<GraphNode, GraphLink>([])
       .force('link', d3.forceLink<GraphNode, GraphLink>([]).id((n) => n.id)
         .distance(toDistance(s.linkDistance))
-        .strength(0.3))
-      .force('charge', d3.forceManyBody<GraphNode>().strength(toCharge(s.repulsion)))
+        .strength((l) => {
+          // 링크 strength 반비례 — 허브는 leaf에 안 끌려감 (Obsidian 스타일)
+          const src = l.source as GraphNode
+          const tgt = l.target as GraphNode
+          const maxDeg = Math.max(src.linkCount || 1, tgt.linkCount || 1)
+          return 1 / (1 + maxDeg * 0.5)
+        }))
+      .force('charge', d3.forceManyBody<GraphNode>().strength((n) => toCharge(s.repulsion) * (1 + (n.linkCount || 0) * 0.3)))
       .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(toCenterStrength(s.centerTension)))
-      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) + 4))
+      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) * 1.8 + 8).iterations(2))
       .alphaDecay(0.1)       // 0.04 → 0.1 (약 1초 안정화)
       .velocityDecay(0.55)
       .alphaMin(0.001)
@@ -442,6 +448,24 @@ export default function GraphView() {
 
     sim.nodes(nodes)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(links)
+
+    // 초기 원형 배치 — 첫 tick부터 겹침 최소 (좌표 없는 노드만)
+    // 허브는 안쪽 링, leaf는 바깥 링에 위치해 자연스러운 방사 시작
+    // cx/cy는 위에서 DOM 기준으로 계산됨 (actualW/H)
+    const R = Math.min(size.w, size.h) * 0.35
+    const nodesNeedingInit = nodes.filter((n) => n.x == null || n.y == null)
+    if (nodesNeedingInit.length > 0) {
+      // 링크 수로 정렬: 허브가 중앙 근처
+      nodesNeedingInit.sort((a, b) => (b.linkCount || 0) - (a.linkCount || 0))
+      const N = nodesNeedingInit.length
+      for (let i = 0; i < N; i++) {
+        const n = nodesNeedingInit[i]
+        const angle = (i / N) * Math.PI * 2
+        const rFactor = 0.4 + (i / N) * 0.6  // 안쪽(허브) → 바깥(leaf)
+        n.x = cx + Math.cos(angle) * R * rFactor
+        n.y = cy + Math.sin(angle) * R * rFactor
+      }
+    }
 
     const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
     const normalCenterStrength = toCenterStrength(settingsRef.current.centerTension)
@@ -556,8 +580,15 @@ export default function GraphView() {
 
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
       ?.distance(toDistance(settings.linkDistance))
+      .strength((l: GraphLink) => {
+        // 링크 strength 반비례 — 허브는 leaf에 안 끌려감 (Obsidian 스타일)
+        const src = l.source as GraphNode
+        const tgt = l.target as GraphNode
+        const maxDeg = Math.max(src.linkCount || 1, tgt.linkCount || 1)
+        return 1 / (1 + maxDeg * 0.5)
+      })
     ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
-      ?.strength(toCharge(settings.repulsion))
+      ?.strength((n: GraphNode) => toCharge(settings.repulsion) * (1 + (n.linkCount || 0) * 0.3))
     ;(sim.force('center') as d3.ForceCenter<GraphNode>)
       ?.strength(toCenterStrength(settings.centerTension))
     wake(0.4)
