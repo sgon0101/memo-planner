@@ -308,9 +308,15 @@ export default function WeekView({
   }
 
   // 컬럼 클릭 시 새 플랜 — drag 직후 400ms 차단
-  function handleColumnClick(dayStr: string) {
+  // 클릭한 y 좌표로 시간대(15분 단위) 계산해서 initialTime 전달 → 종일 토글이 자동 off
+  function handleColumnClick(e: React.MouseEvent<HTMLDivElement>, dayStr: string) {
     if (justDragged.current) return
-    onNewPlan(dayStr)
+    const rect = e.currentTarget.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const hours = Math.max(0, Math.min(23, Math.floor(y / HOUR_H)))
+    const minutes = Math.floor(((y % HOUR_H) / HOUR_H) * 60 / 15) * 15
+    const time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    onNewPlan(dayStr, time)
   }
 
   // 시간 그리드의 스크롤바 폭 측정 — 헤더/종일 행에 동일 폭 padding 적용해 컬럼 정렬
@@ -457,7 +463,7 @@ export default function WeekView({
                   'flex-1 border-l border-gray-100 dark:border-gray-800 relative',
                   isToday && 'bg-violet-50/30 dark:bg-violet-950/10',
                 )}
-                onClick={() => handleColumnClick(dayStr)}
+                onClick={(e) => handleColumnClick(e, dayStr)}
               >
                 {HOURS.map((h) => (
                   <div
