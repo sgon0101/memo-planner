@@ -64,42 +64,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
   }
   const cardRef = useRef<HTMLDivElement>(null)
 
-  // ─── M3: 모바일 long-press → 컨텍스트 메뉴 오픈 ─────────
-  // 300ms 유지 시 setMenuOpen(true) + 진동. 이동/스크롤(>10px)이면 취소.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressed = useRef(false)
-  const longPressStart = useRef<{ x: number; y: number } | null>(null)
-  function clearLongPress() {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
-    longPressStart.current = null
-  }
-  const longPressHandlers = {
-    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === 'mouse') return
-      const target = e.target as HTMLElement
-      if (target.closest('button, a, input, label')) return
-      longPressed.current = false
-      longPressStart.current = { x: e.clientX, y: e.clientY }
-      clearLongPress()
-      longPressTimer.current = setTimeout(() => {
-        longPressed.current = true
-        try { navigator.vibrate?.(15) } catch { /* ignore */ }
-        setMenuOpen(true)
-      }, 300)
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!longPressStart.current) return
-      const dx = Math.abs(e.clientX - longPressStart.current.x)
-      const dy = Math.abs(e.clientY - longPressStart.current.y)
-      if (dx > 10 || dy > 10) clearLongPress()
-    },
-    onPointerUp: () => { clearLongPress() },
-    onPointerCancel: () => { clearLongPress() },
-    onContextMenu: (e: React.MouseEvent) => {
-      if (longPressed.current) e.preventDefault()
-    },
-  }
-
 
   function handleDragStart(e: React.DragEvent) {
     if (isTrash) return
@@ -126,7 +90,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
     : null
 
   function handleClick() {
-    if (longPressed.current) { longPressed.current = false; return }
     if (isTrash) {
       onToggleSelect?.(memo.id)
       return
@@ -158,7 +121,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
               : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
           )}
           onClick={handleClick}
-          {...longPressHandlers}
         >
           {isTrash && onToggleSelect && (
             <div onClick={(e) => e.stopPropagation()}>
@@ -264,7 +226,6 @@ export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlo
             : 'border-gray-200 dark:border-gray-700 hover:border-violet-200 dark:hover:border-violet-800'
         )}
         onClick={handleClick}
-        {...longPressHandlers}
       >
         {isTrash && onToggleSelect && (
           <div
