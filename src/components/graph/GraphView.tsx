@@ -18,6 +18,28 @@ const toCharge         = (v: number) => -(v * 30)   // -30 – -300
 const toDistance       = (v: number) => v * 20       // 20 – 200 px
 const toCenterStrength = (v: number) => v * 0.01     // 0.01 – 0.1
 
+// 링크 strength — d3 표준형: 양 끝 degree 중 작은 쪽에 반비례
+// (기존 1/(1+maxDeg*0.5)는 허브 링크의 인력을 사실상 0으로 만들어 구조가 무너졌음)
+const linkStrength = (l: GraphLink) => {
+  const src = l.source as GraphNode
+  const tgt = l.target as GraphNode
+  return 1 / Math.min(src.linkCount || 1, tgt.linkCount || 1)
+}
+
+// 반발력 — 허브 배율 sqrt + 상한 3배 (기존 1+lc*0.3은 상한 없이 비례 → 노드 늘수록 비대칭 확산)
+const chargeStrength = (repulsion: number) => (n: GraphNode) =>
+  toCharge(repulsion) * Math.min(1 + Math.sqrt(n.linkCount || 0) * 0.4, 3)
+
+// forceX/forceY 중심력 strength 일괄 설정 헬퍼
+function setCenterForceStrength(
+  sim: d3.Simulation<GraphNode, GraphLink> | null | undefined,
+  v: number,
+) {
+  if (!sim) return
+  ;(sim.force('x') as d3.ForceX<GraphNode> | undefined)?.strength(v)
+  ;(sim.force('y') as d3.ForceY<GraphNode> | undefined)?.strength(v)
+}
+
 function nodeRadius(n: GraphNode, nodeSize: number, isMobile = false): number {
   const mobileScale = isMobile ? 0.7 : 1
   const base = (3 + nodeSize * 1.5) * mobileScale  // 1-10 → 4.5-18px
@@ -320,6 +342,18 @@ export default function GraphView() {
     setSimStatus('active')
   }, [])
 
+  // 드래그 종료: 옵시디언 방식 — 놓으면 핀 해제 후 시뮬레이션에 자연 복귀
+  // (기존 영구 fx/fy 핀은 중심력과 싸우며 쏠림 누적 원인)
+  const releaseDragNode = useCallback(() => {
+    const n = dragNodeRef.current
+    if (!n) return
+    n.fx = null
+    n.fy = null
+    dragNodeRef.current = null
+    simRef.current?.alphaTarget(0)
+    wake(0.15)
+  }, [wake])
+
   // 프리셋 감지 — presetVersion이 오를 때마다 원형 재배치 + alpha 재시작
   // 사용자가 확대/이동해둔 zoom(transformRef)은 유지하고, 원형 중심을 "현재 뷰포트 중심"의
   // 시뮬 좌표계로 역변환해서 계산 → 어떤 zoom 상태에서 눌러도 재배치가 화면 안에 그려짐
@@ -365,18 +399,19 @@ export default function GraphView() {
     const sim = d3.forceSimulation<GraphNode, GraphLink>([])
       .force('link', d3.forceLink<GraphNode, GraphLink>([]).id((n) => n.id)
         .distance(toDistance(s.linkDistance))
-        .strength((l) => {
-          // 링크 strength 반비례 — 허브는 leaf에 안 끌려감 (Obsidian 스타일)
-          const src = l.source as GraphNode
-          const tgt = l.target as GraphNode
-          const maxDeg = Math.max(src.linkCount || 1, tgt.linkCount || 1)
-          return 1 / (1 + maxDeg * 0.5)
-        }))
-      .force('charge', d3.forceManyBody<GraphNode>().strength((n) => toCharge(s.repulsion) * (1 + (n.linkCount || 0) * 0.3)))
-      .force('center', d3.forceCenter(size.w / 2, size.h / 2).strength(toCenterStrength(s.centerTension)))
-      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) * 1.8 + 8).iterations(2))
-      .alphaDecay(0.1)       // 0.04 → 0.1 (약 1초 안정화)
-      .velocityDecay(0.55)
+        .strength(linkStrength))
+      .force('charge', d3.forceManyBody<GraphNode>()
+        .strength(chargeStrength(s.repulsion))
+        .distanceMax(500)  // 원거리 클러스터 간 반발 차단 — 노드 늘수록 전체가 뻗어나가는 현상 방지
+        .theta(0.9))
+      // forceCenter(무게중심 평행이동)는 고정 노드(fx/fy)와 결합 시 매 tick 편향이 누적돼
+      // 자유 노드들이 한쪽으로 쏠림. 노드별 개별 인력인 forceX/forceY로 교체 (Obsidian 방식)
+      // → 고정 노드와 충돌 없음 + 분리된 컴포넌트도 각자 중앙 유지
+      .force('x', d3.forceX<GraphNode>(size.w / 2).strength(toCenterStrength(s.centerTension)))
+      .force('y', d3.forceY<GraphNode>(size.h / 2).strength(toCenterStrength(s.centerTension)))
+      .force('collision', d3.forceCollide<GraphNode>((n) => nodeRadius(n, settingsRef.current.nodeSize, isMobileRef.current) + 4).iterations(2))
+      .alphaDecay(0.03)      // 0.1은 수렴 전 동결 → 나쁜 배치에서 멈춤
+      .velocityDecay(0.45)
       .alphaMin(0.001)
 
     simRef.current = sim
@@ -386,14 +421,8 @@ export default function GraphView() {
       if (sim.alpha() > sim.alphaMin()) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
-        const finalNodes = sim.nodes()
-        for (const n of finalNodes) {
-          if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
-            n.fx = n.x
-            n.fy = n.y
-          }
-        }
-        saveLayout(finalNodes, settingsRef.current.folderFilter)
+        // 허브 자동 고정(fx/fy) 제거 — 중심력과 싸우며 쏠림을 만들던 원인
+        saveLayout(sim.nodes(), settingsRef.current.folderFilter)
         setSimStatus('sleeping')
         rafRef.current = null
       }
@@ -505,7 +534,6 @@ export default function GraphView() {
       }
     }
 
-    const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
     const normalCenterStrength = toCenterStrength(settingsRef.current.centerTension)
 
     if (isFirst) {
@@ -514,24 +542,22 @@ export default function GraphView() {
 
       if (allCached) {
         // 1순위 완전 캐시 복원: 아주 약하게만 (미세 조정)
-        centerForce?.strength(normalCenterStrength)
+        setCenterForceStrength(sim, normalCenterStrength)
         sim.alpha(0.08).restart()
       } else {
         // 캐시 없음 또는 새 노드 혼합: 스마트 배치 후 시뮬레이션
-        centerForce?.strength(0.04)  // 화면 밖 이탈 방지
+        setCenterForceStrength(sim, 0.04)  // 화면 밖 이탈 방지
         sim.alpha(1).restart()
         setTimeout(() => {
-          const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
-          cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+          setCenterForceStrength(simRef.current, toCenterStrength(settingsRef.current.centerTension))
         }, 600)
       }
     } else if (hasNewNodes) {
       // 기존 노드 + 새 노드 추가 (진짜 토글 켜기)
-      centerForce?.strength(normalCenterStrength * 0.1)
+      setCenterForceStrength(sim, normalCenterStrength * 0.1)
       sim.alpha(0.8).restart()
       setTimeout(() => {
-        const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
-        cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+        setCenterForceStrength(simRef.current, toCenterStrength(settingsRef.current.centerTension))
       }, 1200)
     } else {
       // 노드 추가 없음 (토글 끄기, 링크만 변경)
@@ -548,14 +574,7 @@ export default function GraphView() {
         if (sim.alpha() > sim.alphaMin()) {
           rafRef.current = requestAnimationFrame(tick)
         } else {
-          const finalNodes = sim.nodes()
-          for (const n of finalNodes) {
-            if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
-              n.fx = n.x
-              n.fy = n.y
-            }
-          }
-          saveLayout(finalNodes, settingsRef.current.folderFilter)
+          saveLayout(sim.nodes(), settingsRef.current.folderFilter)
           setSimStatus('sleeping')
           rafRef.current = null
         }
@@ -587,55 +606,19 @@ export default function GraphView() {
     }
 
     if (sliderChanged) {
-      // forceCenter는 매 tick마다 (무게중심 - 목표) × strength 만큼 전체에 속도를 추가한다.
-      // 무게중심 ≠ forceCenter 위치이면 이 벡터가 방향 편향을 만들므로
-      // force 변경 전에 평행이동으로 무게중심을 forceCenter에 정렬한다.
-      const simNodes = sim.nodes()
-      if (simNodes.length > 0) {
-        let sumX = 0, sumY = 0, count = 0
-        for (const n of simNodes) {
-          if (n.x != null && n.y != null) { sumX += n.x; sumY += n.y; count++ }
-        }
-        if (count > 0) {
-          const cf = sim.force('center') as d3.ForceCenter<GraphNode> | undefined
-          const fcx = cf?.x() ?? size.w / 2
-          const fcy = cf?.y() ?? size.h / 2
-          const dx = fcx - sumX / count
-          const dy = fcy - sumY / count
-          if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-            const k = transformRef.current.k
-            for (const n of simNodes) {
-              if (n.x != null) { n.x += dx; if (n.fx != null) n.fx += dx }
-              if (n.y != null) { n.y += dy; if (n.fy != null) n.fy += dy }
-            }
-            // 캔버스 transform 역보정 → 화면에서 노드가 튀지 않도록 유지
-            transformRef.current.x -= dx * k
-            transformRef.current.y -= dy * k
-          }
-        }
-      }
-    }
-
-    if (sliderChanged) {
+      // forceX/forceY는 노드별 개별 인력이라 무게중심 편향이 없음 → 기존 forceCenter 정렬 보정 불필요
       // 힘 변경 후 노드가 새 값을 반영하도록 alpha 부스트 — 없으면 slider 흔들어도 반응 미미
       sim.alpha(Math.max(sim.alpha(), 0.3)).restart()
     }
 
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
       ?.distance(toDistance(settings.linkDistance))
-      .strength((l: GraphLink) => {
-        // 링크 strength 반비례 — 허브는 leaf에 안 끌려감 (Obsidian 스타일)
-        const src = l.source as GraphNode
-        const tgt = l.target as GraphNode
-        const maxDeg = Math.max(src.linkCount || 1, tgt.linkCount || 1)
-        return 1 / (1 + maxDeg * 0.5)
-      })
+      .strength(linkStrength)
     ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
-      ?.strength((n: GraphNode) => toCharge(settings.repulsion) * (1 + (n.linkCount || 0) * 0.3))
-    ;(sim.force('center') as d3.ForceCenter<GraphNode>)
-      ?.strength(toCenterStrength(settings.centerTension))
+      ?.strength(chargeStrength(settings.repulsion))
+    setCenterForceStrength(sim, toCenterStrength(settings.centerTension))
     wake(0.4)
-  }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake, size.w, size.h])
+  }, [settings.centerTension, settings.repulsion, settings.linkDistance, wake])
 
   // nodeSize: forceCollide 반경 갱신 + 시뮬레이션 재활성화
   useEffect(() => {
@@ -866,7 +849,7 @@ export default function GraphView() {
       }
     }
 
-    if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+    releaseDragNode()
     canvasDragRef.current = null
     isDraggingRef.current = false
     draw()
@@ -885,7 +868,7 @@ export default function GraphView() {
         startTransformX: transformRef.current.x,
         startTransformY: transformRef.current.y,
       }
-      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      releaseDragNode()
       canvasDragRef.current = null
       isDraggingRef.current = false
       return
@@ -960,7 +943,7 @@ export default function GraphView() {
 
     // 최근 핀치 직후 200ms 이내면 클릭 차단
     if (Date.now() - lastPinchEndAtRef.current < 200) {
-      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      releaseDragNode()
       canvasDragRef.current = null
       isDraggingRef.current = false
       return
@@ -981,7 +964,7 @@ export default function GraphView() {
       onMouseUp({ clientX: t.clientX, clientY: t.clientY } as React.MouseEvent)
     } else {
       // 패닝/드래그: 정리만
-      if (dragNodeRef.current) { dragNodeRef.current = null; simRef.current?.alphaTarget(0) }
+      releaseDragNode()
       canvasDragRef.current = null
       isDraggingRef.current = false
       draw()
@@ -1067,12 +1050,10 @@ export default function GraphView() {
       n.y = cy + (Math.random() - 0.5) * actualH * 0.9
     })
 
-    // 5. forceCenter 일시 약화 (중앙 뭉침 방지)
-    const centerForce = sim.force('center') as d3.ForceCenter<GraphNode> | null
-    centerForce?.strength(0.001)
+    // 5. 중심력(forceX/forceY) 일시 약화 (중앙 뭉침 방지)
+    setCenterForceStrength(sim, 0.001)
     setTimeout(() => {
-      const cf = simRef.current?.force('center') as d3.ForceCenter<GraphNode> | undefined
-      cf?.strength(toCenterStrength(settingsRef.current.centerTension))
+      setCenterForceStrength(simRef.current, toCenterStrength(settingsRef.current.centerTension))
     }, 800)
 
     // 6. isFirst true (다음 nodes/links 변경 시 첫 진입 분기로)
@@ -1092,12 +1073,6 @@ export default function GraphView() {
         if (sim.alpha() > sim.alphaMin()) {
           rafRef.current = requestAnimationFrame(tick)
         } else {
-          for (const n of sim.nodes()) {
-            if ((n.type === 'wiki' || n.type === 'tag') && n.x != null && n.y != null) {
-              n.fx = n.x
-              n.fy = n.y
-            }
-          }
           setSimStatus('sleeping')
           rafRef.current = null
         }
