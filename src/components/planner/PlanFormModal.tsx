@@ -40,11 +40,12 @@ interface PlanFormModalProps {
   date: string
   plan?: Plan
   initialStartTime?: string
+  initialEndTime?: string
   onClose: () => void
   onSaved: () => void
 }
 
-export default function PlanFormModal({ date, plan, initialStartTime, onClose, onSaved }: PlanFormModalProps) {
+export default function PlanFormModal({ date, plan, initialStartTime, initialEndTime, onClose, onSaved }: PlanFormModalProps) {
   const { createPlan, editPlan } = usePlanner()
   const { memos } = useMemoStore()
   const supabase = createClient()
@@ -57,7 +58,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, onClose, o
   const [startDate, setStartDate]     = useState(plan?.startDate ?? date)
   const [endDate, setEndDate]         = useState(plan?.endDate ?? date)
   const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '09:00')
-  const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? '10:00')
+  const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? initialEndTime ?? '10:00')
   const [isAllDay, setIsAllDay]       = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
   // 반복 설정 — RRULE 기반 (preset + 종료 조건 + 맞춤 옵션)
   const [recurrence, setRecurrence] = useState<RecurrenceSettings>(() => {
