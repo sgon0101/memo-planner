@@ -1,5 +1,6 @@
-const CACHE_NAME = 'memo-planner-v4'
-const STATIC_ASSETS = ['/manifest.json']
+const CACHE_NAME = 'memo-planner-v5'
+// M2: offline.html도 precache — HTML navigation fallback shell
+const STATIC_ASSETS = ['/manifest.json', '/offline.html']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -70,15 +71,30 @@ self.addEventListener('fetch', (event) => {
   }
 
   // HTML 페이지: Network-first (auth 상태·동적 콘텐츠 반영)
-  // 네트워크 실패 + 캐시 미스 시 503 Response 반환 (Response 미반환 시 TypeError 발생 방지)
+  // 실패 시 순서대로 fallback: (1) 정확한 URL 캐시 → (2) offline.html 셸 → (3) 503 텍스트
   event.respondWith(
-    fetch(event.request)
-      .catch(() => caches.match(event.request))
-      .then((r) => r || new Response('Offline', {
-        status: 503,
-        statusText: 'Service Unavailable',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      }))
+    (async () => {
+      try {
+        const netRes = await fetch(event.request)
+        // 자연스러운 캐시 — 다음 오프라인 진입 시 정확한 URL 그대로 진입 가능
+        if (netRes.ok) {
+          try { const c = await caches.open(CACHE_NAME); c.put(event.request, netRes.clone()) } catch (_) {}
+        }
+        return netRes
+      } catch (_e) {
+        // 정확한 URL 캐시가 있으면 그거
+        const exact = await caches.match(event.request)
+        if (exact) return exact
+        // 없으면 offline shell — 사용자에게 친절한 UI 제공
+        const shell = await caches.match('/offline.html')
+        if (shell) return shell
+        return new Response('Offline', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
+      }
+    })()
   )
 })
 
