@@ -56,14 +56,22 @@ interface GraphStore {
 const DEFAULT_SETTINGS: GraphSettings = {
   nodeSize: 4,
   linkWidth: 2,
-  centerTension: 3,
-  repulsion: 4,
+  centerTension: 2,      // 3 → 2: 중앙 뭉침 완화 (Obsidian 스타일 근접)
+  repulsion: 5,          // 4 → 5: 노드 간격 기본 확대
   linkDistance: 5,
   showIsolated: true,
   showWiki: true,
   showTag: true,
   folderFilter: null,
   tagFilter: '',
+}
+
+// 프리셋 — GraphSettings의 원클릭 버튼에서 사용
+export type PresetKey = 'spread' | 'balanced' | 'cluster'
+export const GRAPH_PRESETS: Record<PresetKey, Partial<GraphSettings>> = {
+  spread:   { centerTension: 1, repulsion: 7, linkDistance: 7 }, // 분산형 (Obsidian)
+  balanced: { centerTension: 2, repulsion: 5, linkDistance: 5 }, // 균형형 (기본)
+  cluster:  { centerTension: 5, repulsion: 3, linkDistance: 3 }, // 응집형 (중앙 뭉침)
 }
 
 export const useGraphStore = create<GraphStore>((set) => ({

@@ -1,7 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useGraphStore } from '@/store/graphStore'
+import { useGraphStore, GRAPH_PRESETS, type PresetKey } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
 import { GRAPH_COLORS } from '@/lib/graph/colors'
 
@@ -38,6 +38,28 @@ export default function GraphSettings({ onReset }: Props) {
       </div>
 
       <div className="flex-1 px-4 py-3 space-y-5 overflow-y-auto">
+        {/* 프리셋 — 원클릭으로 물리 파라미터 세팅 */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">배치 프리셋</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {([
+              { key: 'spread',   label: '분산형',   hint: '허브가 밀어냄' },
+              { key: 'balanced', label: '균형형',   hint: '기본' },
+              { key: 'cluster',  label: '응집형',   hint: '중앙 모임' },
+            ] as { key: PresetKey; label: string; hint: string }[]).map(({ key, label, hint }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSettings(GRAPH_PRESETS[key])}
+                title={hint}
+                className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/20 text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
+              >
+                <span>{label}</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         {/* 슬라이더 */}
         <div className="space-y-3">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">시각</p>
