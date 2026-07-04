@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSbClient } from '@supabase/supabase-js'
+import { verifyCronAuth } from '@/lib/security/cronAuth'
 import { deleteFromR2 } from '@/lib/r2/upload'
 
 export const runtime = 'nodejs'
@@ -46,8 +47,7 @@ function contentReferencesUrl(contentText: string | null, content: unknown, url:
 }
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronAuth(req.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

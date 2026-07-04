@@ -13,6 +13,7 @@ import crypto from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { uploadToR2 } from '@/lib/r2/upload'
 import { getUserStorage } from '@/lib/r2/quota'
+import { matchesMagicBytes } from '@/lib/security/magicBytes'
 
 export const runtime = 'nodejs'
 
@@ -65,6 +66,11 @@ export async function POST(req: NextRequest) {
 
   if (buffer.length > getMaxBytes(mimeType)) {
     return NextResponse.json({ error: '파일 크기 제한을 초과했습니다.' }, { status: 413 })
+  }
+
+  // magic bytes 검증 — Content-Type 위조(예: exe를 image/jpeg로) 차단
+  if (!matchesMagicBytes(buffer, mimeType)) {
+    return NextResponse.json({ error: '파일 내용이 선언된 형식과 일치하지 않습니다.' }, { status: 400 })
   }
 
   // ─── PR-3: SHA-256 멱등 — 같은 파일 이미 업로드한 적 있으면 기존 URL 반환 ───

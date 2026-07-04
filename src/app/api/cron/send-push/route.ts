@@ -20,6 +20,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyCronAuth } from '@/lib/security/cronAuth'
 import { expandRecurringPlans } from '@/lib/planner/expandRecurringPlans'
 import { sendPushTo, type PushSubscriptionRow } from '@/lib/push/server'
 import type { Plan } from '@/types'
@@ -83,8 +84,7 @@ function rowToPlan(r: PlanRow): Plan {
 function pad2(n: number): string { return n < 10 ? `0${n}` : String(n) }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronAuth(request.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

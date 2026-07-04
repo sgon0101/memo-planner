@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { verifyCronAuth } from '@/lib/security/cronAuth'
 import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 
@@ -156,8 +157,7 @@ function resolveContent(
 
 // ─── GET /api/cron/backup ─────────────────────────────────────
 export async function GET(req: Request) {
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronAuth(req.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
