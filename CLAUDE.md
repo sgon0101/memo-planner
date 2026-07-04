@@ -285,6 +285,9 @@ CLOUDFLARE_R2_PUBLIC_URL=
 
 # Google Drive 백업
 GOOGLE_DRIVE_BACKUP_FOLDER_ID=
+
+# Sentry 에러 모니터링 (선택 — 없으면 no-op)
+NEXT_PUBLIC_SENTRY_DSN=
 ```
 
 ---
@@ -576,6 +579,8 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-07-04 | 보안 P0 — OAuth state 서명 | `lib/security/oauthState.ts` (HMAC-SHA256 서명 + 10분 만료 + timingSafeEqual), calendar/drive auth 라우트에서 서명 state 발급, callback에서 검증 후 내부 user_id만 사용 — state 평문 user_id 무검증 신뢰로 인한 연동 탈취(임의 user_id로 토큰 등록) 차단 | 100% |
 | 2026-07-04 | 보안 P0 — AI rate limiting | `lib/security/rateLimit.ts` + `supabase/migrations/0016_api_rate_limit.sql` (api_usage 테이블 + increment_api_usage SECURITY DEFINER RPC, 원자적 upsert). AI 5개 라우트 일일 한도: chat 300 / insights 40 / report 40 / analyze-profile 30 / profile-insight 60. 캐시 히트는 미카운트(실제 Anthropic 호출 직전 검사), RPC 미배포 시 fail-open. chat 메시지 4,000자 제한. **Supabase에 0016 마이그레이션 실행 필요** | 100% |
 | 2026-07-04 | CI 파이프라인 | `.github/workflows/ci.yml` — PR(main/dev)·push(dev) 시 npm ci + null byte 무결성 검사 + `npm run lint` + `tsc --noEmit`. next build는 Vercel preview 빌드가 담당(중복 제거) | 100% |
+| 2026-07-04 | 보안 P1 — cron timing-safe + magic bytes | `lib/security/cronAuth.ts`(HMAC 고정길이 후 timingSafeEqual — 타이밍 어택 차단, cron 4개 라우트 적용) · `lib/security/magicBytes.ts`(jpeg/png/gif/webp/svg/mp4/webm/ogg/pdf 시그니처 검증, /api/upload에 적용 — Content-Type 위조 차단) | 100% |
+| 2026-07-04 | Sentry 에러 모니터링 | `@sentry/nextjs` — `src/instrumentation.ts`(서버, onRequestError) + `src/instrumentation-client.ts`(클라이언트, 리플레이 비활성=프라이버시) + `app/global-error.tsx`(최후 폴백 UI+보고). withSentryConfig 미사용(Turbopack 리스크 회피). `NEXT_PUBLIC_SENTRY_DSN` 없으면 완전 no-op — **Vercel에 DSN 환경변수 추가 필요** | 100% |
 
 ---
 
