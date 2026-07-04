@@ -89,7 +89,14 @@ function bodyToTiptap(lines: string[]): { content: Record<string, unknown>; cont
 
     if (!trimmed) { i++; continue }
 
-    if (trimmed === '---' && lines[i + 1]?.trim().includes('Weave에서 내보낸')) break
+    // 하단 marker 인식 확장 — 옛/현 표기 모두 커버해 파싱 skip
+    // (이 문구가 본문으로 파싱되면 memos.content 오염 원인 됨 — 2026-07-04 사건 방지)
+    if (trimmed === '---') {
+      const next = lines[i + 1]?.trim() ?? ''
+      const isExportMarker = /(Weave에서 내보낸|메모\s*플래너에서\s*내보낸|Exported from)/i.test(next)
+        || /내보낸\s*메모입니다/.test(next)
+      if (isExportMarker) break
+    }
 
     const hM = trimmed.match(/^(#{1,6})\s+(.+)$/)
     if (hM) {

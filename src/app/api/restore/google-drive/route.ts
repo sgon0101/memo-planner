@@ -171,10 +171,11 @@ export async function POST(req: NextRequest) {
         }
 
         // 같은 제목 + 같은 폴더인 기존 메모 있는지 확인 (newer-wins / skip 결정용)
+        // + UPDATE 전 memo_versions 스냅샷을 위해 content/content_text/title도 조회 (2026-07-04 사건 방지)
         const titleEq = parsed.title.trim()
         const { data: existingMemo } = await supabase
           .from('memos')
-          .select('id, updated_at')
+          .select('id, updated_at, content, content_text, title')
           .eq('user_id', user.id)
           .eq('title', titleEq)
           .eq('folder_id', folderId ?? null)
@@ -203,6 +204,18 @@ export async function POST(req: NextRequest) {
             if (incoming <= existing) { skipped++; continue }
           }
           // overwrite 또는 newer-wins(통과)
+          // ─── UPDATE 전 memo_versions에 현재 상태 스냅샷 저장 (롤백 대비, 2026-07-04 사건 재발 방지) ───
+          // 이 스냅샷 저장이 실패해도 restore 자체는 계속 진행 (best-effort)
+          const { error: snapErr } = await supabase.from('memo_versions').insert({
+            memo_id: existingMemo.id,
+            content: existingMemo.content,
+            content_text: existingMemo.content_text,
+            title: existingMemo.title,
+          })
+          if (snapErr) {
+            console.warn('[restore/google-drive] snapshot 실패 (계속 진행)', existingMemo.id, snapErr.message)
+          }
+
           const { error } = await supabase.from('memos').update(row).eq('id', existingMemo.id)
           if (error) { errors++; errMessages.push(`${task.fileName}: ${error.message}`) }
           else restored++
