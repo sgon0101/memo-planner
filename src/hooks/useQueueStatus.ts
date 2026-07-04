@@ -32,6 +32,7 @@ export function useQueueStatus(): QueueStatus {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IDB 큐 카운트 mount 즉시 1회 조회 후 폴링 (의도 패턴)
     refresh()
     const id = setInterval(refresh, POLL_INTERVAL_MS)
     return () => clearInterval(id)

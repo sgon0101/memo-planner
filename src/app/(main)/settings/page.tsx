@@ -82,6 +82,7 @@ export default function SettingsPage() {
 
   // Realtime 토글 초기값 — currentUser init 후 LS 읽기 (mount 시 1회)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage → 상태 mount 1회 동기화 (의도 패턴)
     setRealtimeOn(isRealtimeEnabled())
   }, [])
   // PR-3: 스토리지 quota 정보 추가 로드 (/api/storage/status)
@@ -115,6 +116,7 @@ export default function SettingsPage() {
       })
       .catch(() => {})
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch 시작 전 로딩 표시 (mount 1회, 의도 패턴)
     setEmbedLoading(true)
     fetch('/api/embeddings/status')
       .then((r) => r.ok ? r.json() : null)

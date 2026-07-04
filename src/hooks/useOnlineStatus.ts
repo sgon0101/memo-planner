@@ -24,6 +24,7 @@ export function useOnlineStatus(): boolean {
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
     // mount 시 한 번 더 동기화 (예: dev tools에서 강제 변경 직후)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 시스템(navigator.onLine) mount 동기화 (의도 패턴)
     setOnline(navigator.onLine)
     return () => {
       window.removeEventListener('online', onOnline)

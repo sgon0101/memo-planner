@@ -149,7 +149,8 @@ export default function MemoList() {
   // 검색·정렬 reset effect를 트리거해 displayCount를 PAGE_SIZE로 돌리는 race 차단.
   // 복원 시 true로 set → 다음 reset effect 1회 skip → 자동으로 false.
   const skipFiltersResetRef = useRef(false)
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  /* eslint-disable react-hooks/set-state-in-effect -- sessionStorage 복원/폴더 변경 reset:
+     mount 1회 외부 상태(sessionStorage) → React 상태 동기화 의도 패턴 */
   useEffect(() => {
     const prev = prevFolderIdRef.current
     prevFolderIdRef.current = selectedFolderId
@@ -199,6 +200,7 @@ export default function MemoList() {
       setActiveWiki(null)
     }
   }, [selectedFolderId])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // displayCount 보호 — 복원 후 다른 effect가 PAGE_SIZE로 reset하면 다시 복원값으로
   useEffect(() => {

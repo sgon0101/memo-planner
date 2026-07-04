@@ -94,8 +94,10 @@ export default function Menu({
   // 위치 계산 — open 시 1회 + scroll/resize 시 재계산
   useLayoutEffect(() => {
     if (!isOpen) {
+      /* eslint-disable react-hooks/set-state-in-effect -- 닫힘 시 paint 전 위치/포커스 초기화 (useLayoutEffect 의도 패턴) */
       setPosition(null)
       setActiveIndex(-1)
+      /* eslint-enable react-hooks/set-state-in-effect */
       return
     }
 
