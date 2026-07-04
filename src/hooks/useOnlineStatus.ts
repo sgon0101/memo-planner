@@ -14,9 +14,11 @@
 import { useEffect, useState } from 'react'
 
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState<boolean>(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  // 초기값 true 고정 (#418 방지) — Node 21+/서버 런타임에도 navigator 글로벌이
+  // 존재해 `typeof navigator !== 'undefined'`가 서버에서 true가 되고,
+  // navigator.onLine은 undefined → false로 평가되어 SSR이 오프라인 배너를
+  // 렌더하던 문제. 실값은 아래 effect가 mount 직후 동기화한다.
+  const [online, setOnline] = useState<boolean>(true)
 
   useEffect(() => {
     const onOnline = () => setOnline(true)
