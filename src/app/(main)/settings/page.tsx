@@ -147,6 +147,32 @@ export default function SettingsPage() {
 
   const doRestore = async (folderId: string, mode: 'skip' | 'newer-wins' | 'overwrite') => {
     if (restoreBusy) return
+
+    // 데이터 손실 가능 mode는 명시적 confirm 2회 (2026-07-04 오염 사건 재발 방지)
+    // 'skip'은 추가만이라 confirm 불필요
+    if (mode === 'overwrite') {
+      const c1 = window.confirm(
+        '⚠️ 덮어쓰기 모드는 같은 제목의 기존 메모를 백업 파일 내용으로 무조건 대체합니다.\n\n' +
+        '기존 메모의 이미지·서식이 열등한 마크다운 텍스트로 변환될 수 있습니다.\n' +
+        '이 작업을 진행할까요?'
+      )
+      if (!c1) return
+      const c2 = window.confirm(
+        '한 번 더 확인합니다.\n\n' +
+        '이 폴더의 백업 파일 개수만큼 기존 메모가 변경됩니다.\n' +
+        '되돌리려면 memo_versions 이력에서 수동 복구해야 합니다.\n\n' +
+        '정말로 진행하시겠습니까?'
+      )
+      if (!c2) return
+    } else if (mode === 'newer-wins') {
+      const c1 = window.confirm(
+        '⚠️ 최신 우선 모드는 백업 파일이 기존 메모보다 최근이면 덮어씁니다.\n\n' +
+        '동기화 실수로 오래된 백업이 최신으로 잘못 인식되면 데이터가 손상될 수 있습니다.\n' +
+        '진행할까요?'
+      )
+      if (!c1) return
+    }
+
     setRestoreBusy(true)
     try {
       toast.info('복원 시작 — 폴더 크기에 따라 몇 분 걸릴 수 있어요')
