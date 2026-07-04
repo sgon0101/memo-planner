@@ -1,0 +1,43 @@
+# CI — PR/push마다 자동 검증 (lint + typecheck + 파일 무결성)
+# 배경: 파일 truncation·null byte 혼입으로 Vercel 빌드가 깨진 사고가 반복됨 (CLAUDE.md 참고)
+# next build 자체는 Vercel이 모든 push에서 preview 빌드로 검증하므로 여기서는 중복하지 않는다.
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 파일 무결성 — null byte 검사
+        # 주의: `grep -l $'\x00'`는 셸이 NUL을 인자로 전달 못해 빈 패턴이 되어 전 파일 매칭됨 → python 사용
+        run: |
+          git ls-files '*.ts' '*.tsx' '*.css' '*.json' | python3 -c '
+          import sys
+          bad = [f for f in (l.strip() for l in sys.stdin) if f and b"\x00" in open(f, "rb").read()]
+          if bad:
+              print("::error::null byte가 포함된 파일 발견 (파일 손상):")
+              print("\n".join(bad))
+              sys.exit(1)
+          '
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit

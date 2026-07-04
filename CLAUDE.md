@@ -572,6 +572,10 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-07-04 | 그래프 월드중심 고정 | 프리셋/캐시발 잔여 쏠림 제거 — 물리 월드 중심을 (0,0)으로 완전 고정하고 화면 정렬은 카메라(transform)가 담당(Obsidian 방식): forceX/Y(0) 고정 + 시뮬 마운트 1회 생성(리사이즈 재생성 제거), ResizeObserver 첫 실측 시 카메라 원점 중앙 정렬(`cameraInitRef`), 프리셋 재배치를 뷰포트 중심 → 월드 원점 기준으로 + 카메라 재조준(줌 유지) — 기존엔 배치점과 중심력 목표점이 어긋나 전체가 한 방향으로 흘렀음, 레이아웃 캐시 v1→v2(구 코드의 쏠린 좌표 무효화), 리셋도 원점 기준. verify-changes.sh+tsc+ESLint+next build 통과 | 100% |
 | 2026-07-04 | 프리셋 배치 각도 편향 제거 | 프리셋 재배치의 단일 회전 나선(angle=i/N·2π)이 linkCount 정렬과 결합해 허브가 전부 동쪽(각도 0 부근)에 심어짐 → 링크 인력이 연결 덩어리를 북동으로 끌던 방향성 몰림 + 저연결 노드 초승달 호 잔상. 황금각 phyllotaxis 배치로 교체(`GOLDEN_ANGLE=π(3-√5)`, r=R·√(i/N)) — 각도 편향 0, 허브 안쪽·leaf 바깥 균등 밀도 disc. 프리셋 effect + nodes 업데이트 초기 링 배치 2곳 적용. verify-changes.sh+tsc+next build 통과 | 100% |
 | 2026-07-04 | fit-to-view + 응집형 튜닝 | 프리셋/리셋 후 시뮬 안정 시 전체 노드 bbox가 화면에 들어오도록 자동 카메라 이동+줌(`fitToView`, ease-out 30f, k 0.08~2.5, 패딩 15%) — `fitPendingRef` 예약 후 RAF sleep 분기 3곳에서 발동, `fitToViewRef` 패턴으로 stale closure 회피. 응집형 프리셋 체감 조밀도 강화(centerTension 5→6, repulsion 3→2, linkDistance 3→2). tsc+ESLint(신규 0)+next build 통과 | 100% |
+| 2026-07-04 | 그래프 UX — 호버/검색 하이라이트 | 호버 노드+이웃 강조·나머지 디밍(hoveredNodeIdRef, mousemove 리렌더 없음), 호버 링(옅은 보라), 포커스 노드·이웃 라벨 줌 무관 표시, 검색 비매칭 디밍 + 현재 매칭 앰버 링. PR #281 프로덕션 라이브 검증 완료 | 100% |
+| 2026-07-04 | 보안 P0 — OAuth state 서명 | `lib/security/oauthState.ts` (HMAC-SHA256 서명 + 10분 만료 + timingSafeEqual), calendar/drive auth 라우트에서 서명 state 발급, callback에서 검증 후 내부 user_id만 사용 — state 평문 user_id 무검증 신뢰로 인한 연동 탈취(임의 user_id로 토큰 등록) 차단 | 100% |
+| 2026-07-04 | 보안 P0 — AI rate limiting | `lib/security/rateLimit.ts` + `supabase/migrations/0016_api_rate_limit.sql` (api_usage 테이블 + increment_api_usage SECURITY DEFINER RPC, 원자적 upsert). AI 5개 라우트 일일 한도: chat 300 / insights 40 / report 40 / analyze-profile 30 / profile-insight 60. 캐시 히트는 미카운트(실제 Anthropic 호출 직전 검사), RPC 미배포 시 fail-open. chat 메시지 4,000자 제한. **Supabase에 0016 마이그레이션 실행 필요** | 100% |
+| 2026-07-04 | CI 파이프라인 | `.github/workflows/ci.yml` — PR(main/dev)·push(dev) 시 npm ci + null byte 무결성 검사 + `npm run lint` + `tsc --noEmit`. next build는 Vercel preview 빌드가 담당(중복 제거) | 100% |
 
 ---
 
@@ -634,6 +638,10 @@ CREATE TABLE IF NOT EXISTS plan_notifications_sent (
 ALTER TABLE plan_notifications_sent ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "notif_sent: 본인만" ON plan_notifications_sent FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_notif_sent_lookup ON plan_notifications_sent(user_id, plan_date);
+
+-- AI rate limiting (supabase/migrations/0016_api_rate_limit.sql 전체 실행 필요)
+-- api_usage 테이블 + increment_api_usage(p_bucket, p_limit) SECURITY DEFINER RPC
+-- 미실행 시 rate limit은 fail-open (허용 + 콘솔 로그)으로 동작
 
 -- Postgres FTS (#9 — 메모 서버 검색)
 ALTER TABLE memos ADD COLUMN IF NOT EXISTS search_vec tsvector;

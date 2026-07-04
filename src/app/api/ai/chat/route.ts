@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { profileChatSystemPrompt } from '@/lib/ai/prompts'
+import { checkRateLimit } from '@/lib/security/rateLimit'
 
 export const maxDuration = 60 // Vercel Pro: 최대 60초 스트리밍 허용
 
@@ -14,6 +15,13 @@ export async function POST(req: NextRequest) {
 
   const { roomId, message } = await req.json()
   if (!roomId || !message) return new Response('Bad Request', { status: 400 })
+  if (typeof message !== 'string' || message.length > 4000) {
+    return new Response('메시지가 너무 깁니다. (최대 4,000자)', { status: 400 })
+  }
+
+  // 일일 호출 한도 (사용자별)
+  const rate = await checkRateLimit(supabase, 'ai-chat')
+  if (!rate.ok) return new Response(rate.message, { status: 429 })
 
   // user_profile 로드
   const [{ data: profile }, { data: recentMemos }, { data: roomData }, { data: history }] =

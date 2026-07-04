@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
+import { checkRateLimit } from '@/lib/security/rateLimit'
 
 export async function POST() {
   const supabase = await createClient()
@@ -39,6 +40,10 @@ export async function POST() {
     const preview = (m.content_text ?? '').slice(0, 100)
     return `[${folder}] ${m.title}${tags ? ` | #${tags}` : ''}${preview ? ` | ${preview}` : ''}`
   }).join('\n')
+
+  // 일일 호출 한도 — 24h 캐시 히트는 위에서 이미 반환됐으므로 실제 AI 호출에만 카운트
+  const rate = await checkRateLimit(supabase, 'ai-analyze-profile')
+  if (!rate.ok) return NextResponse.json({ error: rate.message }, { status: 429 })
 
   let parsed: Record<string, unknown>
   try {

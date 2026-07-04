@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { gapAnalysisPrompt, interestAnalysisPrompt } from '@/lib/ai/prompts'
 import { extractMemoTexts } from '@/lib/ai/analyzer'
+import { checkRateLimit, rateLimitResponse } from '@/lib/security/rateLimit'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -44,6 +45,10 @@ export async function GET(req: NextRequest) {
   if (memoTexts.length === 0) {
     return Response.json({ error: 'no_data' })
   }
+
+  // 일일 호출 한도 — 캐시 히트는 위에서 이미 반환됐으므로 실제 AI 호출에만 카운트
+  const rate = await checkRateLimit(supabase, 'ai-insights')
+  if (!rate.ok) return rateLimitResponse(rate.message)
 
   const prompt = type === 'interest'
     ? interestAnalysisPrompt(memoTexts)
