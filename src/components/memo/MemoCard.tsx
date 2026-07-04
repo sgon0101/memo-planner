@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw, FolderInput, Folder, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -44,7 +44,7 @@ interface MemoCardProps {
   searchQuery?: string
 }
 
-export default function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false, isSelected = false, onToggleSelect, searchQuery }: MemoCardProps) {
+function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, onPermanentDelete, onMoveToFolder, view, isTrash = false, isSelected = false, onToggleSelect, searchQuery }: MemoCardProps) {
   const router = useRouter()
   const { folders } = useFolderStore()
   const { setDraggingMemo } = useDragStore()
@@ -610,3 +610,8 @@ function FolderPickerPopup({ folders, currentFolderId, onSelect, onClose }: {
     </div>
   )
 }
+
+// props 얕은 비교로 불필요한 카드 리렌더 스킵 —
+// memo 객체는 갱신 시 새 참조로 내려오고(React Query/zustand 불변 업데이트),
+// 콜백은 MemoList의 cardActions useMemo + useMemos의 useCallback으로 참조 안정.
+export default memo(MemoCard)

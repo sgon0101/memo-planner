@@ -736,7 +736,9 @@ export default function MemoList() {
     })
   }
 
-  const cardActions = {
+  // useMemo — 참조 안정화로 MemoCard의 React.memo가 실제로 동작하게 함
+  // (deps의 훅 함수들은 useMemos 내부 useCallback으로 안정)
+  const cardActions = useMemo(() => ({
     onPin: (id: string, cur: boolean) => togglePin(id, cur).catch(console.error),
     onStar: (id: string, cur: boolean) => toggleStar(id, cur).catch(console.error),
     onDelete: (id: string) => softDelete(id).catch(console.error),
@@ -746,7 +748,7 @@ export default function MemoList() {
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
     onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
     searchQuery: search,
-  }
+  }), [togglePin, toggleStar, softDelete, lockMemo, unlockMemo, restoreMemo, permanentDelete, moveMemoToFolder, search])
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">

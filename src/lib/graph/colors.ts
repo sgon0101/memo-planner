@@ -1,5 +1,5 @@
 // 그래프 뷰 색상 단일 출처
-// GraphView/GraphCanvas/GraphSettings에 중복 정의돼 있던 색상·nodeColor 로직을 통합.
+// GraphView/GraphSettings에 중복 정의돼 있던 색상·nodeColor 로직을 통합.
 // 색상 변경 시 이 파일만 수정하면 캔버스/범례가 함께 반영된다.
 
 import type { GraphNode } from '@/store/graphStore'
