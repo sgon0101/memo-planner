@@ -2,7 +2,7 @@
  * 오프라인 큐 관련 캐시 정리 헬퍼 (PR-M1-B 후속).
  *
  *  - applyIdSwapToLocalStorage : flush 후 임시 ID → 진짜 ID로 LS home/all 캐시도 함께 swap
- *  - removeTempIdsFromCaches   : give-up된 tempId 메모를 zustand/RQ/LS에서 일괄 제거
+ *  - removeTempIdsFromCaches   : give-up된 tempId 메모/플랜을 RQ/LS에서 일괄 제거
  *
  * 왜 필요한가:
  *   - SyncBootstrap.applyIdMappings는 React Query 캐시만 swap했었음 → LS는 stale 잔존.
@@ -13,7 +13,7 @@
 
 import type { QueryClient } from '@tanstack/react-query'
 import { useMemoStore } from '@/store/memoStore'
-import { usePlannerStore } from '@/store/plannerStore'
+import { removePlanFromCaches } from '@/lib/planner/planCache'
 import { lsHomeMemosCache, lsHomeMemosCacheTs, lsMemosCache, lsMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
 
@@ -72,7 +72,7 @@ export function applyIdSwapToLocalStorage(mappings: Array<{ tempId: string; real
 }
 
 /**
- * give-up된 tempId들을 zustand store + React Query 캐시 + LS에서 일괄 제거.
+ * give-up된 tempId들을 React Query 캐시 + LS에서 일괄 제거.
  * SyncBootstrap이 flush 결과로 호출 / 다른 탭의 useBroadcastListener도 'queue-giveup' 수신 시 호출.
  */
 export function removeTempIdsFromCaches(
@@ -83,9 +83,8 @@ export function removeTempIdsFromCaches(
   const memoTempIds = tempIds.filter((t) => t.startsWith('tmp_memo_'))
   const planTempIds = tempIds.filter((t) => t.startsWith('tmp_plan_'))
 
-  // zustand — 플랜만 (메모는 React Query 단일 출처)
-  const planStore = usePlannerStore.getState()
-  for (const t of planTempIds) planStore.deletePlan(t)
+  // 플랜 — RQ 범위 캐시 + LS plans 캐시에서 제거 (상태 이중화 정리 2단계)
+  for (const t of planTempIds) removePlanFromCaches(queryClient, t)
 
   // React Query 캐시
   if (memoTempIds.length > 0) {

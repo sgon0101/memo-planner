@@ -1,72 +1,36 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { format, startOfWeek } from 'date-fns'
-import type { Plan } from '@/types'
+
+// ─────────────────────────────────────────────────────────────
+// 상태 이중화 정리 2단계 (2026-07-04): 플랜 서버 데이터는 React Query 단일 출처.
+// 기존 plans[]/expandedPlans/recurringCompletions 거울과 그 액션들
+// (setPlans/addPlan/updatePlan/deletePlan/swapPlanId/setExpandedPlans/
+//  setRecurringCompletion(s)/deleteRecurringCompletion)은 제거됐다.
+//  - 쿼리: hooks/usePlanner.ts (usePlansQuery/useRecurringCompletionsQuery)
+//  - 캐시 패치 헬퍼: lib/planner/planCache.ts (RQ + LS 동시)
+//  - 반복 전개 파생: hooks/useExpandedPlans.ts
+// zustand persist(plans)도 LS 캐시(lsPlansCache) + RQ initialData로 대체.
+// 이 스토어에는 순수 캘린더 UI 상태만 남는다.
+// ─────────────────────────────────────────────────────────────
 
 interface PlannerStore {
-  plans: Plan[]
-  expandedPlans: Plan[]
-  recurringCompletions: Record<string, boolean>
   selectedDate: string
   viewMode: 'month' | 'week' | 'day'
   currentMonth: Date
   currentWeek: Date
-  setPlans: (plans: Plan[]) => void
-  setExpandedPlans: (plans: Plan[]) => void
-  setRecurringCompletions: (completions: Record<string, boolean>) => void
-  setRecurringCompletion: (key: string, value: boolean) => void
-  deleteRecurringCompletion: (key: string) => void
-  addPlan: (plan: Plan) => void
-  updatePlan: (id: string, patch: Partial<Plan>) => void
-  /** PR-M1-B: 오프라인 큐 flush 후 임시 ID → 진짜 ID 교체 */
-  swapPlanId: (oldId: string, newId: string, extraPatch?: Partial<Plan>) => void
-  deletePlan: (id: string) => void
   selectDate: (date: string) => void
   setViewMode: (mode: 'month' | 'week' | 'day') => void
   setCurrentMonth: (date: Date) => void
   setCurrentWeek: (date: Date) => void
 }
 
-export const usePlannerStore = create<PlannerStore>()(
-  persist(
-    (set) => ({
-      plans: [],
-      expandedPlans: [],
-      recurringCompletions: {},
-      selectedDate: format(new Date(), 'yyyy-MM-dd'),
-      viewMode: 'month',
-      currentMonth: new Date(),
-      currentWeek: startOfWeek(new Date(), { weekStartsOn: 0 }),
-      setPlans: (plans) => set({ plans }),
-      setExpandedPlans: (expandedPlans) => set({ expandedPlans }),
-      setRecurringCompletions: (recurringCompletions) => set({ recurringCompletions }),
-      setRecurringCompletion: (key, value) =>
-        set((s) => ({ recurringCompletions: { ...s.recurringCompletions, [key]: value } })),
-      deleteRecurringCompletion: (key) =>
-        set((s) => {
-          const next = { ...s.recurringCompletions }
-          delete next[key]
-          return { recurringCompletions: next }
-        }),
-      addPlan: (plan) => set((s) => ({ plans: [...s.plans, plan] })),
-      updatePlan: (id, patch) =>
-        set((s) => ({ plans: s.plans.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
-      swapPlanId: (oldId, newId, extraPatch) =>
-        set((s) => ({
-          plans: s.plans.map((p) =>
-            p.id === oldId ? { ...p, id: newId, ...(extraPatch ?? {}) } : p
-          ),
-        })),
-      deletePlan: (id) => set((s) => ({ plans: s.plans.filter((p) => p.id !== id) })),
-      selectDate: (date) => set({ selectedDate: date }),
-      setViewMode: (viewMode) => set({ viewMode }),
-      setCurrentMonth: (currentMonth) => set({ currentMonth }),
-      setCurrentWeek: (currentWeek) => set({ currentWeek }),
-    }),
-    {
-      name: 'planner-store',
-      // plans만 persist — expandedPlans는 파생 데이터라 매번 계산
-      partialize: (state) => ({ plans: state.plans }),
-    }
-  )
-)
+export const usePlannerStore = create<PlannerStore>()((set) => ({
+  selectedDate: format(new Date(), 'yyyy-MM-dd'),
+  viewMode: 'month',
+  currentMonth: new Date(),
+  currentWeek: startOfWeek(new Date(), { weekStartsOn: 0 }),
+  selectDate: (date) => set({ selectedDate: date }),
+  setViewMode: (viewMode) => set({ viewMode }),
+  setCurrentMonth: (currentMonth) => set({ currentMonth }),
+  setCurrentWeek: (currentWeek) => set({ currentWeek }),
+}))

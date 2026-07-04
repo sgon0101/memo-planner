@@ -18,7 +18,7 @@ import { useBroadcastListener } from '@/hooks/useBroadcastListener'
 import { useRealtimeSync } from '@/hooks/useRealtimeSync'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { flushQueue, type FlushResult } from '@/lib/sync/withQueue'
-import { usePlannerStore } from '@/store/plannerStore'
+import { swapPlanIdInCaches } from '@/lib/planner/planCache'
 import { broadcast } from '@/lib/sync/broadcast'
 import { applyIdSwapToLocalStorage, removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
 import { toast } from '@/components/ui/Toast'
@@ -28,7 +28,7 @@ const RETRY_INTERVAL_MS = 30_000  // 30초마다 큐 잔여 retry
 
 /**
  * PR-M1-B: flush 후 임시 ID → 진짜 ID 교체.
- * - 메모: React Query 캐시(단일 출처) swap / 플랜: zustand swap
+ * - 메모/플랜 모두 React Query 캐시(단일 출처) swap (상태 이중화 정리 2단계)
  * - broadcast로 다른 탭에 invalidate 신호 (실서버 데이터는 새로 fetch가 정확)
  */
 function applyIdMappings(
@@ -36,7 +36,6 @@ function applyIdMappings(
   queryClient: ReturnType<typeof useQueryClient>,
 ) {
   if (mappings.length === 0) return
-  const planSwap = usePlannerStore.getState().swapPlanId
   for (const { tempId, realId } of mappings) {
     if (tempId.startsWith('tmp_memo_')) {
       // React Query 캐시 — memos all list (단일 출처)
@@ -59,7 +58,8 @@ function applyIdMappings(
         }
       }
     } else if (tempId.startsWith('tmp_plan_')) {
-      planSwap(tempId, realId)
+      // RQ 범위 캐시 + LS plans 캐시 동시 swap
+      swapPlanIdInCaches(queryClient, tempId, realId)
     }
   }
   // PR-M1-B 후속: LS 캐시도 swap — RQ initialData가 다음 마운트에서 stale tempId를 다시 끌어오는 경로 차단

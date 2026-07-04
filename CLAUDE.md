@@ -112,21 +112,23 @@ memo-planner/
 │   ├── planner/
 │   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
 │   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
+│   │   ├── planCache.ts            # 플랜 RQ+LS 캐시 헬퍼 (planKeys, patch/add/remove/swap/find)
 │   │   └── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기
 │   └── utils.ts
 ├── store/
-│   ├── memoStore.ts                # 메모 상태 (Zustand)
-│   ├── plannerStore.ts             # 플래너 상태
+│   ├── memoStore.ts                # 메모 UI 신호만 (서버 상태는 RQ — 이중화 정리 1단계)
+│   ├── plannerStore.ts             # 캘린더 UI 상태만 (서버 상태는 RQ — 이중화 정리 2단계)
 │   ├── folderStore.ts              # 폴더 상태
 │   └── uiStore.ts                  # UI 상태 (다크모드 등)
 ├── types/
 │   └── index.ts                    # 전체 타입 정의
 ├── hooks/
 │   ├── useMemos.ts
-│   ├── usePlanner.ts
+│   ├── usePlanner.ts               # 플랜 RQ 쿼리(usePlansQuery/useRecurringCompletionsQuery) + 뮤테이션
+│   ├── useExpandedPlans.ts         # 반복 플랜 전개 파생 훅 (RQ plans+completions → expandRecurringPlans)
 │   ├── useSwipeGesture.ts          # swipe 제스처 통합 훅 (pointer+touch)
 │   ├── useAI.ts
 │   └── useOfflineSync.ts
@@ -584,6 +586,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-07-04 | MemoList 분리 1단계 | `MemoListParts.tsx` 신규 — TagDropdown/WikiDropdown/SortChip/TitleSortDropdown/MemoSection/useFloatingDropdown 순수 이동(로직 변경 0, 이동 블록 바이트 동일 검증), SortKey/TitleDir 타입 export. 1,764줄 → 1,386+391줄. 프로덕션에서 정렬 칩·제목 정렬·태그 드롭다운·카드 그리드 라이브 검증 완료 (PR #285) | 100% |
 | 2026-07-04 | P2 경량 — 죽은 코드+렌더 최적화 | `GraphCanvas.tsx` 삭제(미사용 legacy — GraphView로 대체) · `MemoCard`에 `React.memo` 적용 + `MemoList.cardActions`를 `useMemo`로 참조 안정화(useMemos 뮤테이션들은 기존 useCallback) — 검색 타이핑/정렬 변경 시 변경 없는 카드 리렌더 스킵 | 100% |
 | 2026-07-04 | Sentry 에러 모니터링 | `@sentry/nextjs` — `src/instrumentation.ts`(서버, onRequestError) + `src/instrumentation-client.ts`(클라이언트, 리플레이 비활성=프라이버시) + `app/global-error.tsx`(최후 폴백 UI+보고). withSentryConfig 미사용(Turbopack 리스크 회피). `NEXT_PUBLIC_SENTRY_DSN` 없으면 완전 no-op — **Vercel에 DSN 환경변수 추가 필요** | 100% |
+| 2026-07-04 | 상태 이중화 정리 2단계 — plannerStore | 플랜 서버 상태를 React Query 단일 출처로. usePlanner를 useQuery 2개로 전환 — `usePlansQuery`(범위 키 `['plans','range',calStart,calEnd]`, single+range+recurring 3쿼리 병합) + `useRecurringCompletionsQuery`, LS 캐시(`lsPlansCache`) initialData 즉시 페인트(구 zustand persist(plans) 대체) · `lib/planner/planCache.ts` 신규(planKeys + RQ setQueriesData·LS 동시 패치: patch/add/remove/swapPlanId/find + completions set/delete) · `hooks/useExpandedPlans.ts` 신규 — CalendarView가 계산해 store에 밀어넣고 PlanPanel이 읽던 expandedPlans 이중 파생 미러 제거 · 소비처 전환: CalendarView(`load`→`refresh`=invalidate)/PlanPanel/PlanDetailPanel(RQ 구독), useBroadcastListener plan-* 3케이스, SyncBootstrap swapPlanId→`swapPlanIdInCaches`, cacheCleanup→`removePlanFromCaches` · plannerStore는 selectedDate/viewMode/currentMonth/currentWeek 4종만 잔류 · 부수 복구: package.json/lock truncation(HEAD 복원) + 수정 파일 8개 trailing null byte 제거 · tsc+ESLint 통과 | 100% |
 
 ---
 

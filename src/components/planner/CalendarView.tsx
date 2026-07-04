@@ -12,8 +12,8 @@ import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { useExpandedPlans } from '@/hooks/useExpandedPlans'
 import { useSwipeGesture } from '@/hooks/useSwipeGesture'
-import { expandRecurringPlans } from '@/lib/planner/expandRecurringPlans'
 import RangeBar from './RangeBar'
 import PlanPanel from './PlanPanel'
 import PlanFormModal from './PlanFormModal'
@@ -27,32 +27,16 @@ const MAX_RANGE_BARS = 3
 
 export default function CalendarView() {
   const {
-    plans, selectedDate, selectDate,
+    selectedDate, selectDate,
     currentMonth, setCurrentMonth,
     currentWeek, setCurrentWeek,
     viewMode, setViewMode,
-    recurringCompletions,
-    setExpandedPlans,
   } = usePlannerStore()
 
-  const { load } = usePlanner()
+  const { refresh } = usePlanner()
 
-  // 반복 플랜 전개
-  const expandedPlans = useMemo(() => {
-    const monthStart = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 })
-    const monthEnd = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 })
-    const weekEnd = addDays(currentWeek, 6)
-    const dayDate = selectedDate ? parseISO(selectedDate) : new Date()
-
-    const candidates = [monthStart, currentWeek, dayDate]
-    const viewStart = candidates.reduce((a, b) => a < b ? a : b)
-    const viewEnd = [monthEnd, weekEnd, dayDate].reduce((a, b) => a > b ? a : b)
-
-    return expandRecurringPlans(plans, viewStart, viewEnd, recurringCompletions)
-  }, [plans, recurringCompletions, currentMonth, currentWeek, selectedDate])
-
-  // store 동기화 — PlanPanel이 store에서 expandedPlans를 읽으므로 항상 최신값 유지
-  useEffect(() => { setExpandedPlans(expandedPlans) }, [expandedPlans])
+  // 반복 플랜 전개 — RQ 플랜 + 완료맵에서 파생 (상태 이중화 정리 2단계)
+  const { expandedPlans } = useExpandedPlans()
 
   // ?date=&focus= URL 파라미터 → 해당 날짜로 이동 + PlanDetailPanel 자동 오픈
   // 홈 화면 "이번 주 플랜" 카드에서 진입할 때 사용
@@ -98,7 +82,7 @@ export default function CalendarView() {
         }
         return
       }
-      await load()
+      await refresh()
       toast.success(`Google Calendar 동기화 완료 (${json.synced}개 추가)`)
     } catch {
       toast.error('동기화 중 오류가 발생했습니다.')
@@ -511,7 +495,7 @@ export default function CalendarView() {
           initialStartTime={formState.initialTime}
             initialEndTime={formState.initialEndTime}
           onClose={() => setFormState({ open: false, date: '' })}
-          onSaved={() => { setFormState({ open: false, date: '' }); load() }}
+          onSaved={() => { setFormState({ open: false, date: '' }); refresh() }}
         />
       )}
     </div>

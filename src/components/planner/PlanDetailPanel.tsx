@@ -8,8 +8,7 @@ import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useMemos } from '@/hooks/useMemos'
-import { usePlannerStore } from '@/store/plannerStore'
-import { usePlanner } from '@/hooks/usePlanner'
+import { usePlanner, usePlansQuery, useRecurringCompletionsQuery } from '@/hooks/usePlanner'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import type { Plan } from '@/types'
@@ -64,11 +63,11 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
     }
   }
 
-  // store 직접 구독 — props로 받은 plan은 stale일 수 있음
-  const recurringCompletions = usePlannerStore((s) => s.recurringCompletions)
-  const storedPlans = usePlannerStore((s) => s.plans)
+  // RQ 캐시 직접 구독 — props로 받은 plan은 stale일 수 있음 (상태 이중화 정리 2단계)
+  const recurringCompletions = useRecurringCompletionsQuery()
+  const { plans: storedPlans } = usePlansQuery()
 
-  // isCompleted는 store 기반으로 항상 최신값 사용
+  // isCompleted는 RQ 캐시 기반으로 항상 최신값 사용
   const isCompleted = useMemo(() => {
     if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
       const key = `${plan.originalPlanId}_${plan.date}`
