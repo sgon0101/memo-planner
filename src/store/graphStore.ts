@@ -57,7 +57,7 @@ interface GraphStore {
 }
 
 const DEFAULT_SETTINGS: GraphSettings = {
-  nodeSize: 4,
+  nodeSize: 2,       // 4 → 2: 노드 많을 때 가독성 (라벨·링크가 더 잘 보임)
   linkWidth: 2,
   centerTension: 2,      // 3 → 2: 중앙 뭉침 완화 (Obsidian 스타일 근접)
   repulsion: 5,          // 4 → 5: 노드 간격 기본 확대
