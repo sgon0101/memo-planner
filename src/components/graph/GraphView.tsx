@@ -117,6 +117,8 @@ export default function GraphView() {
   const lastTouchEndAtRef = useRef(0)   // synthetic mouse event 차단용 (touchend 후 ~300ms)
   const labelAnimRafRef = useRef<number | null>(null)
   const drawRef = useRef<() => void>(() => {})
+  const fitPendingRef = useRef(false)          // 프리셋/리셋 후 안정 시 fit-to-view 예약
+  const fitToViewRef = useRef<() => void>(() => {})
   const dragNodeRef = useRef<GraphNode | null>(null)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
@@ -348,6 +350,46 @@ export default function GraphView() {
     labelAnimRafRef.current = requestAnimationFrame(tick)
   }, [])
 
+  // 전체 노드 bbox가 화면에 들어오도록 카메라 이동+줌 (ease-out) — 프리셋/리셋 후 안정 시 호출
+  const fitToView = useCallback(() => {
+    const sim = simRef.current
+    if (!sim) return
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const n of sim.nodes()) {
+      if (n.x == null || n.y == null) continue
+      if (n.x < minX) minX = n.x
+      if (n.x > maxX) maxX = n.x
+      if (n.y < minY) minY = n.y
+      if (n.y > maxY) maxY = n.y
+    }
+    if (minX === Infinity) return
+    const w = containerRef.current?.clientWidth  || size.w
+    const h = containerRef.current?.clientHeight || size.h
+    const bw = Math.max(maxX - minX, 100)
+    const bh = Math.max(maxY - minY, 100)
+    const targetK = Math.max(0.08, Math.min(2.5, Math.min(w / bw, h / bh) * 0.85))
+    const bcx = (minX + maxX) / 2
+    const bcy = (minY + maxY) / 2
+    const targetX = w / 2 - bcx * targetK
+    const targetY = h / 2 - bcy * targetK
+    const start = { ...transformRef.current }
+    let frame = 0
+    const FRAMES = 30
+    const go = () => {
+      frame++
+      const t = Math.min(frame / FRAMES, 1)
+      const ease = 1 - (1 - t) ** 3
+      transformRef.current.x = start.x + (targetX - start.x) * ease
+      transformRef.current.y = start.y + (targetY - start.y) * ease
+      transformRef.current.k = start.k + (targetK - start.k) * ease
+      drawRef.current()
+      if (t < 1) requestAnimationFrame(go)
+      else startLabelAnimation()  // 최종 줌 레벨 기준 라벨 투명도 갱신
+    }
+    requestAnimationFrame(go)
+  }, [size.w, size.h, startLabelAnimation])
+  fitToViewRef.current = fitToView
+
   const wake = useCallback((energy = 0.4) => {
     const sim = simRef.current
     if (!sim) return
@@ -403,6 +445,7 @@ export default function GraphView() {
       n.x = cx + Math.cos(angle) * r
       n.y = cy + Math.sin(angle) * r
     }
+    fitPendingRef.current = true  // 안정되면 전체가 화면에 들어오도록 fit-to-view
     sim.alpha(1.0).restart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetVersion])
@@ -442,6 +485,7 @@ export default function GraphView() {
         saveLayout(sim.nodes(), settingsRef.current.folderFilter)
         setSimStatus('sleeping')
         rafRef.current = null
+        if (fitPendingRef.current) { fitPendingRef.current = false; fitToViewRef.current() }
       }
     }
     sim.on('tick', () => { if (!rafRef.current) rafRef.current = requestAnimationFrame(tick) })
@@ -593,6 +637,7 @@ export default function GraphView() {
           saveLayout(sim.nodes(), settingsRef.current.folderFilter)
           setSimStatus('sleeping')
           rafRef.current = null
+          if (fitPendingRef.current) { fitPendingRef.current = false; fitToViewRef.current() }
         }
       }
       rafRef.current = requestAnimationFrame(tick)
@@ -1075,7 +1120,8 @@ export default function GraphView() {
     // 6. isFirst true (다음 nodes/links 변경 시 첫 진입 분기로)
     isFirstNodesUpdateRef.current = true
 
-    // 7. 시뮬레이션 alpha 1로 강하게 재시작
+    // 7. 시뮬레이션 alpha 1로 강하게 재시작 (안정 시 fit-to-view)
+    fitPendingRef.current = true
     sim.alpha(1).restart()
     setSimStatus('active')
 
@@ -1091,6 +1137,7 @@ export default function GraphView() {
         } else {
           setSimStatus('sleeping')
           rafRef.current = null
+          if (fitPendingRef.current) { fitPendingRef.current = false; fitToViewRef.current() }
         }
       }
       rafRef.current = requestAnimationFrame(tick)
