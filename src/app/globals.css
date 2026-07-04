@@ -118,6 +118,13 @@ aside {
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* 대형 폰트 input(제목 등)은 자체 폰트/컬러로 focus 상태가 이미 명확하고,
+   전역 outline은 시각적으로 방해되므로 [data-no-focus-ring] 표시된 요소는 예외 처리.
+   Tailwind는 @layer utilities에 있어서 unlayered인 :focus-visible을 못 이기는 문제 회피. */
+[data-no-focus-ring]:focus-visible,
+[data-no-focus-ring]:focus {
+  outline: none !important;
+}
 
 /* ===== Selection ===== */
 ::selection {

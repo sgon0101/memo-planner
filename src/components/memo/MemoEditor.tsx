@@ -1191,7 +1191,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           )}
         </div>
 
-        {/* 제목 — type=text (search의 브라우저 기본 스타일 제거) + focus-visible outline 억제 */}
+        {/* 제목 — data-no-focus-ring: globals.css의 :focus-visible outline 예외 처리 (대형 폰트 input은 자체 컬러로 focus 이미 명확) */}
         <input
           type="text"
           value={title}
@@ -1204,7 +1204,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           data-lpignore="true"
           data-bitwarden-ignore="true"
           data-form-type="other"
-          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none focus:outline-none focus-visible:outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          data-no-focus-ring="true"
+          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 */}
