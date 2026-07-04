@@ -6,10 +6,10 @@ import { Plus, Folder, FolderOpen, MoreHorizontal, Pencil, Palette, Trash2, Chev
 import { cn } from '@/lib/utils'
 import { useFolders } from '@/hooks/useFolders'
 import { useFolderStore } from '@/store/folderStore'
-import { useMemoStore } from '@/store/memoStore'
 import { useDragStore } from '@/store/dragStore'
 import { createClient } from '@/lib/supabase/client'
-import { TRASH_ID } from '@/hooks/useMemos'
+import { TRASH_ID, memoKeys } from '@/hooks/useMemos'
+import type { Memo } from '@/types'
 import ColorWheelModal from './ColorWheelModal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
@@ -214,7 +214,6 @@ function FolderItem({
 export default function FolderPanel() {
   const { folders, createFolder, renameFolder, updateColor, removeFolder, reorderFolder, nestFolder } = useFolders()
   const { selectedFolderId, selectFolder } = useFolderStore()
-  const { updateMemo } = useMemoStore()
   const { draggingMemoId } = useDragStore()
 
   const { data: allFolderIds } = useQuery({
@@ -267,20 +266,23 @@ export default function FolderPanel() {
 
     if (folderId === '__starred__') {
       await supabase.from('memos').update({ is_starred: true }).eq('id', memoId)
-      updateMemo(memoId, { isStarred: true })
+      queryClient.setQueryData<Memo[]>(memoKeys.all(),
+        (old) => old?.map((m) => m.id === memoId ? { ...m, isStarred: true } : m))
       showToast('메모가 중요로 표시됐어요')
       return
     }
 
     const resolvedFolderId = folderId === '__all__' ? null : folderId
     await supabase.from('memos').update({ folder_id: resolvedFolderId }).eq('id', memoId)
-    updateMemo(memoId, { folderId: resolvedFolderId })
+    // React Query 단일 출처 — 목록 캐시 직접 패치 (드랍 즉시 목록에서 이동 반영)
+    queryClient.setQueryData<Memo[]>(memoKeys.all(),
+      (old) => old?.map((m) => m.id === memoId ? { ...m, folderId: resolvedFolderId } : m))
     const folderName = resolvedFolderId
       ? folders.find((f) => f.id === resolvedFolderId)?.name ?? '폴더'
       : '전체 메모'
     showToast(`메모가 ${folderName}으로 이동됐어요`)
     void queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-  }, [folders, updateMemo, queryClient])
+  }, [folders, queryClient])
 
   // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달
   useEffect(() => {

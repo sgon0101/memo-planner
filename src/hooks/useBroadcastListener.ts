@@ -3,7 +3,7 @@
  *
  * 마운트 위치: (main) 레이아웃 또는 providers 한 군데.
  *
- * 메모: React Query + Zustand 둘 다 갱신 (다른 페이지 대비)
+ * 메모: React Query 단일 출처 (memoStore 거울 제거 — 상태 이중화 정리)
  * 플랜: Zustand만 (usePlanner가 React Query를 안 씀)
  * 폴더: React Query + Zustand 둘 다
  */
@@ -13,7 +13,6 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { onBroadcast, type SyncEvent } from '@/lib/sync/broadcast'
-import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { useFolderStore } from '@/store/folderStore'
 import { removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
@@ -35,7 +34,6 @@ export function useBroadcastListener(): void {
           queryClient.setQueryData<Memo[]>(['memos', 'trash'], (old) =>
             old?.map((m) => (m.id === event.id ? { ...m, ...patchWithTime } : m)),
           )
-          useMemoStore.getState().updateMemo(event.id, patchWithTime)
           queryClient.invalidateQueries({ queryKey: ['home-memos'] })
           queryClient.invalidateQueries({ queryKey: ['home-stats'] })
           break
@@ -44,7 +42,6 @@ export function useBroadcastListener(): void {
           queryClient.setQueryData<Memo[]>(['memos', 'all', false], (old) =>
             old ? [event.memo, ...old.filter((m) => m.id !== event.memo.id)] : [event.memo],
           )
-          useMemoStore.getState().addMemo(event.memo)
           queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
           queryClient.invalidateQueries({ queryKey: ['home-memos'] })
           break
@@ -56,7 +53,6 @@ export function useBroadcastListener(): void {
           queryClient.setQueryData<Memo[]>(['memos', 'trash'], (old) =>
             old?.filter((m) => m.id !== event.id),
           )
-          useMemoStore.getState().deleteMemo(event.id)
           queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
           // PR-M2-fix: home-memos는 setQueryData(filter) + LS 직접 청소
           // (invalidate만 두면 다음 mount 시 server replication lag로 stale 받음)

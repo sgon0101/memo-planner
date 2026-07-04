@@ -14,8 +14,7 @@ import Modal from '@/components/ui/Modal'
 import { useFolderStore } from '@/store/folderStore'
 import { useFolders } from '@/hooks/useFolders'
 import { usePlanner } from '@/hooks/usePlanner'
-import { useMemoStore } from '@/store/memoStore'
-import { memoKeys, toMemo } from '@/hooks/useMemos'
+import { memoKeys, toMemo, useMemos } from '@/hooks/useMemos'
 import { cn } from '@/lib/utils'
 import TimePicker from '@/components/planner/TimePicker'
 import {
@@ -66,8 +65,7 @@ function QuickCaptureInner({
   useFolders()
   const folders = useFolderStore((s) => s.folders)
   const selectedFolderId = useFolderStore((s) => s.selectedFolderId)
-  const addMemoToStore = useMemoStore((s) => s.addMemo)
-  const { memos } = useMemoStore()
+  const { memos } = useMemos(undefined) // React Query 단일 출처 (연결 메모 검색용)
   const { createPlan } = usePlanner()
 
   const [saving, setSaving] = useState(false)
@@ -289,7 +287,6 @@ function QuickCaptureInner({
         }).select().single()
         if (insertErr) throw insertErr
         const memo = toMemo(row)
-        addMemoToStore(memo)
         queryClient.setQueryData<unknown[]>(memoKeys.all(), (old) => [memo, ...(old ?? [])])
         queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
         flashSuccess()
