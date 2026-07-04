@@ -123,6 +123,7 @@ export default function GraphView() {
   const dragStartRef = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
   const canvasDragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+  const hoveredNodeIdRef = useRef<string | null>(null)  // 호버 하이라이트 (데스크톱 전용, ref로 mousemove 리렌더 방지)
   const prevPhysicsRef = useRef({ centerTension: 3, repulsion: 4, linkDistance: 5 })
   const [size, setSize] = useState({ w: 800, h: 600 })
 
@@ -221,16 +222,21 @@ export default function GraphView() {
       }
     }
 
-    // 선택 연결 집합
+    // 포커스(호버 우선, 없으면 선택) 연결 집합 — 호버만으로도 이웃 하이라이트
+    const focusId = hoveredNodeIdRef.current ?? selectedNodeId
     const connectedSet = new Set<string>()
-    if (selectedNodeId) {
+    if (focusId) {
       for (const l of simLinks) {
         const s = (l.source as GraphNode).id
         const t = (l.target as GraphNode).id
-        if (s === selectedNodeId) connectedSet.add(t)
-        if (t === selectedNodeId) connectedSet.add(s)
+        if (s === focusId) connectedSet.add(t)
+        if (t === focusId) connectedSet.add(s)
       }
     }
+
+    // 검색 매칭 집합 — 비매칭 디밍 + 현재 매칭 링
+    const searchIds = searchMatches.length > 0 ? new Set(searchMatches.map((n) => n.id)) : null
+    const searchCurrentId = searchMatches.length > 0 ? searchMatches[searchMatchIdx]?.id ?? null : null
 
     // 링크
     for (const l of simLinks) {
@@ -238,9 +244,10 @@ export default function GraphView() {
       const tgt = l.target as GraphNode
       if (src.x == null || tgt.x == null) continue
       const sid = src.id, tid = tgt.id
-      const hi = selectedNodeId && (sid === selectedNodeId || tid === selectedNodeId || connectedSet.has(sid) || connectedSet.has(tid))
+      const hi = focusId && (sid === focusId || tid === focusId || connectedSet.has(sid) || connectedSet.has(tid))
       const tagLinkDim = tagMatchIds !== null && !(tagMatchIds.has(sid) && tagMatchIds.has(tid))
-      const op = tagLinkDim ? 0.03 : selectedNodeId ? (hi ? 0.9 : 0.06) : 0.5
+      const searchLinkDim = searchIds !== null && !(searchIds.has(sid) || searchIds.has(tid))
+      const op = tagLinkDim ? 0.03 : searchLinkDim ? 0.06 : focusId ? (hi ? 0.9 : 0.06) : 0.5
       ctx.lineWidth = lw
 
       if (l.type === 'wiki') {
@@ -278,8 +285,10 @@ export default function GraphView() {
       if (n.x == null) continue
       const r = nodeRadius(n, base, isMobile)
       const isSelected = n.id === selectedNodeId
+      const isFocused = focusId !== null && (n.id === focusId || connectedSet.has(n.id))
       const tagNodeDim = tagMatchIds !== null && !tagMatchIds.has(n.id)
-      const opac = tagNodeDim ? 0.1 : selectedNodeId ? (isSelected || connectedSet.has(n.id) ? 1 : 0.18) : 1
+      const searchNodeDim = searchIds !== null && !searchIds.has(n.id)
+      const opac = tagNodeDim ? 0.1 : searchNodeDim ? 0.15 : focusId ? (isFocused ? 1 : 0.18) : 1
       ctx.globalAlpha = opac
 
       ctx.beginPath(); ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2)
@@ -294,6 +303,15 @@ export default function GraphView() {
       if (isSelected) {
         ctx.beginPath(); ctx.arc(n.x!, n.y!, r + 3, 0, Math.PI * 2)
         ctx.strokeStyle = 'rgba(124,58,237,0.85)'; ctx.lineWidth = 2; ctx.stroke()
+      } else if (n.id === hoveredNodeIdRef.current) {
+        // 호버 링 — 선택보다 옅게
+        ctx.beginPath(); ctx.arc(n.x!, n.y!, r + 3, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(124,58,237,0.45)'; ctx.lineWidth = 1.5; ctx.stroke()
+      }
+      if (n.id === searchCurrentId) {
+        // 현재 검색 매칭 링 (앰버)
+        ctx.beginPath(); ctx.arc(n.x!, n.y!, r + 5, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(239,159,39,0.9)'; ctx.lineWidth = 2; ctx.stroke()
       }
 
       // 줌 연동 라벨 렌더링
@@ -301,7 +319,10 @@ export default function GraphView() {
         const baseOp = labelOpacityRef.current
         const isHub = n.type === 'wiki' || n.type === 'tag'
         const hubOp = Math.max(0.4, baseOp)
-        const labelOp = (isHub ? hubOp : baseOp) * opac
+        let labelOp = (isHub ? hubOp : baseOp) * opac
+        // 호버/선택 포커스 노드와 이웃은 줌 아웃 상태여도 라벨 표시 (Obsidian 방식)
+        if (isFocused) labelOp = Math.max(labelOp, 0.95)
+        if (n.id === searchCurrentId) labelOp = Math.max(labelOp, 0.95)
         const showLabel = labelOp > 0.01
 
         if (showLabel) {
@@ -326,7 +347,7 @@ export default function GraphView() {
 
     ctx.globalAlpha = 1
     ctx.restore()
-  }, [settings, selectedNodeId])
+  }, [settings, selectedNodeId, searchMatches, searchMatchIdx])
 
   // drawRef 동기화 (RAF 콜백에서 항상 최신 draw 사용)
   drawRef.current = draw
@@ -849,6 +870,13 @@ export default function GraphView() {
       setTooltip(null)
       if (canvasRef.current) canvasRef.current.style.cursor = canvasDragRef.current ? 'grabbing' : 'default'
     }
+
+    // 호버 하이라이트 — 드래그/패닝 중에는 비활성 (터치는 mousemove 미발생 → 자동 제외)
+    const newHoverId = hn && !dragNodeRef.current && !canvasDragRef.current ? hn.id : null
+    if (hoveredNodeIdRef.current !== newHoverId) {
+      hoveredNodeIdRef.current = newHoverId
+      drawRef.current()
+    }
   }
 
   function onMouseUp(e: React.MouseEvent) {
@@ -1264,7 +1292,15 @@ export default function GraphView() {
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
+            onMouseLeave={(e) => {
+              // 캔버스 이탈: 호버/툴팁 정리 후 드래그 종료 위임
+              if (hoveredNodeIdRef.current !== null) {
+                hoveredNodeIdRef.current = null
+                drawRef.current()
+              }
+              setTooltip(null)
+              onMouseUp(e)
+            }}
             onWheel={onWheel}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
