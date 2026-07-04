@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { anthropic, MODEL } from '@/lib/ai/claude'
 import { retroReportPrompt } from '@/lib/ai/prompts'
 import { extractMemoTexts, extractTopTags } from '@/lib/ai/analyzer'
+import { checkRateLimit, rateLimitResponse } from '@/lib/security/rateLimit'
 import { format, subDays, subMonths, subQuarters, subYears } from 'date-fns'
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -55,6 +56,10 @@ export async function GET(req: NextRequest) {
     topTags,
     memoTexts,
   )
+
+  // 일일 호출 한도 — 캐시 히트는 위에서 이미 반환됐으므로 실제 AI 호출에만 카운트
+  const rate = await checkRateLimit(supabase, 'ai-report')
+  if (!rate.ok) return rateLimitResponse(rate.message)
 
   const message = await anthropic.messages.create({
     model: MODEL,

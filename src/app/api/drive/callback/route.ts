@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getDriveOAuthClient } from '@/lib/google/drive'
+import { verifyOAuthState } from '@/lib/security/oauthState'
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
-  const userId = searchParams.get('state')
+  // state 서명·만료 검증 — 실패 시 어떤 user_id도 신뢰하지 않음 (계정 탈취 차단)
+  const userId = verifyOAuthState(searchParams.get('state'))
 
   if (!code || !userId) {
     return NextResponse.redirect(`${BASE_URL}/settings?error=drive_auth_failed`)

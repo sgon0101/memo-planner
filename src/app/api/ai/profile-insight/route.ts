@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { anthropic, MODEL } from '@/lib/ai/claude'
+import { checkRateLimit } from '@/lib/security/rateLimit'
 
 const TRIGGER_KEYWORDS = ['관심', '목표', '고민', '힘들', '좋아', '싫어', '하고 싶', '되고 싶', '가치', '중요', '변화', '느껴', '생각']
 
@@ -14,6 +15,10 @@ export async function POST(req: NextRequest) {
 
   const hasTrigger = TRIGGER_KEYWORDS.some((k) => userMessage.includes(k))
   if (!hasTrigger) return NextResponse.json({ suggestion: null })
+
+  // 일일 호출 한도 — 백그라운드 제안 기능이므로 한도 초과 시 조용히 null 반환
+  const rate = await checkRateLimit(supabase, 'ai-profile-insight')
+  if (!rate.ok) return NextResponse.json({ suggestion: null })
 
   const res = await anthropic.messages.create({
     model: MODEL,
