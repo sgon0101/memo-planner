@@ -17,7 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
 export default function Header() {
   const pathname = usePathname()
   const router = useRouter()
-  const { darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useUIStore()
+  const { toggleDarkMode, setSidebarOpen, sidebarOpen } = useUIStore()
 
   const title = Object.entries(PAGE_TITLES).find(([key]) => pathname.startsWith(key))?.[1] ?? ''
 
@@ -64,7 +64,9 @@ export default function Header() {
           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer"
           aria-label="다크모드 전환"
         >
-          {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+          {/* #418 방지: darkMode 조건 렌더 대신 CSS로 전환 — SSR/클라 첫 렌더 트리 동일 */}
+          <Sun size={16} className="hidden dark:block" />
+          <Moon size={16} className="dark:hidden" />
         </button>
 
         <button

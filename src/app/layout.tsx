@@ -50,11 +50,21 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ko" className={`${notoSansKR.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    // suppressHydrationWarning: 아래 pre-paint 스크립트가 hydration 전에 html에
+    // dark 클래스를 넣으므로, html 요소의 속성 불일치 경고만 억제 (자식에는 미적용)
+    <html lang="ko" className={`${notoSansKR.variable} ${jetbrainsMono.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         {/* Supabase API 서버에 대한 TCP+TLS 연결을 HTML 파싱 시점부터 미리 시작 */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+        {/* 다크모드 FOUC 제거 — 첫 페인트 전에 persist(memo-planner-ui)를 읽어 dark 클래스 적용.
+            DarkModeProvider(effect)는 토글 반응용으로 유지 (idempotent) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var s=JSON.parse(localStorage.getItem('memo-planner-ui'));if(s&&s.state&&s.state.darkMode){document.documentElement.classList.add('dark')}}catch(e){}",
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
