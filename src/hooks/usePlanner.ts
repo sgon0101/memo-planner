@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { usePlannerStore } from '@/store/plannerStore'
@@ -10,6 +10,12 @@ import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
 import { writeOrQueue, createPlanOrQueue } from '@/lib/sync/withQueue'
 import { makeTempId } from '@/lib/sync/queueDB'
 import { broadcast } from '@/lib/sync/broadcast'
+import {
+  planKeys,
+  readPlansLocalCache, readPlansLocalCacheTs, writePlansLocalCache,
+  patchPlanInCaches, addPlanToCaches, removePlanFromCaches, findPlanInCaches,
+  setRecurringCompletionInCaches, deleteRecurringCompletionInCaches,
+} from '@/lib/planner/planCache'
 import type { Plan } from '@/types'
 
 export function toPlan(row: Record<string, unknown>): Plan {
@@ -39,22 +45,16 @@ export function toPlan(row: Record<string, unknown>): Plan {
   }
 }
 
-export function usePlanner() {
-  const {
-    plans,
-    currentMonth, currentWeek, selectedDate,
-    setPlans, addPlan, updatePlan, deletePlan,
-    setRecurringCompletions, setRecurringCompletion, deleteRecurringCompletion,
-  } = usePlannerStore()
-  const supabase = createClient()
-  const queryClient = useQueryClient()
+/**
+ * 현재 캘린더 뷰 상태(월/주/일)를 모두 커버하는 fetch 범위.
+ * 구 usePlanner.load()의 범위 계산과 동일 — 쿼리 키 재료로 사용.
+ */
+export function useCalRange(): { calStart: string; calEnd: string } {
+  const currentMonth = usePlannerStore((s) => s.currentMonth)
+  const currentWeek = usePlannerStore((s) => s.currentWeek)
+  const selectedDate = usePlannerStore((s) => s.selectedDate)
 
-  const invalidateHomeQueries = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['home-stats'] })
-    queryClient.invalidateQueries({ queryKey: ['home-dday'] })
-  }, [queryClient])
-
-  const load = useCallback(async () => {
+  return useMemo(() => {
     const monthStart = format(startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
     const monthEnd = format(endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 }), 'yyyy-MM-dd')
     const weekStart = format(currentWeek, 'yyyy-MM-dd')
@@ -63,38 +63,87 @@ export function usePlanner() {
 
     const calStart = [monthStart, weekStart, dayDate].sort()[0]
     const calEnd = [monthEnd, weekEnd, dayDate].sort().reverse()[0]
+    return { calStart, calEnd }
+  }, [currentMonth, currentWeek, selectedDate])
+}
 
-    const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
-      supabase.from('plans').select('*').not('date', 'is', null).gte('date', calStart).lte('date', calEnd),
-      supabase.from('plans').select('*').not('start_date', 'is', null).lte('start_date', calEnd).gte('end_date', calStart),
-      supabase.from('plans').select('*').or('repeat_type.not.is.null,rrule_str.not.is.null'),
-    ])
+/**
+ * 플랜 서버 상태 — React Query 단일 출처 (상태 이중화 정리 2단계).
+ * 구 plannerStore.plans[] 거울 + zustand persist를 대체한다.
+ * LS 캐시(lsPlansCache)를 initialData로 사용해 즉시 페인트.
+ */
+export function usePlansQuery(): { plans: Plan[]; isLoading: boolean } {
+  const supabase = createClient()
+  const { calStart, calEnd } = useCalRange()
 
-    const all = [...(single ?? []), ...(range ?? []), ...(recurring ?? [])]
-    const unique = all.filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
-    setPlans(unique.map(toPlan))
+  const { data, isLoading } = useQuery({
+    queryKey: planKeys.range(calStart, calEnd),
+    queryFn: async (): Promise<Plan[]> => {
+      const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
+        supabase.from('plans').select('*').not('date', 'is', null).gte('date', calStart).lte('date', calEnd),
+        supabase.from('plans').select('*').not('start_date', 'is', null).lte('start_date', calEnd).gte('end_date', calStart),
+        supabase.from('plans').select('*').or('repeat_type.not.is.null,rrule_str.not.is.null'),
+      ])
+      const all = [...(single ?? []), ...(range ?? []), ...(recurring ?? [])]
+      const unique = all.filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
+      return unique.map(toPlan)
+    },
+    initialData: readPlansLocalCache,
+    initialDataUpdatedAt: readPlansLocalCacheTs,
+  })
 
-    try {
-      const { data: completions } = await supabase
-        .from('recurring_plan_completions')
-        .select('original_plan_id, plan_date, is_completed')
-        .gte('plan_date', calStart)
-        .lte('plan_date', calEnd)
-      if (completions) {
+  useEffect(() => {
+    if (data) writePlansLocalCache(data)
+  }, [data])
+
+  return { plans: data ?? [], isLoading }
+}
+
+/** 반복 플랜 인스턴스 완료/스킵 맵 — `${originalPlanId}_${planDate}` → is_completed */
+export function useRecurringCompletionsQuery(): Record<string, boolean> {
+  const supabase = createClient()
+  const { calStart, calEnd } = useCalRange()
+
+  const { data } = useQuery({
+    queryKey: planKeys.completions(calStart, calEnd),
+    queryFn: async (): Promise<Record<string, boolean>> => {
+      try {
+        const { data: completions } = await supabase
+          .from('recurring_plan_completions')
+          .select('original_plan_id, plan_date, is_completed')
+          .gte('plan_date', calStart)
+          .lte('plan_date', calEnd)
         const map: Record<string, boolean> = {}
-        for (const c of completions) {
+        for (const c of completions ?? []) {
           map[`${c.original_plan_id}_${c.plan_date}`] = c.is_completed
         }
-        setRecurringCompletions(map)
+        return map
+      } catch {
+        return {} // table missing — ignore
       }
-    } catch { /* table missing — ignore */ }
-  }, [currentMonth, currentWeek, selectedDate])
+    },
+  })
 
-  useEffect(() => { load() }, [load])
+  return data ?? {}
+}
+
+export function usePlanner() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  const invalidateHomeQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['home-stats'] })
+    queryClient.invalidateQueries({ queryKey: ['home-dday'] })
+  }, [queryClient])
+
+  /** Google Calendar 동기화 등 외부 변경 후 전체 재조회 */
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['plans'] })
+  }, [queryClient])
 
   /**
    * PR-M1-B: 플랜 신규 작성 — online이면 즉시 server insert, offline이면 임시 ID + 큐.
-   * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapPlanId로 진짜 ID 교체.
+   * 임시 ID로 UI에 먼저 표시 → 큐 flush 시 SyncBootstrap이 swapPlanIdInCaches로 진짜 ID 교체.
    *
    * PR-M1-B 핫픽스: getUser→getSession (offline에서 토큰 refresh fail로 user_id=''가 큐에 들어가던 버그)
    */
@@ -130,7 +179,7 @@ export function usePlanner() {
     const result = await createPlanOrQueue(fields, tempId)
 
     if (result.queued) {
-      // offline — 임시 ID로 즉시 표시
+      // offline — 임시 ID로 즉시 표시 (RQ + LS 캐시에 삽입)
       const tempPlan: Plan = {
         id: tempId,
         userId,
@@ -155,17 +204,17 @@ export function usePlanner() {
         createdAt: nowIso,
         updatedAt: nowIso,
       }
-      addPlan(tempPlan)
+      addPlanToCaches(queryClient, tempPlan)
       // broadcast/home invalidate는 flush 후
       return tempPlan
     }
 
     const plan = toPlan(result.row!)
-    addPlan(plan)
+    addPlanToCaches(queryClient, plan)
     invalidateHomeQueries()
     broadcast({ type: 'plan-create', plan })
     return plan
-  }, [invalidateHomeQueries])
+  }, [invalidateHomeQueries, queryClient])
 
   /** Silent + auto-force update — last-write-wins, broadcast 자동 */
   const editPlan = useCallback(async (id: string, data: Partial<Plan>) => {
@@ -189,7 +238,7 @@ export function usePlanner() {
     }
     if (data.linkedMemoIds !== undefined) dbPatch.linked_memo_ids = data.linkedMemoIds
 
-    const original = usePlannerStore.getState().plans.find((p) => p.id === id)
+    const original = findPlanInCaches(queryClient, id)
     const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
 
     // PR-M1-A: online이면 직접, offline이면 큐
@@ -198,25 +247,25 @@ export function usePlanner() {
     })
     if (result.queued) {
       const tempUpdatedAt = new Date().toISOString()
-      updatePlan(id, { ...data, updatedAt: tempUpdatedAt })
+      patchPlanInCaches(queryClient, id, { ...data, updatedAt: tempUpdatedAt })
     } else {
       const updated_at = result.updated_at!
       const patchWithTime: Partial<Plan> = { ...data, updatedAt: updated_at }
-      updatePlan(id, patchWithTime)
+      patchPlanInCaches(queryClient, id, patchWithTime)
       invalidateHomeQueries()
       broadcast({ type: 'plan-update', id, patch: patchWithTime, updated_at })
     }
-  }, [invalidateHomeQueries])
+  }, [invalidateHomeQueries, queryClient])
 
   const removePlan = useCallback(async (id: string) => {
     await supabase.from('plans').delete().eq('id', id)
-    deletePlan(id)
+    removePlanFromCaches(queryClient, id)
     invalidateHomeQueries()
     broadcast({ type: 'plan-delete', id })
-  }, [invalidateHomeQueries])
+  }, [invalidateHomeQueries, queryClient])
 
   const toggleComplete = useCallback(async (id: string, current: boolean) => {
-    const original = usePlannerStore.getState().plans.find((p) => p.id === id)
+    const original = findPlanInCaches(queryClient, id)
     const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()
 
     // PR-M1-A
@@ -225,15 +274,15 @@ export function usePlanner() {
     })
     if (result.queued) {
       const tempUpdatedAt = new Date().toISOString()
-      updatePlan(id, { isCompleted: !current, updatedAt: tempUpdatedAt })
+      patchPlanInCaches(queryClient, id, { isCompleted: !current, updatedAt: tempUpdatedAt })
     } else {
       const updated_at = result.updated_at!
       const patch: Partial<Plan> = { isCompleted: !current, updatedAt: updated_at }
-      updatePlan(id, patch)
+      patchPlanInCaches(queryClient, id, patch)
       invalidateHomeQueries()
       broadcast({ type: 'plan-update', id, patch, updated_at })
     }
-  }, [invalidateHomeQueries])
+  }, [invalidateHomeQueries, queryClient])
 
   const toggleRecurringComplete = useCallback(async (
     originalPlanId: string,
@@ -249,7 +298,7 @@ export function usePlanner() {
           .delete()
           .eq('original_plan_id', originalPlanId)
           .eq('plan_date', planDate)
-        deleteRecurringCompletion(key)
+        deleteRecurringCompletionInCaches(queryClient, key)
       } else {
         await supabase.from('recurring_plan_completions').upsert({
           user_id: user.id,
@@ -257,15 +306,15 @@ export function usePlanner() {
           plan_date: planDate,
           is_completed: true,
         }, { onConflict: 'original_plan_id,plan_date' })
-        setRecurringCompletion(key, true)
+        setRecurringCompletionInCaches(queryClient, key, true)
       }
     } catch {
-      if (currentlyCompleted) deleteRecurringCompletion(key)
-      else setRecurringCompletion(key, true)
+      if (currentlyCompleted) deleteRecurringCompletionInCaches(queryClient, key)
+      else setRecurringCompletionInCaches(queryClient, key, true)
     }
     invalidateHomeQueries()
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
-  }, [invalidateHomeQueries])
+  }, [invalidateHomeQueries, queryClient])
 
   const skipRecurringInstance = useCallback(async (
     originalPlanId: string,
@@ -282,9 +331,9 @@ export function usePlanner() {
         is_completed: false,
       }, { onConflict: 'original_plan_id,plan_date' })
     } catch { /* table missing — ignore */ }
-    setRecurringCompletion(key, false)
+    setRecurringCompletionInCaches(queryClient, key, false)
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
-  }, [])
+  }, [queryClient])
 
   const stopRecurringFromDate = useCallback(async (
     originalPlanId: string,
@@ -294,7 +343,7 @@ export function usePlanner() {
     prevDay.setDate(prevDay.getDate() - 1)
     const endDate = prevDay.toISOString().split('T')[0]
 
-    const original = plans.find((p) => p.id === originalPlanId)
+    const original = findPlanInCaches(queryClient, originalPlanId)
 
     const patch: Record<string, unknown> = { repeat_end_date: endDate }
     let newRrule: string | null = original?.rruleStr ?? null
@@ -314,7 +363,7 @@ export function usePlanner() {
       updatedAt: updated_at,
       ...(original?.rruleStr ? { rruleStr: newRrule } : {}),
     }
-    updatePlan(originalPlanId, localPatch)
+    patchPlanInCaches(queryClient, originalPlanId, localPatch)
     broadcast({ type: 'plan-update', id: originalPlanId, patch: localPatch, updated_at })
 
     try {
@@ -323,12 +372,12 @@ export function usePlanner() {
         .eq('original_plan_id', originalPlanId)
         .gte('plan_date', planDate)
     } catch { /* table missing — ignore */ }
-    deleteRecurringCompletion(`${originalPlanId}_${planDate}`)
+    deleteRecurringCompletionInCaches(queryClient, `${originalPlanId}_${planDate}`)
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
-  }, [plans])
+  }, [queryClient])
 
   return {
-    load,
+    refresh,
     createPlan,
     editPlan,
     removePlan,

@@ -3,8 +3,8 @@
  *
  * 마운트 위치: (main) 레이아웃 또는 providers 한 군데.
  *
- * 메모: React Query 단일 출처 (memoStore 거울 제거 — 상태 이중화 정리)
- * 플랜: Zustand만 (usePlanner가 React Query를 안 씀)
+ * 메모: React Query 단일 출처 (memoStore 거울 제거 — 상태 이중화 정리 1단계)
+ * 플랜: React Query 단일 출처 (plannerStore 거울 제거 — 상태 이중화 정리 2단계)
  * 폴더: React Query + Zustand 둘 다
  */
 
@@ -13,8 +13,8 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { onBroadcast, type SyncEvent } from '@/lib/sync/broadcast'
-import { usePlannerStore } from '@/store/plannerStore'
 import { useFolderStore } from '@/store/folderStore'
+import { patchPlanInCaches, addPlanToCaches, removePlanFromCaches } from '@/lib/planner/planCache'
 import { removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo } from '@/types'
@@ -78,9 +78,9 @@ export function useBroadcastListener(): void {
           break
         }
 
-        // ─── Plans (Zustand만 사용) ────────────────────────────────────
+        // ─── Plans (React Query 단일 출처) ─────────────────────────────
         case 'plan-update': {
-          usePlannerStore.getState().updatePlan(event.id, {
+          patchPlanInCaches(queryClient, event.id, {
             ...event.patch,
             updatedAt: event.updated_at,
           })
@@ -89,13 +89,13 @@ export function useBroadcastListener(): void {
           break
         }
         case 'plan-create': {
-          usePlannerStore.getState().addPlan(event.plan)
+          addPlanToCaches(queryClient, event.plan)
           queryClient.invalidateQueries({ queryKey: ['home-stats'] })
           queryClient.invalidateQueries({ queryKey: ['home-dday'] })
           break
         }
         case 'plan-delete': {
-          usePlannerStore.getState().deletePlan(event.id)
+          removePlanFromCaches(queryClient, event.id)
           queryClient.invalidateQueries({ queryKey: ['home-stats'] })
           queryClient.invalidateQueries({ queryKey: ['home-dday'] })
           break

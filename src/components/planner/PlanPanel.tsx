@@ -5,8 +5,8 @@ import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
+import { useExpandedPlans } from '@/hooks/useExpandedPlans'
 import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
@@ -22,7 +22,7 @@ interface PlanPanelProps {
 }
 
 export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
-  const { expandedPlans } = usePlannerStore()
+  const { expandedPlans } = useExpandedPlans()
   const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [detailPlan, setDetailPlan] = useState<Plan | null>(null)
   const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null)
