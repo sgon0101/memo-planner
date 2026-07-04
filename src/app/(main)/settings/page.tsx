@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { useUIStore } from '@/store/uiStore'
+import { useUIStore, useDarkModeValue } from '@/store/uiStore'
 import {
   User, Moon, Sun, CalendarDays, LogOut, Trash2,
   CheckCircle, AlertCircle, Loader2, ExternalLink,
@@ -28,7 +28,8 @@ export default function SettingsPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const { darkMode, toggleDarkMode } = useUIStore()
+  const { toggleDarkMode } = useUIStore()
+  const darkMode = useDarkModeValue() // hydration-safe (#418 방지)
   const [realtimeOn, setRealtimeOn] = useState<boolean>(true)
   const [embedStatus, setEmbedStatus] = useState<{ total: number; embedded: number; missing: number; percent: number } | null>(null)
   const [embedLoading, setEmbedLoading] = useState(false)
