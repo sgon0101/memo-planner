@@ -1191,20 +1191,20 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           )}
         </div>
 
-        {/* 제목 */}
+        {/* 제목 — type=text (search의 브라우저 기본 스타일 제거) + focus-visible outline 억제 */}
         <input
-          type="search"
+          type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="제목 없음"
-          autoComplete="new-password"
+          autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
           data-1p-ignore="true"
           data-lpignore="true"
           data-bitwarden-ignore="true"
           data-form-type="other"
-          className="w-full [&::-webkit-search-cancel-button]:hidden px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none focus:outline-none focus-visible:outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 */}
