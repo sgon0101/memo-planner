@@ -124,7 +124,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const fromGraph = searchParams.get('from') === 'graph'
   const supabase = createClient()
   const queryClient = useQueryClient()
-  const { setCurrentMemo, updateMemo, addMemo, deleteMemo } = useMemoStore()
+  // 서버 상태는 React Query 단일 출처 — memoStore는 lastImageSwap 신호만 구독
   const lastImageSwap = useMemoStore((s) => s.lastImageSwap)
   const { folders } = useFolders()
   useMemos(undefined) // 전체 메모 캐시 사전 로드 → MemoSidePanel 즉각 표시
@@ -222,8 +222,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           ? firstImageUrl
           : null
         // PR-M1-B: 오프라인 또는 tempId면 큐로 fall through (overwrite — 같은 memoId는 최신만 보관)
-        const storeMemo = useMemoStore.getState().memos.find((m) => m.id === id)
-        const knownUpdatedAt = storeMemo?.updatedAt ?? updatedAt
+        const cachedMemo = queryClient.getQueryData<Memo[]>(memoKeys.all())?.find((m) => m.id === id)
+        const knownUpdatedAt = cachedMemo?.updatedAt ?? updatedAt
         await updateMemoBodyOrQueue({
           recordId: id,
           fields: {
@@ -239,7 +239,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
 
         // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
         const patch = { title: titleRef.current, contentText: text, updatedAt, thumbnailUrl, tags, wikiLinks }
-        updateMemo(id, patch)
         queryClient.setQueryData<Memo[]>(
           memoKeys.all(),
           (old) => old?.map((m) => m.id === id ? { ...m, ...patch } : m)
@@ -350,9 +349,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
             body: JSON.stringify({ memoId: newMemo.id }),
           }).catch(() => { /* 임베딩 실패는 silent */ })
         }
-        setCurrentMemo(newMemo)
-        addMemo(newMemo)
-
         // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
         const newMemoForCache = { ...newMemo, content: {} as Record<string, unknown> }
         queryClient.setQueryData<Memo[]>(
@@ -417,7 +413,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       console.error('저장 실패:', e)
       setSaveStatus('unsaved')
     }
-  }, [supabase, queryClient, updateMemo, setCurrentMemo, addMemo, router])
+  }, [supabase, queryClient, router])
 
   const saveRef = useRef(save)
   // eslint-disable-next-line react-hooks/refs
@@ -786,7 +782,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     const id = createdIdRef.current
     if (id) {
       await supabase.from('memos').update({ is_starred: newVal }).eq('id', id)
-      updateMemo(id, { isStarred: newVal })
+      queryClient.setQueryData<Memo[]>(memoKeys.all(),
+        (old) => old?.map((m) => m.id === id ? { ...m, isStarred: newVal } : m))
     }
   }
 
@@ -796,7 +793,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     const id = createdIdRef.current
     if (id) {
       await supabase.from('memos').update({ is_pinned: newVal }).eq('id', id)
-      updateMemo(id, { isPinned: newVal })
+      queryClient.setQueryData<Memo[]>(memoKeys.all(),
+        (old) => old?.map((m) => m.id === id ? { ...m, isPinned: newVal } : m))
     }
   }
 
@@ -806,7 +804,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     const id = createdIdRef.current
     if (id) {
       await supabase.from('memos').update({ folder_id: newFolderId }).eq('id', id)
-      updateMemo(id, { folderId: newFolderId })
+      queryClient.setQueryData<Memo[]>(memoKeys.all(),
+        (old) => old?.map((m) => m.id === id ? { ...m, folderId: newFolderId } : m))
+      queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
     }
   }
 
@@ -876,7 +876,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           } catch { /* ignore */ }
         }
 
-        deleteMemo(id)
         router.push('/memo')
       },
     })

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Target, Bell, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
-import { useMemoStore } from '@/store/memoStore'
+import { useMemos } from '@/hooks/useMemos'
 import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import TimePicker from './TimePicker'
@@ -47,7 +47,7 @@ interface PlanFormModalProps {
 
 export default function PlanFormModal({ date, plan, initialStartTime, initialEndTime, onClose, onSaved }: PlanFormModalProps) {
   const { createPlan, editPlan } = usePlanner()
-  const { memos } = useMemoStore()
+  const { memos } = useMemos(undefined) // React Query 단일 출처 (연결 메모 목록)
   const supabase = createClient()
 
   const [title, setTitle]             = useState(plan?.title ?? '')

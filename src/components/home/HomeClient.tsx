@@ -7,7 +7,9 @@ import { formatDistanceToNow, format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { useMemoStore } from '@/store/memoStore'
+import { useQueryClient } from '@tanstack/react-query'
+import { memoKeys } from '@/hooks/useMemos'
+import type { Memo } from '@/types'
 
 interface RecentMemo {
   id: string
@@ -79,7 +81,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
   }
 
   const router = useRouter()
-  const { addMemo } = useMemoStore()
+  const queryClient = useQueryClient()
   const [quickTitle, setQuickTitle] = useState('')
   const [creating, setCreating] = useState(false)
   const supabase = createClient()
@@ -100,12 +102,13 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
         })
         .select().single()
       if (error) throw error
-      addMemo({
+      // React Query 단일 출처 — 목록 캐시에 즉시 prepend (content는 목록 캐시 규약대로 제외)
+      const newMemo: Memo = {
         id: data.id,
         userId: data.user_id,
         folderId: null,
         title: data.title,
-        content: data.content,
+        content: {} as Record<string, unknown>,
         contentText: data.content_text ?? '',
         isPinned: false,
         isStarred: false,
@@ -119,7 +122,8 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
         thumbnailUrl: null,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
-      })
+      }
+      queryClient.setQueryData<Memo[]>(memoKeys.all(), (old) => old ? [newMemo, ...old] : [newMemo])
       router.push(`/memo/${data.id}`)
     } catch {
       // fallback

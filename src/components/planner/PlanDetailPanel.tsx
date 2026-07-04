@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { useMemoStore } from '@/store/memoStore'
+import { useMemos } from '@/hooks/useMemos'
 import { usePlannerStore } from '@/store/plannerStore'
 import { usePlanner } from '@/hooks/usePlanner'
 import { describeRRule } from '@/lib/planner/rrulePresets'
@@ -29,7 +29,7 @@ const REPEAT_LABEL: Record<string, string> = {
 
 export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: PlanDetailPanelProps) {
   const router = useRouter()
-  const { memos } = useMemoStore()
+  const { memos } = useMemos(undefined) // React Query 단일 출처 (연결 메모 표시)
   const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [showDeleteMenu, setShowDeleteMenu] = useState(false)
   const [tplSaveState, setTplSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')

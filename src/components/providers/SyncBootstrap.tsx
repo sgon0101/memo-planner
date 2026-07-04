@@ -18,7 +18,6 @@ import { useBroadcastListener } from '@/hooks/useBroadcastListener'
 import { useRealtimeSync } from '@/hooks/useRealtimeSync'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { flushQueue, type FlushResult } from '@/lib/sync/withQueue'
-import { useMemoStore } from '@/store/memoStore'
 import { usePlannerStore } from '@/store/plannerStore'
 import { broadcast } from '@/lib/sync/broadcast'
 import { applyIdSwapToLocalStorage, removeTempIdsFromCaches, applyImageSwapToCaches } from '@/lib/sync/cacheCleanup'
@@ -29,8 +28,7 @@ const RETRY_INTERVAL_MS = 30_000  // 30초마다 큐 잔여 retry
 
 /**
  * PR-M1-B: flush 후 임시 ID → 진짜 ID 교체.
- * - zustand store (memos / plans)에서 swap
- * - React Query 캐시(memos all)도 swap
+ * - 메모: React Query 캐시(단일 출처) swap / 플랜: zustand swap
  * - broadcast로 다른 탭에 invalidate 신호 (실서버 데이터는 새로 fetch가 정확)
  */
 function applyIdMappings(
@@ -38,12 +36,10 @@ function applyIdMappings(
   queryClient: ReturnType<typeof useQueryClient>,
 ) {
   if (mappings.length === 0) return
-  const memoSwap = useMemoStore.getState().swapId
   const planSwap = usePlannerStore.getState().swapPlanId
   for (const { tempId, realId } of mappings) {
     if (tempId.startsWith('tmp_memo_')) {
-      memoSwap(tempId, realId)
-      // React Query 캐시 — memos all list
+      // React Query 캐시 — memos all list (단일 출처)
       queryClient.setQueryData<Memo[]>(['memos', 'all', false], (old) =>
         old ? old.map((m) => (m.id === tempId ? { ...m, id: realId } : m)) : old,
       )
