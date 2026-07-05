@@ -6,6 +6,7 @@ import * as d3 from 'd3'
 import { Search, Settings, RefreshCw, Network, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { toast } from '@/components/ui/Toast'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useGraphData } from '@/hooks/useGraphData'
 import { GRAPH_COLORS, nodeColor } from '@/lib/graph/colors'
@@ -129,6 +130,22 @@ export default function GraphView() {
 
   const { nodes, links, settings, selectedNodeId, setSelectedNode, setHighlightNode, resetSettings } = useGraphStore()
   const { reload } = useGraphData()
+
+  // 수동 새로고침 — 메모 재조회 + 유사도 캐시 무효화(useGraphData.reload).
+  // 스피너/토스트 피드백: "눌러도 아무 일 없어 보이던" 버튼 불신 해소.
+  const [refreshing, setRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await reload()
+      toast.success('그래프를 최신 데이터로 갱신했어요. 유사도 연결은 분석되는 대로 반영돼요.')
+    } catch {
+      toast.error('그래프 갱신에 실패했어요. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshing, reload])
   const settingsRef = useRef(settings)
   settingsRef.current = settings  // 항상 최신값 유지
 
@@ -169,16 +186,12 @@ export default function GraphView() {
   useEffect(() => {
     try { sessionStorage.setItem('weave:graph-search-idx', String(searchMatchIdx)) } catch {}
   }, [searchMatchIdx])
-  // 뒤로가기 복귀 시 검색 카운트/하이라이트 복원 —
-  // search는 sessionStorage로 복원되지만 searchMatches는 리마운트로 초기화되고,
-  // 재계산 경로가 handleSearch(입력 이벤트)뿐이라 카운트가 "없음"으로 표시되던 버그.
-  // 노드가 로드되면 복원된 검색어로 매치를 1회 재계산한다 (카운트·하이라이트 복귀).
-  // 카메라는 이동하지 않음(animateTo 호출 X — 사용자가 보던 위치 유지). 이후 라이브 검색은 handleSearch가 담당.
-  const searchRestoredRef = useRef(false)
+  // 검색 매치 재계산 — ①뒤로가기 복귀(카운트 "없음" 버그) ②수동 새로고침 등
+  // nodes가 갱신되는 모든 경우에 검색 상태를 새 데이터 기준으로 동기화한다.
+  // (기존 1회 가드(searchRestoredRef)는 새로고침 후 stale 카운트를 남겨 제거)
+  // 카메라는 이동하지 않음(animateTo 호출 X — 사용자가 보던 위치 유지). 라이브 타이핑은 handleSearch가 담당(멱등 중복 무해).
   useEffect(() => {
-    if (searchRestoredRef.current) return
     if (nodes.length === 0) return
-    searchRestoredRef.current = true
     const q = search.trim()
     if (!q) return
     const lq = q.toLowerCase()
@@ -186,9 +199,9 @@ export default function GraphView() {
       n.type === 'memo' &&
       (n.label.toLowerCase().includes(lq) || (n.contentText ?? '').toLowerCase().includes(lq))
     )
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 데이터(nodes) 갱신 시 파생 상태 동기화 (의도 패턴)
     setSearchMatches(matches)
     setSearchMatchIdx((idx) => (matches.length > 0 ? Math.min(idx, matches.length - 1) : 0))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, search])
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; type: 'memo' | 'wiki' | 'tag'; linkCount: number } | null>(null)
   const [selectedTagPanel, setSelectedTagPanel] = useState<{
@@ -1276,8 +1289,14 @@ export default function GraphView() {
           )}
         </div>
 
-        <button onClick={() => reload()} title="새로고침" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-          <RefreshCw size={14} />
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          title="새로고침 (최신 메모 + 유사도 재분석)"
+          aria-label="그래프 새로고침"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-wait"
+        >
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : undefined} />
         </button>
 
         <button
