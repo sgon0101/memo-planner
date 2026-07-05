@@ -130,6 +130,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   useMemos(undefined) // 전체 메모 캐시 사전 로드 → MemoSidePanel 즉각 표시
 
   const [title, setTitle] = useState(initialTitle)
+  // Chrome Mobile autofill heuristic 회피 — 초기 readOnly, focus 시 해제
+  const [titleReadOnly, setTitleReadOnly] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const triggerAutoEmbed = useAutoEmbed()
   const [createdId, setCreatedId] = useState<string | null>(isNew ? null : memoId)
@@ -1190,19 +1192,26 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           )}
         </div>
 
-        {/* 제목 — data-no-focus-ring: globals.css의 :focus-visible outline 예외 처리 (대형 폰트 input은 자체 컬러로 focus 이미 명확) */}
+        {/* 제목 — Chrome Mobile autofill(카드/주소/비번) 팝업 억제:
+             1) autoComplete="new-password" — 크롬이 '새 password 생성 필드'로 인식 → payment/address 팝업 X
+             2) data-autofill-preset="1" — AutofillBlocker가 'off'로 덮어쓰지 않도록
+             3) readOnly 토글 — 초기 render 시 크롬 heuristic 스캔 회피 (focus 시 해제)
+             + data-no-focus-ring — globals.css :focus-visible outline 예외 처리 */}
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onFocus={() => setTitleReadOnly(false)}
           placeholder="제목 없음"
-          autoComplete="off"
+          readOnly={titleReadOnly}
+          autoComplete="new-password"
           autoCorrect="off"
           spellCheck={false}
           data-1p-ignore="true"
           data-lpignore="true"
           data-bitwarden-ignore="true"
           data-form-type="other"
+          data-autofill-preset="1"
           data-no-focus-ring="true"
           className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />

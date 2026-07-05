@@ -31,6 +31,12 @@ export default function AutofillBlocker() {
       }
       // 이미 처리됐으면 skip
       if (el.dataset.autofillBlocked === '1') return
+      // 개별 컴포넌트가 명시적 autocomplete을 preset 했으면 존중 (Chrome mobile은 'off'를 무시하므로
+      // 제목처럼 특수 케이스는 'new-password' 등 존중되는 값을 명시할 수 있어야 함)
+      if (el.dataset.autofillPreset === '1') {
+        el.dataset.autofillBlocked = '1'
+        return
+      }
       el.dataset.autofillBlocked = '1'
 
       // React가 setAttribute로 다시 덮어쓸 수 있으니 양쪽으로 set
