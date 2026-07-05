@@ -585,3 +585,19 @@ mark, .tiptap mark {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* ── autofill 회피용 type="search" 전환 input — 웹킷 검색 장식 전역 제거 ──
+   AutofillBlocker가 text/무타입 input을 search로 일괄 전환하므로
+   (모바일 키보드 autofill 바 억제), 취소(×) 버튼 등 search 고유 UI를 숨겨
+   일반 텍스트 입력과 동일하게 보이도록 한다. */
+input[type='search']::-webkit-search-cancel-button,
+input[type='search']::-webkit-search-decoration,
+input[type='search']::-webkit-search-results-button,
+input[type='search']::-webkit-search-results-decoration {
+  display: none;
+  -webkit-appearance: none;
+}
+input[type='search'] {
+  -webkit-appearance: textfield;
+  appearance: textfield;
+}

@@ -39,6 +39,15 @@ export default function AutofillBlocker() {
       }
       el.dataset.autofillBlocked = '1'
 
+      // 핵심 방어: text/무타입 단일행 input은 type="search"로 전환.
+      // 검색 필드는 브라우저·모바일 키보드(삼성 Pass 포함)의 autofill 비대상이라
+      // autocomplete="off"가 무시되는 환경에서도 비번/카드/주소 바가 뜨지 않는다.
+      // (앱 주요 입력들이 이미 쓰는 패턴 — 웹킷 search 장식은 globals.css에서 전역 제거)
+      // email/url/tel 등은 키보드 레이아웃·정당한 autofill 용도가 있으므로 제외.
+      if (el instanceof HTMLInputElement && (el.type === 'text' || !el.getAttribute('type'))) {
+        el.setAttribute('type', 'search')
+      }
+
       // React가 setAttribute로 다시 덮어쓸 수 있으니 양쪽으로 set
       el.setAttribute('autocomplete', 'off')
       el.setAttribute('autocorrect', 'off')
