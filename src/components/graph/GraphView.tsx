@@ -156,7 +156,19 @@ export default function GraphView() {
     try { sessionStorage.setItem('weave:graph-search', search) } catch {}
   }, [search])
   const [searchMatches, setSearchMatches] = useState<GraphNode[]>([])
-  const [searchMatchIdx, setSearchMatchIdx] = useState(0)
+  // 매치 인덱스도 sessionStorage 복원 — 검색어만 복원하고 idx는 0으로 리셋되어
+  // 복귀 시 3/11이 1/11로 원복되던 버그. 아래 복원 effect의 클램프가 범위를 보장한다.
+  const [searchMatchIdx, setSearchMatchIdx] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0
+    try {
+      const raw = sessionStorage.getItem('weave:graph-search-idx')
+      const n = raw ? parseInt(raw, 10) : 0
+      return Number.isFinite(n) && n > 0 ? n : 0
+    } catch { return 0 }
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem('weave:graph-search-idx', String(searchMatchIdx)) } catch {}
+  }, [searchMatchIdx])
   // 뒤로가기 복귀 시 검색 카운트/하이라이트 복원 —
   // search는 sessionStorage로 복원되지만 searchMatches는 리마운트로 초기화되고,
   // 재계산 경로가 handleSearch(입력 이벤트)뿐이라 카운트가 "없음"으로 표시되던 버그.
