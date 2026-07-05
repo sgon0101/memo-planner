@@ -1192,19 +1192,22 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           )}
         </div>
 
-        {/* 제목 — Chrome Mobile autofill(카드/주소/비번) 팝업 억제:
-             1) autoComplete="new-password" — 크롬이 '새 password 생성 필드'로 인식 → payment/address 팝업 X
-             2) data-autofill-preset="1" — AutofillBlocker가 'off'로 덮어쓰지 않도록
+        {/* 제목 — 모바일 autofill(비번/카드/주소 바) 억제:
+             1) type="search" — 검색 필드는 브라우저·키보드(삼성 Pass 포함) autofill 비대상.
+                앱 내 다른 입력들과 동일 패턴 (QuickCapture/PlanForm/FolderPanel/HomeClient).
+                ※ autoComplete="new-password"는 크롬 팝업은 막지만 삼성 키보드에
+                   password 힌트를 전달해 키/카드/위치 바를 오히려 소환 (재발 원인)
+             2) data-autofill-preset="1" — AutofillBlocker가 속성을 덮어쓰지 않도록
              3) readOnly 토글 — 초기 render 시 크롬 heuristic 스캔 회피 (focus 시 해제)
              + data-no-focus-ring — globals.css :focus-visible outline 예외 처리 */}
         <input
-          type="text"
+          type="search"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onFocus={() => setTitleReadOnly(false)}
           placeholder="제목 없음"
           readOnly={titleReadOnly}
-          autoComplete="new-password"
+          autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
           data-1p-ignore="true"
