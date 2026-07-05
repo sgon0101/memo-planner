@@ -133,10 +133,20 @@ export default function GraphView() {
   settingsRef.current = settings  // 항상 최신값 유지
 
   const [simStatus, setSimStatus] = useState<'sleeping' | 'active'>('sleeping')
+  // 그래프 설정 패널 열림/닫힘 — localStorage에 사용자 선택 저장 (PC/모바일 모두).
+  // 최초 방문 시: PC(≥768px)는 열림 기본, 모바일은 닫힘 기본
   const [showSettings, setShowSettings] = useState(() => {
     if (typeof window === 'undefined') return true
+    try {
+      const saved = localStorage.getItem('weave:graph-settings-open')
+      if (saved === 'true') return true
+      if (saved === 'false') return false
+    } catch { /* localStorage 접근 실패 무시 */ }
     return window.matchMedia('(min-width: 768px)').matches
   })
+  useEffect(() => {
+    try { localStorage.setItem('weave:graph-settings-open', String(showSettings)) } catch { /* ignore */ }
+  }, [showSettings])
   // 뒤로가기 후 그래프 검색어 복원 — sessionStorage 유지
   const [search, setSearch] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
@@ -147,6 +157,27 @@ export default function GraphView() {
   }, [search])
   const [searchMatches, setSearchMatches] = useState<GraphNode[]>([])
   const [searchMatchIdx, setSearchMatchIdx] = useState(0)
+  // 뒤로가기 복귀 시 검색 카운트/하이라이트 복원 —
+  // search는 sessionStorage로 복원되지만 searchMatches는 리마운트로 초기화되고,
+  // 재계산 경로가 handleSearch(입력 이벤트)뿐이라 카운트가 "없음"으로 표시되던 버그.
+  // 노드가 로드되면 복원된 검색어로 매치를 1회 재계산한다 (카운트·하이라이트 복귀).
+  // 카메라는 이동하지 않음(animateTo 호출 X — 사용자가 보던 위치 유지). 이후 라이브 검색은 handleSearch가 담당.
+  const searchRestoredRef = useRef(false)
+  useEffect(() => {
+    if (searchRestoredRef.current) return
+    if (nodes.length === 0) return
+    searchRestoredRef.current = true
+    const q = search.trim()
+    if (!q) return
+    const lq = q.toLowerCase()
+    const matches = nodes.filter((n) =>
+      n.type === 'memo' &&
+      (n.label.toLowerCase().includes(lq) || (n.contentText ?? '').toLowerCase().includes(lq))
+    )
+    setSearchMatches(matches)
+    setSearchMatchIdx((idx) => (matches.length > 0 ? Math.min(idx, matches.length - 1) : 0))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, search])
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; type: 'memo' | 'wiki' | 'tag'; linkCount: number } | null>(null)
   const [selectedTagPanel, setSelectedTagPanel] = useState<{
     tag: string
