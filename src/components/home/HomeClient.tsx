@@ -58,19 +58,46 @@ function greeting(name: string): string {
 export default function HomeClient({ userName, totalMemos, completedPlans, recentMemos, weekPlans, ddayPlans = [] }: HomeClientProps) {
   // autofill 차단용 비결정 name — useId는 render-safe (Math.random 대체)
   const autofillBlockId = useId()
-  // 플랜 완료 토글 — 로컬 즉시 반영 (optimistic) + Supabase 갱신
-  const [localPlans, setLocalPlans] = useState(weekPlans)
-  // weekPlans prop이 바뀌면 동기화
-  if (localPlans !== weekPlans && localPlans.length === 0) setLocalPlans(weekPlans)
   const supabaseClient = createClient()
+  const queryClientForPlans = useQueryClient()
+
+  // 플랜 완료 토글 — React Query 'home-stats' 캐시를 직접 optimistic 갱신 (한 템포 지연 fix, 2026-07-05).
+  // 이전엔 localPlans state를 두고 초기 마운트에만 sync해서, 백그라운드 refetch로 온 최신 데이터가
+  // 반영되지 않아 사용자가 '한 템포 늦게 반영된다'고 인식. weekPlans prop을 그대로 렌더하고
+  // 캐시를 optimistic으로 갱신하면 flicker 없이 즉시 반영 + 다른 페이지도 동기화.
   async function toggleComplete(id: string, current: boolean) {
-    setLocalPlans((prev) => prev.map((p) => p.id === id ? { ...p, isCompleted: !current } : p))
-    try {
-      await supabaseClient.from('plans').update({ is_completed: !current }).eq('id', id)
-    } catch {
+    const nextVal = !current
+    // 1) home-stats 캐시 optimistic 갱신 (즉시 UI 반영)
+    queryClientForPlans.setQueryData<{ completedPlans: number; weekPlans: typeof weekPlans } | undefined>(
+      ['home-stats'],
+      (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          weekPlans: old.weekPlans.map((p) => p.id === id ? { ...p, isCompleted: nextVal } : p),
+          completedPlans: Math.max(0, old.completedPlans + (nextVal ? 1 : -1)),
+        }
+      },
+    )
+    // 2) Supabase update
+    const { error } = await supabaseClient.from('plans').update({ is_completed: nextVal }).eq('id', id)
+    if (error) {
       // 실패 시 롤백
-      setLocalPlans((prev) => prev.map((p) => p.id === id ? { ...p, isCompleted: current } : p))
+      queryClientForPlans.setQueryData<{ completedPlans: number; weekPlans: typeof weekPlans } | undefined>(
+        ['home-stats'],
+        (old) => {
+          if (!old) return old
+          return {
+            ...old,
+            weekPlans: old.weekPlans.map((p) => p.id === id ? { ...p, isCompleted: current } : p),
+            completedPlans: Math.max(0, old.completedPlans + (current ? 1 : -1)),
+          }
+        },
+      )
+      return
     }
+    // 3) 플래너 페이지 캐시도 무효화 → 다음 방문 시 최신 상태 반영
+    queryClientForPlans.invalidateQueries({ queryKey: ['plans'] })
   }
   function openPlanInPlanner(plan: { id: string; date: string | null; startDate: string | null }) {
     const d = plan.date ?? plan.startDate
@@ -321,7 +348,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
           />
         ) : (
           <div className="space-y-1.5">
-            {localPlans.map((p) => (
+            {weekPlans.map((p) => (
               <div
                 key={p.id}
                 className={cn(
