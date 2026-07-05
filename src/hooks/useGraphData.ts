@@ -180,8 +180,16 @@ export function useGraphData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // settingsRef / rawRef (refs) + Zustand setters (안정적 참조)
 
-  // 네트워크 페치 — 마운트·folderFilter 변경·Realtime 이벤트 시만 호출
-  const fetchRawData = useCallback(async () => {
+  // 네트워크 페치 — 마운트·folderFilter 변경·Realtime 이벤트·수동 새로고침 시 호출
+  // bustAnalyzeCache: 수동 새로고침 전용 — 유사도 분석 5분 캐시를 버리고 재분석
+  // ("새로고침을 눌렀는데 유사도 링크가 이전 것"이라는 불신 제거)
+  const fetchRawData = useCallback(async (opts?: { bustAnalyzeCache?: boolean }) => {
+    if (opts?.bustAnalyzeCache) {
+      try {
+        sessionStorage.removeItem(ANALYZE_CACHE_KEY)
+        sessionStorage.removeItem(ANALYZE_CACHE_TS_KEY)
+      } catch { /* ignore */ }
+    }
     const s = settingsRef.current
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
@@ -263,5 +271,11 @@ export function useGraphData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // supabase는 singleton, fetchRawData는 안정적 참조 — 재구독 불필요
 
-  return { reload: fetchRawData }
+  /** 수동 새로고침 — 메모 재조회 + 유사도 분석 캐시 무효화. 완료 시 resolve (버튼 스피너용) */
+  const reload = useCallback(
+    () => fetchRawData({ bustAnalyzeCache: true }),
+    [fetchRawData],
+  )
+
+  return { reload }
 }
