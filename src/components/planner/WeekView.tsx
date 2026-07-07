@@ -337,19 +337,76 @@ export default function WeekView({
     return snapMinutes(raw)
   }
 
+  // 모바일 스크롤 vs 드래그-생성 구분:
+  // 구버전은 컬럼 touchAction:'none' + 즉시 rangeSelect 시작이라 세로 스크롤이 불가능했다.
+  // → 터치는 long-press(플랜 블록 이동과 동일 게이트) 후에만 드래그-생성 시작,
+  //   그 전 이동은 브라우저 스크롤(touchAction:'pan-y')에 맡긴다. 마우스는 기존대로 즉시.
+  const colPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const colPressPos = useRef<{ x: number; y: number } | null>(null)
+  const rangeScrollUnlock = useRef<(() => void) | null>(null)
+
+  function lockScrollForRangeSelect() {
+    const oldBodyOverflow = document.body.style.overflow
+    const scrollEl = scrollRef.current
+    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
+    document.body.style.overflow = 'hidden'
+    if (scrollEl) scrollEl.style.overflowY = 'hidden'
+    // touch-action은 제스처 시작 시점에 확정 — non-passive touchmove로 스크롤 강제 차단 (startDrag와 동일 패턴)
+    const preventTouchScroll = (ev: TouchEvent) => { ev.preventDefault() }
+    document.addEventListener('touchmove', preventTouchScroll, { passive: false })
+    rangeScrollUnlock.current = () => {
+      document.removeEventListener('touchmove', preventTouchScroll)
+      document.body.style.overflow = oldBodyOverflow
+      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
+      rangeScrollUnlock.current = null
+    }
+  }
+
+  function cancelColPress() {
+    if (colPressTimer.current) {
+      clearTimeout(colPressTimer.current)
+      colPressTimer.current = null
+    }
+    colPressPos.current = null
+  }
+
+  function beginRangeSelect(col: HTMLDivElement, dayStr: string, clientY: number, pointerId: number) {
+    const rect = col.getBoundingClientRect()
+    const startMin = pxToRangeMinutes(clientY, rect)
+    setRangeSelect({ dayStr, startMin, currentMin: startMin, startY: clientY, colRect: rect, pointerId })
+    try { col.setPointerCapture(pointerId) } catch { /* ignore */ }
+  }
+
   function handleColumnPointerDown(e: React.PointerEvent<HTMLDivElement>, dayStr: string) {
     if (e.button !== 0) return
     // plan block에서 시작한 pointer는 무시 (그건 plan drag/resize)
     const target = e.target as HTMLElement
     if (target.closest('[data-plan-block]')) return
     const col = e.currentTarget
-    const rect = col.getBoundingClientRect()
-    const startMin = pxToRangeMinutes(e.clientY, rect)
-    setRangeSelect({ dayStr, startMin, currentMin: startMin, startY: e.clientY, colRect: rect, pointerId: e.pointerId })
-    try { col.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+    if (e.pointerType === 'touch') {
+      // long-press 대기 — 만료 전 이동(스크롤 의도)이면 취소, 만료되면 진동 후 드래그-생성 시작
+      const { clientX, clientY, pointerId } = e
+      colPressPos.current = { x: clientX, y: clientY }
+      colPressTimer.current = setTimeout(() => {
+        colPressTimer.current = null
+        colPressPos.current = null
+        lockScrollForRangeSelect()
+        beginRangeSelect(col, dayStr, clientY, pointerId)
+        navigator.vibrate?.(40)
+      }, LONG_PRESS_MS)
+      return
+    }
+    beginRangeSelect(col, dayStr, e.clientY, e.pointerId)
   }
 
   function handleColumnPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    // long-press 대기 중 손가락 이동 → 스크롤 의도로 판정, 드래그-생성 취소
+    if (colPressTimer.current && colPressPos.current) {
+      const dx = e.clientX - colPressPos.current.x
+      const dy = e.clientY - colPressPos.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > 8) cancelColPress()
+      return
+    }
     if (!rangeSelect || e.pointerId !== rangeSelect.pointerId) return
     const currentMin = pxToRangeMinutes(e.clientY, rangeSelect.colRect)
     if (currentMin === rangeSelect.currentMin) return
@@ -357,6 +414,9 @@ export default function WeekView({
   }
 
   function handleColumnPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    // long-press 만료 전 손가락 뗌 → 짧은 탭: onClick(handleColumnClick)이 담당
+    cancelColPress()
+    rangeScrollUnlock.current?.()
     if (!rangeSelect || e.pointerId !== rangeSelect.pointerId) return
     const sel = rangeSelect
     setRangeSelect(null)
@@ -372,10 +432,19 @@ export default function WeekView({
   }
 
   function handleColumnPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    // 브라우저가 스크롤 제스처를 가져가면 pointercancel — 대기/선택 모두 정리
+    cancelColPress()
+    rangeScrollUnlock.current?.()
     if (!rangeSelect) return
     try { e.currentTarget.releasePointerCapture(rangeSelect.pointerId) } catch { /* ignore */ }
     setRangeSelect(null)
   }
+
+  // unmount 시 타이머/스크롤 잠금 정리
+  useEffect(() => () => {
+    if (colPressTimer.current) clearTimeout(colPressTimer.current)
+    rangeScrollUnlock.current?.()
+  }, [])
 
   // 시간 그리드의 스크롤바 폭 측정 — 헤더/종일 행에 동일 폭 padding 적용해 컬럼 정렬
   const [scrollbarWidth, setScrollbarWidth] = useState(0)
@@ -526,7 +595,8 @@ export default function WeekView({
                 onPointerMove={handleColumnPointerMove}
                 onPointerUp={handleColumnPointerUp}
                 onPointerCancel={handleColumnPointerCancel}
-                style={{ touchAction: 'none' }}
+                // pan-y: 세로 스크롤은 브라우저가 처리 (long-press 후 드래그-생성은 lockScrollForRangeSelect가 차단)
+                style={{ touchAction: 'pan-y' }}
               >
                 {/* 드래그 프리뷰 — 반투명 violet 박스 + 상/하단 시간 라벨 */}
                 {rangeSelect && rangeSelect.dayStr === dayStr && (() => {

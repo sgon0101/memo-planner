@@ -12,8 +12,9 @@
 
 'use client'
 
+import { startOfWeek, endOfWeek, format } from 'date-fns'
 import type { QueryClient } from '@tanstack/react-query'
-import { lsPlansCache, lsPlansCacheTs } from '@/lib/cache/lsKeys'
+import { lsPlansCache, lsPlansCacheTs, lsHomeStatsCache, lsHomeStatsCacheTs } from '@/lib/cache/lsKeys'
 import type { Plan } from '@/types'
 
 export const planKeys = {
@@ -138,4 +139,98 @@ export function deleteRecurringCompletionInCaches(qc: QueryClient, key: string):
     delete next[key]
     return next
   })
+}
+
+/* ─── 홈 '이번 주 플랜'(home-stats) 캐시 직접 패치 ────────────────────
+   invalidate+refetch에만 의존하면 ①서버 read-after-write lag ②홈 마운트 시
+   LS 복원(setQueryData)의 fresh 판정에 밀려 "바로 반영 안 됨" — 뮤테이션이
+   RQ 캐시 + LS를 직접 패치해 홈 진입 즉시 최신 상태를 보장한다.
+   (invalidate는 서버 정합 백업으로 유지) ─────────────────────────── */
+
+interface HomeWeekPlan {
+  id: string
+  title: string
+  color: string
+  date: string | null
+  startDate: string | null
+  endDate: string | null
+  isCompleted: boolean
+  isAllDay: boolean
+}
+interface HomeStats { completedPlans: number; weekPlans: HomeWeekPlan[] }
+
+/** 이번 주(월요일 시작 — home-stats 쿼리와 동일 기준) 포함 여부 */
+function isInThisWeek(p: { date: string | null; startDate: string | null; endDate: string | null }): boolean {
+  const now = new Date()
+  const ws = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const we = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  if (p.date) return p.date >= ws && p.date <= we
+  if (p.startDate && p.endDate) return p.startDate <= we && p.endDate >= ws
+  return false
+}
+
+/** RQ home-stats + LS 캐시를 같은 변형으로 동시 패치 */
+function mutateHomeStats(qc: QueryClient, mutate: (s: HomeStats) => HomeStats): void {
+  qc.setQueryData<HomeStats | undefined>(['home-stats'], (old) => (old ? mutate(old) : old))
+  if (typeof window === 'undefined') return
+  try {
+    const k = lsHomeStatsCache()
+    const kts = lsHomeStatsCacheTs()
+    if (!k || !kts) return
+    const raw = localStorage.getItem(k)
+    if (!raw) return
+    localStorage.setItem(k, JSON.stringify(mutate(JSON.parse(raw) as HomeStats)))
+    localStorage.setItem(kts, String(Date.now()))
+  } catch { /* ignore */ }
+}
+
+const sortWeekPlans = (a: HomeWeekPlan, b: HomeWeekPlan) =>
+  ((a.date ?? a.startDate) ?? '').localeCompare((b.date ?? b.startDate) ?? '')
+
+/** 플랜 생성 — 이번 주에 해당하면 홈 카드에 즉시 삽입 */
+export function patchHomeStatsOnPlanCreate(qc: QueryClient, plan: Plan): void {
+  if (!isInThisWeek(plan)) return
+  const item: HomeWeekPlan = {
+    id: plan.id, title: plan.title, color: plan.color,
+    date: plan.date, startDate: plan.startDate, endDate: plan.endDate,
+    isCompleted: plan.isCompleted, isAllDay: plan.isAllDay,
+  }
+  mutateHomeStats(qc, (s) => ({
+    ...s,
+    weekPlans: [...s.weekPlans.filter((p) => p.id !== item.id), item].sort(sortWeekPlans).slice(0, 10),
+  }))
+}
+
+/** 플랜 수정/완료 토글 — 홈 카드 항목 패치 + 전체 완료 수 조정 (completedDelta: 완료 상태 변화량) */
+export function patchHomeStatsOnPlanUpdate(
+  qc: QueryClient,
+  id: string,
+  patch: Partial<Plan>,
+  completedDelta: -1 | 0 | 1 = 0,
+): void {
+  mutateHomeStats(qc, (s) => ({
+    completedPlans: Math.max(0, s.completedPlans + completedDelta),
+    weekPlans: s.weekPlans.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            ...(patch.title !== undefined ? { title: patch.title } : {}),
+            ...(patch.color !== undefined ? { color: patch.color } : {}),
+            ...(patch.date !== undefined ? { date: patch.date } : {}),
+            ...(patch.startDate !== undefined ? { startDate: patch.startDate } : {}),
+            ...(patch.endDate !== undefined ? { endDate: patch.endDate } : {}),
+            ...(patch.isCompleted !== undefined ? { isCompleted: patch.isCompleted } : {}),
+            ...(patch.isAllDay !== undefined ? { isAllDay: patch.isAllDay } : {}),
+          }
+        : p,
+    ),
+  }))
+}
+
+/** 플랜 삭제 — 홈 카드에서 제거 + 완료였다면 전체 완료 수 차감 */
+export function patchHomeStatsOnPlanDelete(qc: QueryClient, id: string, wasCompleted?: boolean): void {
+  mutateHomeStats(qc, (s) => ({
+    completedPlans: wasCompleted ? Math.max(0, s.completedPlans - 1) : s.completedPlans,
+    weekPlans: s.weekPlans.filter((p) => p.id !== id),
+  }))
 }
