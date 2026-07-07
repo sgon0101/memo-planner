@@ -15,6 +15,7 @@ import {
   readPlansLocalCache, readPlansLocalCacheTs, writePlansLocalCache,
   patchPlanInCaches, addPlanToCaches, removePlanFromCaches, findPlanInCaches,
   setRecurringCompletionInCaches, deleteRecurringCompletionInCaches,
+  patchHomeStatsOnPlanCreate, patchHomeStatsOnPlanUpdate, patchHomeStatsOnPlanDelete,
 } from '@/lib/planner/planCache'
 import type { Plan } from '@/types'
 
@@ -205,12 +206,14 @@ export function usePlanner() {
         updatedAt: nowIso,
       }
       addPlanToCaches(queryClient, tempPlan)
+      patchHomeStatsOnPlanCreate(queryClient, tempPlan) // 홈 '이번 주 플랜' 즉시 반영
       // broadcast/home invalidate는 flush 후
       return tempPlan
     }
 
     const plan = toPlan(result.row!)
     addPlanToCaches(queryClient, plan)
+    patchHomeStatsOnPlanCreate(queryClient, plan) // 홈 '이번 주 플랜' 즉시 반영 (invalidate는 백업)
     invalidateHomeQueries()
     broadcast({ type: 'plan-create', plan })
     return plan
@@ -245,6 +248,11 @@ export function usePlanner() {
     const result = await writeOrQueue({
       table: 'plans', recordId: id, patch: dbPatch, knownUpdatedAt,
     })
+    // 홈 '이번 주 플랜' 즉시 반영 — isCompleted가 실제로 바뀌면 전체 완료 수도 조정
+    const completedDelta: -1 | 0 | 1 =
+      data.isCompleted === undefined || !original || data.isCompleted === original.isCompleted
+        ? 0 : data.isCompleted ? 1 : -1
+    patchHomeStatsOnPlanUpdate(queryClient, id, data, completedDelta)
     if (result.queued) {
       const tempUpdatedAt = new Date().toISOString()
       patchPlanInCaches(queryClient, id, { ...data, updatedAt: tempUpdatedAt })
@@ -258,8 +266,10 @@ export function usePlanner() {
   }, [invalidateHomeQueries, queryClient])
 
   const removePlan = useCallback(async (id: string) => {
+    const original = findPlanInCaches(queryClient, id) // 삭제 전 완료 여부 확보
     await supabase.from('plans').delete().eq('id', id)
     removePlanFromCaches(queryClient, id)
+    patchHomeStatsOnPlanDelete(queryClient, id, original?.isCompleted) // 홈 즉시 반영
     invalidateHomeQueries()
     broadcast({ type: 'plan-delete', id })
   }, [invalidateHomeQueries, queryClient])
@@ -272,6 +282,8 @@ export function usePlanner() {
     const result = await writeOrQueue({
       table: 'plans', recordId: id, patch: { is_completed: !current }, knownUpdatedAt,
     })
+    // 홈 '이번 주 플랜' 즉시 반영 (완료 수 ±1)
+    patchHomeStatsOnPlanUpdate(queryClient, id, { isCompleted: !current }, !current ? 1 : -1)
     if (result.queued) {
       const tempUpdatedAt = new Date().toISOString()
       patchPlanInCaches(queryClient, id, { isCompleted: !current, updatedAt: tempUpdatedAt })

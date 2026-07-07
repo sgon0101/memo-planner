@@ -232,15 +232,16 @@ export default function HomePageClient() {
             }
           }
         }
-        // 2) home-memos 캐시 즉시 복원
+        // 2~4) LS 캐시 즉시 복원 — updatedAt을 LS 저장 시각으로 지정해야 함.
+        // 지정하지 않으면 setQueryData가 dataUpdatedAt을 now로 찍어 stale이던 쿼리가
+        // fresh로 둔갑 → 플래너 뮤테이션의 invalidate가 무력화되어 staleTime(5분) 동안
+        // 이전 데이터가 고정되던 버그 (홈 '이번 주 플랜' 미반영의 원인 중 하나)
         const homeData = readHomeMemoCache()
-        if (homeData) queryClient.setQueryData(['home-memos'], homeData)
-        // 3) home-stats 캐시 즉시 복원
+        if (homeData) queryClient.setQueryData(['home-memos'], homeData, { updatedAt: readHomeMemoTs() })
         const statsData = readStatsCache()
-        if (statsData) queryClient.setQueryData(['home-stats'], statsData)
-        // 4) allMemos 캐시 (memos-all)
+        if (statsData) queryClient.setQueryData(['home-stats'], statsData, { updatedAt: readStatsCacheTs() })
         const allMemosData = readLocalCache()
-        if (allMemosData) queryClient.setQueryData(memoKeys.all(), allMemosData)
+        if (allMemosData) queryClient.setQueryData(memoKeys.all(), allMemosData, { updatedAt: readLocalCacheTs() })
       } catch { /* ignore */ }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
