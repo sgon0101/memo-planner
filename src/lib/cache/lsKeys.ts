@@ -24,6 +24,10 @@ export const lsMemosTotalCount  = (): string | null => buildUserCacheKey('memos-
 export const lsPlansCache       = (): string | null => buildUserCacheKey('plans-cache')
 export const lsPlansCacheTs     = (): string | null => buildUserCacheKey('plans-cache-ts')
 
+// ─── 그래프 ──────────────────────────────────────────────────────────────
+export const lsGraphAnalyzeCache   = (): string | null => buildUserCacheKey('graph-analyze-cache')
+export const lsGraphAnalyzeCacheTs = (): string | null => buildUserCacheKey('graph-analyze-cache-ts')
+
 // ─── 홈 ──────────────────────────────────────────────────────────────────
 export const lsHomeMemosCache   = (): string | null => buildUserCacheKey('home-memos-cache')
 export const lsHomeMemosCacheTs = (): string | null => buildUserCacheKey('home-memos-cache-ts')
@@ -39,6 +43,7 @@ export function getAllUserCacheKeys(): (string | null)[] {
   return [
     lsMemosCache(), lsMemosCacheTs(), lsMemosTotalCount(),
     lsPlansCache(), lsPlansCacheTs(),
+    lsGraphAnalyzeCache(), lsGraphAnalyzeCacheTs(),
     lsHomeMemosCache(), lsHomeMemosCacheTs(),
     lsHomeStatsCache(), lsHomeStatsCacheTs(),
     lsLastDriveBackup(), lsRealtimeSync(),

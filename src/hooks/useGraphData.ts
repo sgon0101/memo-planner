@@ -4,11 +4,63 @@ import { useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
+import { lsGraphAnalyzeCache, lsGraphAnalyzeCacheTs } from '@/lib/cache/lsKeys'
 import type { Memo, Folder } from '@/types'
 
-const ANALYZE_CACHE_KEY    = 'graph-analyze-cache-v1'
-const ANALYZE_CACHE_TS_KEY = 'graph-analyze-cache-ts-v1'
-const ANALYZE_CACHE_TTL_MS = 5 * 60 * 1000  // 5분
+// 유사도 분석 캐시 — localStorage 승격 (2026-07-05)
+// 표시와 재검증을 분리: 캐시가 있으면 나이와 무관하게 즉시 표시(첫 진입에도
+// 고연결 보라 노드가 처음부터 완전체로 보임), 재분석 API 호출은 마지막 분석 후
+// REANALYZE_INTERVAL_MS 경과 시에만(호출 빈도는 구 sessionStorage 5분 캐시와 동일).
+// 키는 buildUserCacheKey 네임스페이스 — 로그아웃/계정 전환 시 clearUserNamespace가 자동 청소.
+const REANALYZE_INTERVAL_MS = 5 * 60 * 1000  // 5분
+const MAX_CACHED_LINKS = 5000                // LS 용량 압박 방지 — 초과 시 저장 생략
+
+type SimLink = { source: string; target: string }
+
+function readAnalyzeCache(): { links: SimLink[]; ts: number } | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const k = lsGraphAnalyzeCache()
+    const kts = lsGraphAnalyzeCacheTs()
+    if (!k || !kts) return null
+    const raw = localStorage.getItem(k)
+    if (!raw) return null
+    const links = JSON.parse(raw) as SimLink[]
+    if (!Array.isArray(links)) return null
+    const ts = parseInt(localStorage.getItem(kts) ?? '0', 10) || 0
+    return { links, ts }
+  } catch { return null }
+}
+
+function writeAnalyzeCache(links: SimLink[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    const k = lsGraphAnalyzeCache()
+    const kts = lsGraphAnalyzeCacheTs()
+    if (!k || !kts) return
+    if (links.length > MAX_CACHED_LINKS) {
+      // 상한 초과 — stale 잔존보다 캐시 제거가 안전 (표시는 rawRef로 정상)
+      localStorage.removeItem(k)
+      localStorage.removeItem(kts)
+      return
+    }
+    localStorage.setItem(k, JSON.stringify(links))
+    localStorage.setItem(kts, String(Date.now()))
+  } catch { /* quota — ignore */ }
+}
+
+function clearAnalyzeCache(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const k = lsGraphAnalyzeCache()
+    const kts = lsGraphAnalyzeCacheTs()
+    if (k) localStorage.removeItem(k)
+    if (kts) localStorage.removeItem(kts)
+    // 구버전 sessionStorage 캐시도 청소 (마이그레이션)
+    sessionStorage.removeItem('graph-analyze-cache-v1')
+    sessionStorage.removeItem('graph-analyze-cache-ts-v1')
+  } catch { /* ignore */ }
+}
 
 // Supabase에서 내려오는 snake_case 원시 행
 interface RawMemo {
@@ -184,12 +236,7 @@ export function useGraphData() {
   // bustAnalyzeCache: 수동 새로고침 전용 — 유사도 분석 5분 캐시를 버리고 재분석
   // ("새로고침을 눌렀는데 유사도 링크가 이전 것"이라는 불신 제거)
   const fetchRawData = useCallback(async (opts?: { bustAnalyzeCache?: boolean }) => {
-    if (opts?.bustAnalyzeCache) {
-      try {
-        sessionStorage.removeItem(ANALYZE_CACHE_KEY)
-        sessionStorage.removeItem(ANALYZE_CACHE_TS_KEY)
-      } catch { /* ignore */ }
-    }
+    if (opts?.bustAnalyzeCache) clearAnalyzeCache()
     const s = settingsRef.current
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
@@ -212,39 +259,29 @@ export function useGraphData() {
     const { data: memos } = await query.limit(5000)
     if (!memos) return
 
-    // 1) sessionStorage 캐시 확인
-    let simLinks: Array<{ source: string; target: string }> = []
-    try {
-      const cached   = sessionStorage.getItem(ANALYZE_CACHE_KEY)
-      const cachedTs = sessionStorage.getItem(ANALYZE_CACHE_TS_KEY)
-      if (cached && cachedTs) {
-        const age = Date.now() - parseInt(cachedTs)
-        if (age < ANALYZE_CACHE_TTL_MS) {
-          simLinks = JSON.parse(cached)
-        }
-      }
-    } catch { /* 캐시 파싱 실패 시 무시 */ }
+    // 1) LS 캐시 — 있으면 나이와 무관하게 즉시 표시 (표시/재검증 분리)
+    const cached = readAnalyzeCache()
+    const simLinks: SimLink[] = cached?.links ?? []
 
-    // 2) 캐시 있으면 즉시, 없으면 빈 simLinks로 먼저 그래프 표시
+    // 2) 캐시 있으면 즉시 완전체, 없으면 빈 simLinks로 먼저 그래프 표시
     rawRef.current = { memos: memos as RawMemo[], simLinks }
     buildGraph()
 
-    // 3) 캐시 없을 때 백그라운드에서 analyze 호출
-    if (simLinks.length === 0) {
+    // 3) 재분석 — 캐시 없음 또는 마지막 분석 후 5분 경과 시에만 (호출 빈도 기존과 동일)
+    const needReanalyze = !cached || Date.now() - cached.ts > REANALYZE_INTERVAL_MS
+    if (needReanalyze) {
       fetch('/api/graph/analyze')
         .then((res) => res.ok ? res.json() : { links: [] })
         .then((json) => {
-          const newSimLinks: Array<{ source: string; target: string }> = json.links ?? []
-          try {
-            sessionStorage.setItem(ANALYZE_CACHE_KEY, JSON.stringify(newSimLinks))
-            sessionStorage.setItem(ANALYZE_CACHE_TS_KEY, String(Date.now()))
-          } catch { /* 저장 실패 시 무시 */ }
-          if (rawRef.current) {
+          const newSimLinks: SimLink[] = json.links ?? []
+          writeAnalyzeCache(newSimLinks) // 동일 결과여도 ts 갱신 → 5분 억제 리셋
+          // 결과가 기존과 동일하면 그래프 갱신 스킵 — 불필요한 시뮬 재가열(화면 흔들림) 방지
+          if (rawRef.current && JSON.stringify(rawRef.current.simLinks) !== JSON.stringify(newSimLinks)) {
             rawRef.current.simLinks = newSimLinks
             buildGraph()
           }
         })
-        .catch(() => { /* 분석 실패 시 무시 */ })
+        .catch(() => { /* 분석 실패 시 무시 — 캐시 표시 유지 */ })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // settingsRef / supabase (singleton) / buildGraph (안정적 참조)
