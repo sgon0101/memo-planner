@@ -384,6 +384,10 @@ export default function WeekView({
     if (target.closest('[data-plan-block]')) return
     const col = e.currentTarget
     if (e.pointerType === 'touch') {
+      // Android Chrome의 long-press 기본 동작(텍스트 선택 + Touch to Search 구글 패널)이
+      // 드래그-생성을 가로채지 않도록 차단 — pointerdown preventDefault는
+      // touch-action(pan-y) 기반 스크롤은 막지 않음 (플랜 블록과 동일 패턴)
+      e.preventDefault()
       // long-press 대기 — 만료 전 이동(스크롤 의도)이면 취소, 만료되면 진동 후 드래그-생성 시작
       const { clientX, clientY, pointerId } = e
       colPressPos.current = { x: clientX, y: clientY }
@@ -587,7 +591,7 @@ export default function WeekView({
               <div
                 key={i}
                 className={cn(
-                  'flex-1 border-l border-gray-100 dark:border-gray-800 relative',
+                  'flex-1 border-l border-gray-100 dark:border-gray-800 relative select-none',
                   isToday && 'bg-violet-50/30 dark:bg-violet-950/10',
                 )}
                 onClick={(e) => handleColumnClick(e, dayStr)}
@@ -595,8 +599,10 @@ export default function WeekView({
                 onPointerMove={handleColumnPointerMove}
                 onPointerUp={handleColumnPointerUp}
                 onPointerCancel={handleColumnPointerCancel}
+                onContextMenu={(e) => e.preventDefault()}
                 // pan-y: 세로 스크롤은 브라우저가 처리 (long-press 후 드래그-생성은 lockScrollForRangeSelect가 차단)
-                style={{ touchAction: 'pan-y' }}
+                // touchCallout/userSelect none: Android long-press 텍스트 선택·Touch to Search 차단
+                style={{ touchAction: 'pan-y', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
               >
                 {/* 드래그 프리뷰 — 반투명 violet 박스 + 상/하단 시간 라벨 */}
                 {rangeSelect && rangeSelect.dayStr === dayStr && (() => {
