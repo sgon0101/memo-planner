@@ -3,6 +3,7 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { useState, useRef, useEffect } from 'react'
 import { getImageBlob } from '@/lib/sync/queueDB'
+import { withImgCacheVersion } from '@/lib/utils'
 
 const PRESETS = [
   { label: '소', value: '25%' },
@@ -181,7 +182,7 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={imgRef}
-        src={activeSrc}
+        src={withImgCacheVersion(activeSrc)}
         alt={(node.attrs.alt as string) || ''}
         style={{
           width: '100%',
