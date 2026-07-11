@@ -84,13 +84,25 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (existing) {
-    // dedupe여도 변형(md/thumb)은 새 압축 로직으로 재생성해 같은 키에 덮어쓰기 —
-    // 구버전 로직 시절의 저화질 변형이 재첨부로도 갱신되지 않던 문제 해결 (2026-07-11)
+    // dedupe여도 full/md/thumb를 새 압축 로직으로 재생성해 같은 키에 덮어쓰기 —
+    // 구버전 로직 시절의 저화질 원본·변형이 재첨부로도 갱신되지 않던 문제 해결 (2026-07-11).
+    // full까지 재생성해야 폭 기준 compressImage 수정이 dedupe 경로에서도 유효해짐.
     const isImage = mimeType.startsWith('image/') && mimeType !== 'image/gif' && mimeType !== 'image/svg+xml'
+    let compressedSize = existing.compressed_size ?? 0
+    let savedPercent = existing.saved_percent ?? 0
     if (isImage && existing.medium_url && existing.thumbnail_url) {
       try {
         const keyOf = (u: string) => decodeURIComponent(new URL(u).pathname.replace(/^\//, ''))
-        await regenerateVariants(buffer, keyOf(existing.medium_url), keyOf(existing.thumbnail_url))
+        const { fullCompressedSize } = await regenerateVariants(
+          buffer, mimeType, existing.r2_key, keyOf(existing.medium_url), keyOf(existing.thumbnail_url),
+        )
+        compressedSize = fullCompressedSize
+        const origSize = existing.original_size ?? 0
+        savedPercent = origSize > 0 ? Math.round((1 - fullCompressedSize / origSize) * 100) : savedPercent
+        await supabase.from('uploaded_files')
+          .update({ compressed_size: compressedSize, saved_percent: savedPercent })
+          .eq('user_id', user.id)
+          .eq('content_hash', contentHash)
       } catch { /* 재생성 실패해도 dedupe 응답 자체는 유효 */ }
     }
     return NextResponse.json({
@@ -99,8 +111,8 @@ export async function POST(req: NextRequest) {
       mediumUrl: existing.medium_url ?? null,
       key: existing.r2_key,
       originalSize: existing.original_size ?? 0,
-      compressedSize: existing.compressed_size ?? 0,
-      savedPercent: existing.saved_percent ?? 0,
+      compressedSize,
+      savedPercent,
       deduplicated: true,
     })
   }

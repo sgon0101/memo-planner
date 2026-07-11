@@ -14,8 +14,12 @@ export async function compressImage(buffer: Buffer, mimeType: string): Promise<C
     return { buffer, mimeType, originalSize, compressedSize: originalSize }
   }
 
+  // ⚠️ 폭 기준 1920px 보장 (구버전은 1920×1920 fit:inside — 긴 변 기준이라
+  // 세로로 긴 스크린샷은 full-res 원본조차 폭 387px 수준으로 축소돼, md/thumb를
+  // 재생성해도 폭이 이 이하로 상한돼 저화질이 고착됐음. full은 폭이 화질을 결정하므로
+  // 폭을 우선 보장. 세로 상한 9600은 극단 비율(1:5 초과) 파일 크기 폭주 방지용.
   const compressed = await sharp(buffer)
-    .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+    .resize(1920, 9600, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 93, effort: 2 })
     .toBuffer()
 
