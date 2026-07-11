@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
-import { uploadToR2 } from '@/lib/r2/upload'
+import { uploadToR2, regenerateVariants } from '@/lib/r2/upload'
 import { getUserStorage } from '@/lib/r2/quota'
 import { matchesMagicBytes } from '@/lib/security/magicBytes'
 
@@ -84,6 +84,15 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (existing) {
+    // dedupe여도 변형(md/thumb)은 새 압축 로직으로 재생성해 같은 키에 덮어쓰기 —
+    // 구버전 로직 시절의 저화질 변형이 재첨부로도 갱신되지 않던 문제 해결 (2026-07-11)
+    const isImage = mimeType.startsWith('image/') && mimeType !== 'image/gif' && mimeType !== 'image/svg+xml'
+    if (isImage && existing.medium_url && existing.thumbnail_url) {
+      try {
+        const keyOf = (u: string) => decodeURIComponent(new URL(u).pathname.replace(/^\//, ''))
+        await regenerateVariants(buffer, keyOf(existing.medium_url), keyOf(existing.thumbnail_url))
+      } catch { /* 재생성 실패해도 dedupe 응답 자체는 유효 */ }
+    }
     return NextResponse.json({
       url: existing.public_url,
       thumbnailUrl: existing.thumbnail_url ?? null,
