@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   // user_id별로 그룹화해서 처리 (메모 fetch 효율화)
   const { data: files } = await supabase
     .from('uploaded_files')
-    .select('id, user_id, r2_key, public_url, thumbnail_url, medium_url')
+    .select('id, user_id, memo_id, r2_key, public_url, thumbnail_url, medium_url')
     .lt('created_at', cutoff)
     .limit(10_000)  // 한 회 최대 1만 row
 
@@ -89,26 +89,53 @@ export async function GET(req: NextRequest) {
   const errors: string[] = []
 
   for (const [userId, userFiles] of byUser.entries()) {
-    // 사용자의 활성 메모 (휴지통 제외) 본문 모두 가져오기
-    // 페이지네이션 — 본문이 크니까 1000개씩
-    const memoBodies: Array<{ content_text: string | null; content: unknown }> = []
+    // ⚠️ 2026-07-05 사고 재발 방지 가드 3종 —
+    // 구버전은 메모 페치가 에러나도(대용량 content 배치 실패 등) 그대로 GC를 진행해,
+    // 못 읽은 메모들이 참조하는 살아있는 이미지를 orphan으로 오판·삭제했다.
+    // (16MB base64 메모가 배치를 터뜨림 → 이후 배치 미페치 → 해당 메모들 이미지 삭제)
+    // ①페치 에러 시 해당 사용자 GC 전체 스킵 ②페치 수와 실제 메모 수 대조
+    // ③memo_id가 활성 메모에 연결된 파일은 URL 스캔 없이 무조건 보존 (잠금 메모 커버)
+    const memoBodies: Array<{ id: string; content_text: string | null; content: unknown }> = []
+    let fetchFailed = false
     let from = 0
     while (true) {
       const { data: batch, error } = await supabase
         .from('memos')
-        .select('content_text, content')
+        .select('id, content_text, content')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: true })
-        .range(from, from + 999)
-      if (error || !batch || batch.length === 0) break
+        .range(from, from + 199)  // 1000→200: 대용량 content로 인한 배치 실패 확률 축소
+      if (error) { fetchFailed = true; break }
+      if (!batch || batch.length === 0) break
       memoBodies.push(...batch as typeof memoBodies)
-      if (batch.length < 1000) break
-      from += 1000
+      if (batch.length < 200) break
+      from += 200
     }
+
+    // 가드 ②: 실제 활성 메모 수와 페치 수가 다르면 부분 페치 — GC 스킵
+    const { count: memoCount, error: countErr } = await supabase
+      .from('memos')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_deleted', false)
+
+    if (fetchFailed || countErr || memoCount == null || memoBodies.length !== memoCount) {
+      errors.push(`user ${userId}: memo fetch incomplete (${memoBodies.length}/${memoCount ?? '?'}) — GC 스킵 (fail-safe)`)
+      continue
+    }
+
+    const activeMemoIds = new Set(memoBodies.map((m) => m.id))
 
     for (const f of userFiles) {
       totalChecked++
+      // 가드 ③: 활성 메모에 연결된 파일은 본문 스캔 없이 보존
+      // (잠금 메모는 content가 암호화돼 URL 스캔이 불가능 — memo_id 연결로만 판정 가능)
+      const linkedMemoId = (f as Record<string, unknown>).memo_id as string | null
+      if (linkedMemoId && activeMemoIds.has(linkedMemoId)) {
+        totalKept++
+        continue
+      }
       const url = f.public_url as string
       // 메모 본문 어딘가에 url이 들어있나?
       const isReferenced = memoBodies.some((m) =>
