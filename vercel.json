@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/backup",
       "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/r2-gc",
-      "schedule": "0 3 * * *"
     }
   ]
 }
