@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Pin, Star, Lock, Trash2, MoreVertical, Unlock, RotateCcw, FolderInput, Folder, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
+import { cn, withImgCacheVersion } from '@/lib/utils'
 import { useFolderStore } from '@/store/folderStore'
 import { useDragStore } from '@/store/dragStore'
 import LockModal from './LockModal'
@@ -249,7 +249,7 @@ function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, 
             )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={thumbnail}
+              src={withImgCacheVersion(thumbnail)}
               alt=""
               className={cn(
                 'w-full h-full object-cover',
