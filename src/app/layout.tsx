@@ -57,6 +57,7 @@ export default function RootLayout({
         {/* Supabase API 서버에 대한 TCP+TLS 연결을 HTML 파싱 시점부터 미리 시작 */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
         {/* 다크모드 FOUC 제거 — 첫 페인트 전에 persist(memo-planner-ui)를 읽어 dark 클래스 적용.
             DarkModeProvider(effect)는 토글 반응용으로 유지 (idempotent) */}
         <script

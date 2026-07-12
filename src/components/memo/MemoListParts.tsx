@@ -39,9 +39,9 @@ export function TagDropdown({
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition-colors',
           selectedTag
-            ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400'
+            ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
             : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
         )}
       >
@@ -65,14 +65,14 @@ export function TagDropdown({
         <div
           ref={panelRef}
           style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 220 }}
-          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl max-h-80 overflow-y-auto py-1"
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-80 overflow-y-auto py-1"
         >
           <div
             onClick={() => handleSelect(null)}
             className={cn(
               'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
               !selectedTag
-                ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
           >
@@ -90,7 +90,7 @@ export function TagDropdown({
                 className={cn(
                   'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
                   selectedTag === tag
-                    ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 dark:text-cyan-400 font-medium'
+                    ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
                 )}
               >
@@ -179,7 +179,7 @@ export function SortChip({
     <button
       onClick={() => onSelect(value)}
       className={cn(
-        'flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
+        'flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full border transition-colors',
         current === value
           ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
           : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
@@ -215,9 +215,9 @@ export function WikiDropdown({
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition-colors',
           selectedWiki
-            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400'
+            ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
             : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
         )}
       >
@@ -241,14 +241,14 @@ export function WikiDropdown({
         <div
           ref={panelRef}
           style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 240 }}
-          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl max-h-80 overflow-y-auto py-1"
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-80 overflow-y-auto py-1"
         >
           <div
             onClick={() => handleSelect(null)}
             className={cn(
               'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
               !selectedWiki
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
           >
@@ -266,7 +266,7 @@ export function WikiDropdown({
                 className={cn(
                   'flex items-center gap-2 px-3.5 py-2 text-xs cursor-pointer transition-colors',
                   selectedWiki === wiki
-                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-medium'
+                    ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 font-medium'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
                 )}
               >
@@ -349,7 +349,7 @@ export function TitleSortDropdown({
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
+          'flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition-colors',
           isActive
             ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
             : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
@@ -365,7 +365,7 @@ export function TitleSortDropdown({
         <div
           ref={panelRef}
           style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 100, width: 180 }}
-          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+          className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden"
         >
           {OPTIONS.map(({ value, label, icon }) => (
             <div

@@ -165,8 +165,8 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
     <div className="max-w-2xl mx-auto px-4 py-10 space-y-8">
       {/* 인사말 */}
       <div>
-        <p suppressHydrationWarning className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 tracking-wide uppercase">{today}</p>
-        <h1 suppressHydrationWarning className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+        <p suppressHydrationWarning className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">{today}</p>
+        <h1 suppressHydrationWarning className="text-[26px] font-bold text-gray-900 dark:text-white tracking-[-0.025em]">
           {greeting(userName)}
         </h1>
       </div>
@@ -210,25 +210,20 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
               const diff = Math.round((t.getTime() - today.getTime()) / 86400000)
               const label = diff > 0 ? `D-${diff}` : diff === 0 ? 'D-Day' : `D+${-diff}`
               const tone =
-                diff === 0
-                  ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800'
-                  : diff <= 3
-                    ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900'
-                    : diff <= 7
-                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900'
-                      : 'text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
+                diff <= 3
+                  ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400'
+                  : diff <= 7
+                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
               return (
                 <button
                   key={p.id}
                   onClick={() => router.push(`/planner?date=${p.ddayTarget}`)}
-                  className={cn(
-                    'flex flex-col gap-1 px-3 py-2.5 rounded-xl border text-left transition-all hover:shadow-sm cursor-pointer',
-                    tone,
-                  )}
+                  className="flex flex-col gap-1 px-3 py-2.5 rounded-xl border text-left transition-all hover:shadow-sm cursor-pointer bg-white dark:bg-gray-900 border-gray-200/70 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                    <span className="text-sm font-bold tabular-nums">{label}</span>
+                    <span className={cn('text-xs font-bold tabular-nums px-2 py-0.5 rounded-full', tone)}>{label}</span>
                   </div>
                   <span className="text-xs truncate font-medium opacity-90">{p.title}</span>
                   <span className="text-[10px] opacity-60">{format(new Date(p.ddayTarget), 'M/d (E)', { locale: ko })}</span>
@@ -240,7 +235,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
       )}
 
       {/* 빠른 메모 입력 */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/70 dark:border-gray-800 p-4">
         <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-3 tracking-wide">빠른 메모</p>
         <form
           onSubmit={handleQuickMemo}
@@ -303,7 +298,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
               <button
                 key={m.id}
                 onClick={() => router.push(`/memo/${m.id}`)}
-                className="w-full flex items-start gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all duration-150 text-left cursor-pointer"
+                className="w-full flex items-start gap-3 px-4 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200/70 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all duration-150 text-left cursor-pointer"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -352,7 +347,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
               <div
                 key={p.id}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 transition-colors',
+                  'flex items-center gap-3 px-3 py-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200/70 dark:border-gray-800 transition-colors',
                   p.isCompleted && 'opacity-60',
                   'hover:border-violet-200 dark:hover:border-violet-800 active:bg-gray-50 dark:active:bg-gray-800',
                 )}
@@ -411,13 +406,13 @@ function StatCard({ icon, iconBg, label, value, onClick }: {
       onClick={onClick}
       className="flex flex-col gap-3 p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm transition-all duration-150 cursor-pointer text-left w-full"
     >
-      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', iconBg)}>
+      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconBg)}>
         {icon}
       </div>
       <div>
         {value === undefined
           ? <div className="h-7 w-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-          : <p className="text-xl font-bold text-gray-900 dark:text-white leading-none">{value}</p>
+          : <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight">{value}</p>
         }
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
       </div>

@@ -12,7 +12,7 @@
 
 @theme inline {
   /* Fonts */
-  --font-sans: var(--font-sans, 'Noto Sans KR'), system-ui, sans-serif;
+  --font-sans: 'Pretendard Variable', var(--font-sans, 'Noto Sans KR'), system-ui, sans-serif;
   --font-mono: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
 
   /* Brand — Violet */
@@ -90,7 +90,7 @@ html {
 body {
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.6;
   color: #1E293B;
   background-color: #FAFAFA;
   -webkit-font-smoothing: antialiased;
