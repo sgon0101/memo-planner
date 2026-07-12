@@ -12,7 +12,7 @@
  *   - overwrite: 무조건 덮어쓰기
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { memosToMarkdown } from '@/lib/export/markdown'
 
@@ -66,8 +66,30 @@ export async function GET(req: NextRequest) {
   const tables: Record<string, BackupRow[]> = {}
 
   // memos 먼저 (다른 테이블에서 참조)
-  const { data: memos } = await supabase.from('memos').select('*').eq('user_id', user.id)
-  tables.memos = (memos ?? []) as BackupRow[]
+  // ⚠️ 2026-07-11: 전체 풀-select는 대용량 content(base64 인라인 이미지 등)에서
+  // 간헐 실패하고, 에러를 무시하면 "메모 0개짜리 빈 백업"이 정상처럼 생성됨
+  // (r2-gc 사고와 동일 패턴) → 200행 배치 + 에러 시 명시적 500 반환
+  const allMemos: BackupRow[] = []
+  {
+    let from = 0
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('memos').select('*').eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .range(from, from + 199)
+      if (error) {
+        return NextResponse.json(
+          { error: `백업 실패: 메모 조회 중 오류 (${error.message}). 빈 백업 파일 생성을 방지하기 위해 중단했습니다.` },
+          { status: 500 },
+        )
+      }
+      if (!batch || batch.length === 0) break
+      allMemos.push(...(batch as BackupRow[]))
+      if (batch.length < 200) break
+      from += 200
+    }
+  }
+  tables.memos = allMemos
   const memoIds = tables.memos.map((m) => m.id as string)
 
   const { data: folders } = await supabase.from('folders').select('*').eq('user_id', user.id)
@@ -96,12 +118,26 @@ export async function GET(req: NextRequest) {
   tables.uploaded_files = (uploadedFiles ?? []) as BackupRow[]
 
   // memo_versions — RLS로 본인 메모 버전만 조회되지만 명시적으로 in 필터로 보호
+  // (대용량 content 버전 대비 200행 배치 — memos와 동일 원리)
+  tables.memo_versions = []
   if (memoIds.length > 0) {
-    const { data: memoVersions } = await supabase
-      .from('memo_versions').select('*').in('memo_id', memoIds)
-    tables.memo_versions = (memoVersions ?? []) as BackupRow[]
-  } else {
-    tables.memo_versions = []
+    let from = 0
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('memo_versions').select('*').in('memo_id', memoIds)
+        .order('created_at', { ascending: true })
+        .range(from, from + 199)
+      if (error) {
+        return NextResponse.json(
+          { error: `백업 실패: 버전 이력 조회 중 오류 (${error.message}).` },
+          { status: 500 },
+        )
+      }
+      if (!batch || batch.length === 0) break
+      tables.memo_versions.push(...(batch as BackupRow[]))
+      if (batch.length < 200) break
+      from += 200
+    }
   }
 
   // chat_messages

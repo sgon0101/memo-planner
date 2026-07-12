@@ -167,7 +167,8 @@ async function runConcurrent<T>(
 
 // ─── 페이지네이션으로 전체 메모 가져오기 ─────────────────────
 async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const BATCH = 1000
+  // 1000→200: 대용량 content(base64 인라인 이미지 등)로 인한 배치 실패 확률 축소
+  const BATCH = 200
   const result: Array<{
     id: string
     title: string | null
@@ -195,13 +196,25 @@ async function fetchAllMemos(supabase: Awaited<ReturnType<typeof createClient>>,
       .range(from, from + BATCH - 1)
 
     if (error) {
-      console.error('[backup] fetchAllMemos 쿼리 실패 (range', from, '-', from + BATCH - 1, '):', error.message)
-      break
+      // ⚠️ 부분 페치로 백업을 진행하면 일부 폴더의 md/이미지가 통째로 누락돼
+      // "성공한 것처럼 보이는 불완전 백업"이 됨 (2026-07-11 ME/images 누락 사고 교훈)
+      // → 명시적으로 실패시켜 호출부(try-catch)가 에러를 반환하게 한다
+      throw new Error(`메모 조회 실패 (range ${from}-${from + BATCH - 1}): ${error.message}`)
     }
     if (!batch || batch.length === 0) break
     result.push(...(batch as typeof result))
     if (batch.length < BATCH) break
     from += BATCH
+  }
+
+  // 가드: 실제 활성 메모 수와 대조 — 불일치면 불완전 백업 방지 위해 실패
+  const { count, error: countErr } = await supabase
+    .from('memos')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+  if (countErr || count == null || result.length !== count) {
+    throw new Error(`메모 페치 불완전 (${result.length}/${count ?? '?'}) — 백업 중단`)
   }
 
   return result
