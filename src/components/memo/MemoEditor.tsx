@@ -132,6 +132,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const [title, setTitle] = useState(initialTitle)
   // Chrome Mobile autofill heuristic 회피 — 초기 readOnly, focus 시 해제
   const [titleReadOnly, setTitleReadOnly] = useState(true)
+  // base64 인라인 이미지 자동 이주 중복 실행 방지
+  const base64MigratingRef = useRef(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const triggerAutoEmbed = useAutoEmbed()
   const [createdId, setCreatedId] = useState<string | null>(isNew ? null : memoId)
@@ -547,6 +549,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           saveRef.current(json, t)
         }, 2000)
       }
+
+      // 외부 HTML 붙여넣기로 유입된 base64 인라인 이미지 → R2 자동 이주
+      void migrateInlineBase64()
     },
     onCreate({ editor }) {
       const text = editor.getText()
@@ -666,6 +671,70 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   function showUploadToast(msg: string) {
     // 압축률 등 "성공" 톤이 기본 — 실패 시는 별도 toast.error로
     toast.success(msg)
+  }
+
+  // ─── base64 인라인 이미지 자동 이주 (유입 차단) ─────────────────────
+  // 외부 앱(웹페이지·문서 등)의 서식 있는 내용을 붙여넣으면 HTML 속 인라인
+  // base64 이미지가 R2 업로드 경로를 우회해 본문 JSONB에 그대로 저장됨 —
+  // 16MB 메모 하나가 로딩 7초·r2-gc 오판 사고·백업 0개를 유발한 사고 체인의 근원
+  // (2026-07-11). onUpdate에서 감지 즉시 R2로 올리고 노드 attrs를 URL로 교체한다.
+  // 오프라인이면 uploadImageOrQueue가 IDB 큐 + localBlobId로 동일 처리.
+  async function migrateInlineBase64() {
+    const ed = editorRef.current
+    if (!ed || base64MigratingRef.current) return
+    // 존재 검사 — 첫 발견 즉시 중단하는 저렴한 스캔
+    let exists = false
+    ed.state.doc.descendants((node) => {
+      if (exists) return false
+      if (node.type.name === 'image' && typeof node.attrs.src === 'string' && node.attrs.src.startsWith('data:image/')) exists = true
+      return !exists
+    })
+    if (!exists) return
+
+    base64MigratingRef.current = true
+    let migrated = 0
+    try {
+      // 매회 fresh 스캔으로 첫 data: 노드를 처리 — 업로드 중 편집으로 인한 pos 변동에 안전
+      for (let guard = 0; guard < 20; guard++) {
+        const cur = editorRef.current
+        if (!cur) break
+        let src = ''
+        cur.state.doc.descendants((node) => {
+          if (src) return false
+          if (node.type.name === 'image' && typeof node.attrs.src === 'string' && node.attrs.src.startsWith('data:image/')) src = node.attrs.src
+          return !src
+        })
+        if (!src) break
+
+        const blob = await (await fetch(src)).blob()
+        const file = new File([blob], `pasted-${Date.now()}.png`, { type: blob.type || 'image/png' })
+        const result = await uploadImageOrQueue(file)
+
+        const after = editorRef.current
+        if (!after) break
+        let applied = false
+        after.commands.command(({ tr, state }) => {
+          state.doc.descendants((node, pos) => {
+            if (applied) return false
+            if (node.type.name === 'image' && node.attrs.src === src) {
+              const attrs = result.queued
+                ? { ...node.attrs, src: '', localBlobId: result.localBlobId }
+                : { ...node.attrs, src: result.src, srcMd: result.srcMd ?? null, srcSm: result.srcSm ?? null }
+              tr.setNodeMarkup(pos, undefined, attrs)
+              applied = true
+            }
+            return !applied
+          })
+          return applied
+        })
+        if (!applied) break
+        migrated++
+      }
+      if (migrated > 0) {
+        toast.success(`붙여넣은 이미지 ${migrated}개를 저장소로 옮겼어요 (메모 용량 최적화)`)
+      }
+    } catch { /* 실패 시 다음 onUpdate에서 자동 재시도 */ }
+    finally { base64MigratingRef.current = false }
   }
 
   async function handleImageUpload(file: File) {
