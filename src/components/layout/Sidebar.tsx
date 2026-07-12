@@ -161,13 +161,10 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
                   'transition-colors duration-150 ease-out',
                   sidebarOpen ? 'px-3 py-2' : 'md:justify-center px-2 py-2',
                   isActive
-                    ? 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300'
+                    ? 'bg-violet-100/70 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 font-semibold'
                     : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-800 dark:hover:text-gray-200',
                 )}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-violet-600 rounded-r-full" />
-                )}
                 <Icon
                   size={17}
                   className={cn(
