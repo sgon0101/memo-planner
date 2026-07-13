@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { verifyCronAuth } from '@/lib/security/cronAuth'
-import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile } from '@/lib/google/drive'
+import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile, listDriveFiles } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 
 export const maxDuration = 300
@@ -155,11 +155,94 @@ function resolveContent(
   return { type: 'doc', content: [{ type: 'paragraph' }] }
 }
 
+// ─── 이미지 증분 백업 (묶음B, 2026-07-12) ─────────────────────
+// 배경: 이미지 백업이 수동 '폴더별 백업'에만 있어 4/26~7/1 공백이 생겼고,
+// 그 사이 r2-gc 사고로 소실된 이미지 19장이 영구 복구 불가가 됨.
+// 설계:
+//  - 날짜 스냅샷 폴더가 아닌 **고정 공유 폴더('Weave_이미지')**에 원본만 백업
+//    → 매 주기 전체 복사가 아닌 증분(신규만), retention('메모플래너_' prefix)의 삭제 대상이 아님
+//  - 변형(md_/thumb_)은 원본에서 재생성 가능하므로 제외 (scripts/backfill-image-variants.ts)
+//  - R2에서 404(이미 소실)면 skip — 개별 실패가 md 백업을 막지 않음
+//  - deadline 가드: maxDuration(300s) 내 안전 마진에서 중단, 증분이라 다음 주기에 자동 이어짐
+
+function extractR2OriginalUrls(content: unknown, publicUrlPrefix: string): string[] {
+  if (!content || !publicUrlPrefix) return []
+  const j = JSON.stringify(content)
+  const esc = publicUrlPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const urls = j.match(new RegExp(`${esc}/[^"\\\\\\s]+`, 'g')) ?? []
+  // 원본만 — 파일명이 md_/thumb_ 로 시작하는 변형 제외, 쿼리스트링 제거
+  return [...new Set(
+    urls
+      .map((u) => u.split('?')[0])
+      .filter((u) => {
+        const name = u.split('/').pop() ?? ''
+        return !name.startsWith('md_') && !name.startsWith('thumb_')
+      })
+  )]
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function backupImagesIncremental(
+  drive: any,
+  memos: Array<{ content: Record<string, unknown> | null; is_locked: boolean }>,
+  deadlineAt: number,
+): Promise<{ uploaded: number; skipped: number; failed: number; timedOut: boolean }> {
+  const publicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL ?? '').replace(/\/$/, '')
+  if (!publicUrl) return { uploaded: 0, skipped: 0, failed: 0, timedOut: false }
+
+  // 전체 메모에서 원본 이미지 URL 수집 (잠금 메모는 content 암호화라 자연 제외)
+  const urlSet = new Set<string>()
+  for (const m of memos) {
+    if (m.is_locked) continue
+    extractR2OriginalUrls(m.content, publicUrl).forEach((u) => urlSet.add(u))
+  }
+  if (urlSet.size === 0) return { uploaded: 0, skipped: 0, failed: 0, timedOut: false }
+
+  // 공유 이미지 폴더 확보 — 'Weave_이미지'는 retention prefix('메모플래너_')와 겹치지 않음
+  const IMAGES_FOLDER = 'Weave_이미지'
+  const existing = await listBackupFolders(drive, ROOT_FOLDER_ID, IMAGES_FOLDER)
+  const folderId = existing[0]?.id ?? await createDriveFolder(drive, IMAGES_FOLDER, ROOT_FOLDER_ID)
+
+  // 기존 백업 파일명 셋 → 증분 판정 (파일명 = R2 키의 파일명, uuid라 전역 유니크)
+  const existingFiles = await listDriveFiles(drive, folderId)
+  const existingNames = new Set(existingFiles.map((f) => f.name))
+
+  let uploaded = 0, skipped = 0, failed = 0
+  for (const url of urlSet) {
+    if (Date.now() > deadlineAt) {
+      return { uploaded, skipped, failed, timedOut: true }
+    }
+    const fileName = url.split('/').pop()!
+    if (existingNames.has(fileName)) { skipped++; continue }
+    try {
+      const res = await fetch(url)
+      if (!res.ok) { failed++; continue } // 404 = 이미 소실된 이미지 — 백업 불가
+      const buf = Buffer.from(await res.arrayBuffer())
+      const { Readable } = await import('stream')
+      await drive.files.create({
+        requestBody: { name: fileName, parents: [folderId] },
+        media: {
+          mimeType: res.headers.get('content-type') || 'image/webp',
+          body: Readable.from(buf),
+        },
+      })
+      uploaded++
+    } catch (e) {
+      failed++
+      console.warn(`[cron/backup] 이미지 백업 실패 (${fileName}):`, e instanceof Error ? e.message : e)
+    }
+  }
+  return { uploaded, skipped, failed, timedOut: false }
+}
+
 // ─── GET /api/cron/backup ─────────────────────────────────────
 export async function GET(req: Request) {
   if (!verifyCronAuth(req.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // 이미지 증분 백업의 deadline 가드용 (maxDuration 300s — 60s 안전 마진)
+  const startedAt = Date.now()
 
   const supabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -300,6 +383,21 @@ export async function GET(req: Request) {
         `성공: ${successCount}/${uploadTasks.length}` +
         (failCount > 0 ? `, 실패: ${failCount}` : '')
       )
+
+      // ── 이미지 증분 백업 (묶음B) — md 백업과 독립, 실패해도 백업 전체를 막지 않음 ──
+      if (meta.backupImages !== false) {
+        try {
+          const deadlineAt = startedAt + 240_000 // maxDuration 300s — 60s 마진
+          const img = await backupImagesIncremental(drive, memos, deadlineAt)
+          console.log(
+            `[cron/backup] user ${integration.user_id} 이미지 — ` +
+            `신규 ${img.uploaded}, 기존 ${img.skipped}, 실패 ${img.failed}` +
+            (img.timedOut ? ' (시간 초과로 중단 — 다음 주기에 이어짐)' : '')
+          )
+        } catch (e) {
+          console.warn('[cron/backup] 이미지 백업 단계 실패 (md 백업은 정상):', e)
+        }
+      }
 
       // ── Retention: 최근 N개만 유지 (기본 10) ──────────────────
       const retainCount = Math.max(1, Math.min(100, (meta.retainCount as number) ?? 10))
