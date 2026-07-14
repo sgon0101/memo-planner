@@ -602,10 +602,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     return () => clearInterval(interval)
   }, [])
 
-  // Ctrl+S 저장
+  // Ctrl+S 저장 — e.code로 물리 키 매치 (한글 IME/Caps Lock/Shift 무관하게 항상 동작)
+  // 이전엔 e.key === 's'만 체크 → 한글 IME 상태에서 e.key='ㄴ'/'Process'라 무동작 버그
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      const isCtrlS = (e.ctrlKey || e.metaKey)
+        && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')
+      if (isCtrlS) {
         e.preventDefault()
         if (!editorRef.current) return
         const json = editorRef.current.getJSON() as Record<string, unknown>
