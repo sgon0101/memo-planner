@@ -98,7 +98,8 @@ async function runConcurrent<T>(
 // ─── 페이지네이션으로 전체 메모 가져오기 ─────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAllMemos(supabase: any, userId: string) {
-  const BATCH = 1000
+  // 1000→200: 대용량 content로 인한 배치 실패 확률 축소 (수동 라우트와 동일)
+  const BATCH = 200
   const result: Array<{
     id: string
     title: string | null
@@ -126,13 +127,25 @@ async function fetchAllMemos(supabase: any, userId: string) {
       .range(from, from + BATCH - 1)
 
     if (error) {
-      console.error('[cron/backup] fetchAllMemos 실패 (range', from, '-', from + BATCH - 1, '):', error.message)
-      break
+      // ⚠️ 부분 페치로 백업을 진행하면 일부 폴더의 md/이미지가 통째로 누락돼
+      // "성공한 것처럼 보이는 불완전 백업"이 됨 (2026-07-11 ME/images 누락 사고 교훈)
+      // → throw로 해당 유저를 이번 주기 skip — nextBackupAt이 안 갱신돼 다음 주기에 자동 재시도
+      throw new Error(`메모 조회 실패 (range ${from}-${from + BATCH - 1}): ${error.message}`)
     }
     if (!batch || batch.length === 0) break
     result.push(...(batch as typeof result))
     if (batch.length < BATCH) break
     from += BATCH
+  }
+
+  // 가드: 실제 활성 메모 수와 대조 — 불일치면 불완전 백업 방지 위해 실패
+  const { count, error: countErr } = await supabase
+    .from('memos')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+  if (countErr || count == null || result.length !== count) {
+    throw new Error(`메모 페치 불완전 (${result.length}/${count ?? '?'}) — 백업 중단`)
   }
 
   return result
@@ -184,18 +197,38 @@ function extractR2OriginalUrls(content: unknown, publicUrlPrefix: string): strin
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function backupImagesIncremental(
   drive: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  userId: string,
   memos: Array<{ content: Record<string, unknown> | null; is_locked: boolean }>,
   deadlineAt: number,
 ): Promise<{ uploaded: number; skipped: number; failed: number; timedOut: boolean }> {
   const publicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL ?? '').replace(/\/$/, '')
   if (!publicUrl) return { uploaded: 0, skipped: 0, failed: 0, timedOut: false }
 
-  // 전체 메모에서 원본 이미지 URL 수집 (잠금 메모는 content 암호화라 자연 제외)
+  // 소스 1: 메모 content 스캔 (잠금 메모는 content 암호화라 자연 제외)
   const urlSet = new Set<string>()
   for (const m of memos) {
     if (m.is_locked) continue
     extractR2OriginalUrls(m.content, publicUrl).forEach((u) => urlSet.add(u))
   }
+
+  // 소스 2: uploaded_files 테이블 병합 — content 스캔이 못 보는
+  // 잠금 메모의 이미지 + 현재 본문에서 지워졌지만 버전 이력에만 남은 이미지 커버
+  // (r2-gc는 memo_id 연결 파일을 무조건 보존하므로 R2엔 살아있는데 백업엔 없는 비대칭 해소)
+  const { data: files, error: filesErr } = await supabase
+    .from('uploaded_files')
+    .select('public_url')
+    .eq('user_id', userId)
+  if (filesErr) {
+    console.warn('[cron/backup] uploaded_files 조회 실패 — content 스캔분만 백업:', filesErr.message)
+  } else {
+    for (const f of (files ?? []) as Array<{ public_url: string | null }>) {
+      const u = (f.public_url ?? '').split('?')[0]
+      if (u.startsWith(publicUrl + '/')) urlSet.add(u)
+    }
+  }
+
   if (urlSet.size === 0) return { uploaded: 0, skipped: 0, failed: 0, timedOut: false }
 
   // 공유 이미지 폴더 확보 — 'Weave_이미지'는 retention prefix('메모플래너_')와 겹치지 않음
@@ -215,7 +248,8 @@ async function backupImagesIncremental(
     const fileName = url.split('/').pop()!
     if (existingNames.has(fileName)) { skipped++; continue }
     try {
-      const res = await fetch(url)
+      // 타임아웃 15s — hang된 fetch 하나가 deadline(240s)을 통째로 소모하는 것 방지
+      const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
       if (!res.ok) { failed++; continue } // 404 = 이미 소실된 이미지 — 백업 불가
       const buf = Buffer.from(await res.arrayBuffer())
       const { Readable } = await import('stream')
@@ -388,7 +422,7 @@ export async function GET(req: Request) {
       if (meta.backupImages !== false) {
         try {
           const deadlineAt = startedAt + 240_000 // maxDuration 300s — 60s 마진
-          const img = await backupImagesIncremental(drive, memos, deadlineAt)
+          const img = await backupImagesIncremental(drive, supabase, integration.user_id, memos, deadlineAt)
           console.log(
             `[cron/backup] user ${integration.user_id} 이미지 — ` +
             `신규 ${img.uploaded}, 기존 ${img.skipped}, 실패 ${img.failed}` +
