@@ -1,6 +1,6 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { GRAPH_COLORS } from '@/lib/graph/colors'
 
 interface TooltipData {
   x: number
@@ -8,6 +8,14 @@ interface TooltipData {
   label: string
   type: 'memo' | 'wiki' | 'tag'
   linkCount: number
+}
+
+// 툴팁 타입 라벨 색 — 그래프 노드 색(lib/graph/colors.ts 단일 출처)과 일치.
+// 메모는 어두운 툴팁 배경(gray-900) 위 가독성을 위해 밝은 톤(memoSome) 사용.
+const TYPE_COLOR: Record<TooltipData['type'], string> = {
+  wiki: GRAPH_COLORS.wiki,
+  tag: GRAPH_COLORS.tag,
+  memo: GRAPH_COLORS.memoSome,
 }
 
 export default function GraphTooltip({ data }: { data: TooltipData | null }) {
@@ -19,7 +27,7 @@ export default function GraphTooltip({ data }: { data: TooltipData | null }) {
       style={{ left: data.x + 12, top: data.y - 10 }}
     >
       <p className="font-medium truncate">{data.label}</p>
-      <p className={cn('mt-0.5', data.type === 'wiki' ? 'text-emerald-400' : data.type === 'tag' ? 'text-blue-400' : 'text-violet-300')}>
+      <p className="mt-0.5" style={{ color: TYPE_COLOR[data.type] }}>
         {typeLabel} · 연결 {data.linkCount}개
       </p>
       {data.type === 'memo' && (
