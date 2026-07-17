@@ -86,10 +86,26 @@ type Profile = {
 
 type MemoRow = { title: string; content_text: string | null; tags: string[] | null; folders: { name: string } | { name: string }[] | null }
 
+export interface ChatPlanRow {
+  title: string
+  date: string | null
+  isCompleted: boolean
+}
+
+export interface ChatContextExtras {
+  /** 이번 주 플랜 (제목 + 날짜 + 완료 여부) */
+  weekPlans?: ChatPlanRow[]
+  /** 최근 생성 플랜 */
+  recentPlans?: ChatPlanRow[]
+  /** 사용자 질문과 의미적으로 관련된 메모 본문 발췌 (RAG) */
+  relatedMemos?: { title: string; snippet: string }[]
+}
+
 export function profileChatSystemPrompt(
   profile: Profile,
   recentMemos: MemoRow[],
   conversationSummary: string | null,
+  extras?: ChatContextExtras,
 ) {
   const profileSection = profile
     ? `## 사용자 프로필
@@ -115,11 +131,33 @@ export function profileChatSystemPrompt(
       }).join('\n')}`
     : ''
 
+  const fmtPlan = (p: ChatPlanRow) =>
+    `- ${p.isCompleted ? '[완료]' : '[미완료]'} ${p.title}${p.date ? ` (${p.date})` : ''}`
+
+  const weekPlans = extras?.weekPlans ?? []
+  const weekCompleted = weekPlans.filter((p) => p.isCompleted).length
+  const weekPlanSection = weekPlans.length > 0
+    ? `## 이번 주 플랜 (${weekPlans.length}개 중 ${weekCompleted}개 완료 — 달성률 ${Math.round((weekCompleted / weekPlans.length) * 100)}%)\n${weekPlans.map(fmtPlan).join('\n')}`
+    : ''
+
+  const recentPlans = extras?.recentPlans ?? []
+  const recentPlanSection = recentPlans.length > 0
+    ? `## 최근 플랜 (최신 ${recentPlans.length}개)\n${recentPlans.map(fmtPlan).join('\n')}`
+    : ''
+
+  const relatedMemos = extras?.relatedMemos ?? []
+  const relatedSection = relatedMemos.length > 0
+    ? `## 사용자의 질문과 관련된 메모 본문 발췌\n${relatedMemos.map((m) => `### ${m.title}\n${m.snippet}`).join('\n\n')}`
+    : ''
+
   return [
     '당신은 사용자의 개인 AI 어시스턴트입니다. 메모, 플랜, 대화 기록을 기반으로 깊이 있는 인사이트를 제공합니다. 항상 한국어로 답변하세요.',
     profileSection,
     summarySection,
     memoSection,
-    '## 답변 원칙\n- 사용자의 실제 데이터를 구체적으로 언급하세요\n- 일반적인 조언보다 사용자 맞춤 인사이트를 제공하세요\n- 패턴과 변화를 발견하면 적극적으로 공유하세요\n- 따뜻하고 솔직하게 대화하세요',
+    weekPlanSection,
+    recentPlanSection,
+    relatedSection,
+    '## 답변 원칙\n- 사용자의 실제 데이터(메모·플랜)를 구체적으로 언급하세요\n- 관련 메모 발췌가 주어지면 그 내용을 우선 근거로 삼으세요\n- 일반적인 조언보다 사용자 맞춤 인사이트를 제공하세요\n- 패턴과 변화를 발견하면 적극적으로 공유하세요\n- 따뜻하고 솔직하게 대화하세요',
   ].filter(Boolean).join('\n\n')
 }
