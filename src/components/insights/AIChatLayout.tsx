@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Bot, User, Plus, Trash2, MessageCircle } from 'lucide-react'
+import { Send, Bot, User, Plus, Trash2, MessageCircle, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useConfirm } from '@/components/ui/ConfirmModal'
+import Markdown from '@/components/ui/Markdown'
+
+const MAX_MESSAGE_LEN = 4000 // 서버(api/ai/chat)와 동일 제한
 
 interface ChatRoom {
   id: string
@@ -57,7 +60,11 @@ export default function AIChatLayout() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const confirm = useConfirm()
+
+  // 언마운트 시 진행 중 스트림 정리
+  useEffect(() => () => { abortRef.current?.abort() }, [])
 
   const loadRooms = useCallback(async () => {
     const res = await fetch('/api/ai/chat-rooms')
@@ -108,63 +115,98 @@ export default function AIChatLayout() {
     })
   }
 
-  async function send() {
-    const text = input.trim()
-    if (!text || loading || !selectedId) return
+  /** 스트리밍 중단 — 지금까지 받은 텍스트는 유지 */
+  function stopStreaming() {
+    abortRef.current?.abort()
+  }
 
+  async function send(textOverride?: string) {
+    const text = (textOverride ?? input).trim()
+    if (!text || loading || !selectedId) return
+    if (text.length > MAX_MESSAGE_LEN) return
+
+    // eslint-disable-next-line react-hooks/purity -- 이벤트 핸들러 내 임시 ID 생성 (렌더 중 실행 아님)
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: text, created_at: new Date().toISOString() }
     setMessages((prev) => [...prev, userMsg])
     setInput('')
     setLoading(true)
     setSuggestion(null)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+    let aborted = false
+
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId: selectedId, message: text }),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
-        throw new Error(`서버 오류 (${res.status})`)
+        // 서버가 만든 안내 문구(레이트리밋·길이 제한 등)를 그대로 사용자에게 전달
+        const serverMsg = await res.text().catch(() => '')
+        const friendly = serverMsg.trim()
+          ? serverMsg.trim()
+          : res.status === 429
+            ? '오늘 대화 한도를 모두 사용했어요. 내일 다시 시도해주세요.'
+            : `오류가 발생했어요. (서버 응답 ${res.status}) 잠시 후 다시 시도해주세요.`
+        setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: friendly, created_at: new Date().toISOString() }])
+        return
       }
 
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let assistantText = ''
+      // eslint-disable-next-line react-hooks/purity -- 이벤트 핸들러 내 임시 ID 생성 (렌더 중 실행 아님)
       const assistantId = (Date.now() + 1).toString()
 
       setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', created_at: new Date().toISOString() }])
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          // 마지막 멀티바이트 문자 flush
-          const tail = decoder.decode()
-          if (tail) {
-            assistantText += tail
-            setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            // 마지막 멀티바이트 문자 flush
+            const tail = decoder.decode()
+            if (tail) {
+              // eslint-disable-next-line react-hooks/immutability -- 스트리밍 청크 누적 (이벤트 핸들러 내 로컬 변수)
+              assistantText += tail
+              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
+            }
+            break
           }
-          break
+          assistantText += decoder.decode(value, { stream: true })
+          setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
         }
-        assistantText += decoder.decode(value, { stream: true })
-        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: assistantText } : m))
+      } catch (streamErr) {
+        // Stop 버튼(abort)은 정상 종료로 취급 — 받은 부분까지 유지
+        if (streamErr instanceof DOMException && streamErr.name === 'AbortError') aborted = true
+        else throw streamErr
       }
 
       // 대화방 목록 갱신
       await loadRooms()
 
-      // 프로필 인사이트 추출 (비동기, 결과 기다림)
-      fetch('/api/ai/profile-insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: text, aiResponse: assistantText }),
-      }).then((r) => r.json()).then(({ suggestion: s }) => {
-        if (s) setSuggestion(s)
-      }).catch(() => {})
-    } catch {
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: '오류가 발생했습니다. 다시 시도해주세요.', created_at: new Date().toISOString() }])
+      // 프로필 인사이트 추출 (비동기, 결과 기다림) — 중단된 답변에는 미실행
+      if (!aborted && assistantText) {
+        fetch('/api/ai/profile-insight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userMessage: text, aiResponse: assistantText }),
+        }).then((r) => r.json()).then(({ suggestion: s }) => {
+          if (s) setSuggestion(s)
+        }).catch(() => {})
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // 첫 응답 전 중단 — 조용히 종료
+      } else {
+        setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: '네트워크 오류가 발생했어요. 연결 상태를 확인하고 다시 시도해주세요.', created_at: new Date().toISOString() }])
+      }
     } finally {
+      abortRef.current = null
       setLoading(false)
       inputRef.current?.focus()
     }
@@ -292,7 +334,7 @@ export default function AIChatLayout() {
                   <p className="text-xs">무엇이든 물어보세요.</p>
                   <div className="flex flex-col gap-1.5 mt-2 w-full max-w-xs">
                     {['이번 주 플랜 달성률이 어때?', '내 메모에서 관심사를 찾아줘', '오늘 뭘 하면 좋을까?'].map((q) => (
-                      <button key={q} onClick={() => setInput(q)} className="text-xs px-3 py-2.5 md:py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors text-left">
+                      <button key={q} onClick={() => send(q)} className="text-xs px-3 py-2.5 md:py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors text-left">
                         {q}
                       </button>
                     ))}
@@ -300,18 +342,20 @@ export default function AIChatLayout() {
                 </div>
               )}
 
-              {messages.map((msg) => (
+              {messages.filter((msg) => !(msg.role === 'assistant' && msg.content === '')).map((msg) => (
                 <div key={msg.id} className={cn('flex gap-2', msg.role === 'user' && 'flex-row-reverse')}>
                   <div className={cn('flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center', msg.role === 'user' ? 'bg-violet-600' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700')}>
                     {msg.role === 'user' ? <User size={12} className="text-white" /> : <Bot size={12} className="text-gray-500" />}
                   </div>
                   <div className={cn('max-w-[85%] md:max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed', msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-100 dark:border-gray-700')}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === 'assistant'
+                      ? <Markdown text={msg.content} />
+                      : <p className="whitespace-pre-wrap">{msg.content}</p>}
                   </div>
                 </div>
               ))}
 
-              {loading && (
+              {loading && (messages[messages.length - 1]?.role === 'user' || messages[messages.length - 1]?.content === '') && (
                 <div className="flex gap-2">
                   <div className="w-6 h-6 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center flex-shrink-0">
                     <Bot size={12} className="text-gray-500" />
@@ -351,16 +395,33 @@ export default function AIChatLayout() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                   placeholder="메시지를 입력하세요..."
                   disabled={loading}
+                  maxLength={MAX_MESSAGE_LEN}
                   className="flex-1 px-3.5 py-2.5 text-base sm:text-sm rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
                 />
-                <button
-                  onClick={send}
-                  disabled={loading || !input.trim()}
-                  className="p-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition-colors"
-                >
-                  <Send size={15} />
-                </button>
+                {loading ? (
+                  <button
+                    onClick={stopStreaming}
+                    className="p-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl transition-colors"
+                    title="응답 중단"
+                    aria-label="응답 중단"
+                  >
+                    <Square size={15} className="fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => send()}
+                    disabled={!input.trim()}
+                    className="p-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition-colors"
+                  >
+                    <Send size={15} />
+                  </button>
+                )}
               </div>
+              {input.length > MAX_MESSAGE_LEN - 500 && (
+                <p className={cn('text-[10px] mt-1 text-right', input.length >= MAX_MESSAGE_LEN ? 'text-red-500' : 'text-gray-400')}>
+                  {input.length.toLocaleString()} / {MAX_MESSAGE_LEN.toLocaleString()}자
+                </p>
+              )}
             </div>
           </>
         )}

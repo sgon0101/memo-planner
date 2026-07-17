@@ -16,6 +16,7 @@ interface GapResult {
   summary: string
   suggestions: string[]
   cached?: boolean
+  cachedAt?: string
 }
 
 export default function GapAnalysis() {
@@ -23,30 +24,34 @@ export default function GapAnalysis() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const load = useCallback(async (force = false) => {
+  const load = useCallback(async (mode: 'cache_only' | 'generate' | 'force' = 'generate') => {
     setLoading(true)
     setError('')
     try {
-      const url = force ? '/api/ai/insights?type=gap&force=1' : '/api/ai/insights?type=gap'
-      const res = await fetch(url)
+      const params = new URLSearchParams({ type: 'gap' })
+      if (mode === 'cache_only') params.set('cache_only', '1')
+      if (mode === 'force') params.set('force', '1')
+      const res = await fetch(`/api/ai/insights?${params}`)
       const data = await res.json()
+      if (data.none) return // 캐시 없음 — 빈 상태 유지 (AI 호출 안 함)
       if (!res.ok || data.error) {
         if (data.error === 'no_data') setError('분석할 메모가 없습니다. 먼저 메모를 작성해보세요!')
-        else setError(data.error ?? '분석 중 오류가 발생했습니다.')
+        else setError(data.error ?? `분석 중 오류가 발생했어요. (${res.status})`)
         return
       }
       if (!data.gaps) { setError('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); return }
       setResult(data)
     } catch {
-      setError('분석 중 오류가 발생했습니다.')
+      setError('네트워크 오류가 발생했어요. 연결 상태를 확인하고 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // 마운트 시 캐시 결과 자동 로드 (API 비용 없음 — DB 캐시 반환)
+  // 마운트 시 캐시 결과만 자동 로드 — 캐시가 없으면 AI 호출 없이 빈 상태 유지
+  // (기존엔 캐시 미스 시 탭 진입만으로 AI 분석이 돌아 한도가 차감됐음)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 캐시 로더 (loading 상태 동기 설정)
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load('cache_only') }, [load])
 
   function scoreColor(score: number) {
     if (score >= 70) return 'text-green-500'
@@ -59,14 +64,14 @@ export default function GapAnalysis() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">생각 — 행동 갭 분석</h3>
-          <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다</p>
+          <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다 · 최근 메모 20개, 플랜 30개 기준</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {result?.cached && (
             <span className="text-[10px] text-gray-400 dark:text-gray-500 hidden sm:inline">캐시됨 (24h)</span>
           )}
           <button
-            onClick={() => load(true)}
+            onClick={() => load(result ? 'force' : 'generate')}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >

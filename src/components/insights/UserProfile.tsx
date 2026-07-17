@@ -56,7 +56,14 @@ export default function UserProfile() {
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
-        toast.success('프로필 분석이 완료됐어요.')
+        if (data.cached && data.last_analyzed_at) {
+          // 24h 이내 재분석 요청 — 서버가 기존 결과를 반환한 경우를 구분해 안내
+          const hoursPassed = (Date.now() - new Date(data.last_analyzed_at).getTime()) / 36e5
+          const hoursLeft = Math.max(1, Math.ceil(24 - hoursPassed))
+          toast.info(`24시간 이내 분석 결과를 보여드리고 있어요. 재분석은 약 ${hoursLeft}시간 후 가능해요.`)
+        } else {
+          toast.success('프로필 분석이 완료됐어요.')
+        }
       } else {
         const { error } = await res.json().catch(() => ({ error: null }))
         toast.error(error ?? '분석에 실패했어요.')
