@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,8 @@ interface Interest {
 interface InterestResult {
   interests: Interest[]
   topCategory: string
+  cached?: boolean
+  cachedAt?: string
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -41,21 +43,34 @@ export default function BubbleChart() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  async function load() {
+  const load = useCallback(async (mode: 'cache_only' | 'generate' | 'force' = 'generate') => {
     setLoading(true)
     setError('')
     setSelectedCategory(null)
     try {
-      const res = await fetch('/api/ai/insights?type=interest')
+      const params = new URLSearchParams({ type: 'interest' })
+      if (mode === 'cache_only') params.set('cache_only', '1')
+      if (mode === 'force') params.set('force', '1')
+      const res = await fetch(`/api/ai/insights?${params}`)
       const data = await res.json()
-      if (data.error === 'no_data') { setError('분석할 메모가 없습니다.'); return }
+      if (data.none) return // 캐시 없음 — 빈 상태 유지 (AI 호출 안 함)
+      if (!res.ok || data.error) {
+        if (data.error === 'no_data') setError('분석할 메모가 없습니다. 먼저 메모를 작성해보세요!')
+        else setError(data.error ?? `분석 중 오류가 발생했어요. (${res.status})`)
+        return
+      }
+      if (!data.interests) { setError('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); return }
       setResult(data)
     } catch {
-      setError('분석 중 오류가 발생했습니다.')
+      setError('네트워크 오류가 발생했어요. 연결 상태를 확인하고 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // 마운트 시 캐시 결과만 자동 로드 — 갭 분석 탭과 동일 패턴 (AI 호출·한도 차감 없음)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 캐시 로더 (loading 상태 동기 설정)
+  useEffect(() => { load('cache_only') }, [load])
 
   function handleBubbleClick(item: Interest) {
     const next = selectedCategory === item.category ? null : item.category
@@ -85,16 +100,21 @@ export default function BubbleChart() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">관심사 분석</h3>
-          <p className="text-xs text-gray-500 mt-0.5">AI가 내 메모를 분석해 관심사와 주제별 키워드를 정리해드려요</p>
+          <p className="text-xs text-gray-500 mt-0.5">AI가 내 메모를 분석해 관심사와 주제별 키워드를 정리해드려요 · 최근 메모 20개 기준</p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          분석하기
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {result?.cached && (
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 hidden sm:inline">캐시됨 (24h)</span>
+          )}
+          <button
+            onClick={() => load(result ? 'force' : 'generate')}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {result ? '재분석' : '분석하기'}
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}

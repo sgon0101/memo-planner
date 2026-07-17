@@ -23,12 +23,17 @@ export async function POST() {
     }
   }
 
+  // 잠금 메모 제외(그래프 분석과 동일 규칙) + 상한 300개
+  // — 메모가 수천 개로 늘어도 프롬프트 크기·지연·비용이 폭증하지 않도록
+  const MEMO_CAP = 300
   const { data: allMemos } = await supabase
     .from('memos')
     .select('title, content_text, tags, folders(name)')
     .eq('user_id', user.id)
     .eq('is_deleted', false)
+    .eq('is_locked', false)
     .order('created_at', { ascending: false })
+    .limit(MEMO_CAP)
 
   if (!allMemos?.length) {
     return NextResponse.json({ error: '분석할 메모가 없습니다.' }, { status: 400 })

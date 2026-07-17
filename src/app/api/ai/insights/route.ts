@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams
   const type = params.get('type') ?? 'gap'
   const force = params.get('force') === '1'
+  const cacheOnly = params.get('cache_only') === '1' // 캐시 조회만 — AI 호출·한도 차감 없음
   const cacheKey = type === 'interest' ? 'insights_interest' : 'insights_gap'
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (!force) {
     const { data: cached } = await supabase
       .from('retro_reports')
-      .select('report_json')
+      .select('report_json, created_at')
       .eq('user_id', user.id)
       .eq('period', cacheKey)
       .gte('created_at', format(subDays(new Date(), 1), "yyyy-MM-dd'T'HH:mm:ssxxx"))
@@ -30,12 +31,18 @@ export async function GET(req: NextRequest) {
       .single()
 
     if (cached?.report_json) {
-      return Response.json({ ...(cached.report_json as Record<string, unknown>), cached: true })
+      return Response.json({ ...(cached.report_json as Record<string, unknown>), cached: true, cachedAt: cached.created_at })
     }
   }
 
+  // cache_only: 캐시 없음을 알리고 종료 (탭 진입만으로 AI 호출·한도 차감되던 문제 방지)
+  if (cacheOnly) {
+    return Response.json({ none: true })
+  }
+
   const [{ data: memos }, { data: plans }] = await Promise.all([
-    supabase.from('memos').select('title,content_text,tags').eq('user_id', user.id).eq('is_deleted', false).order('updated_at', { ascending: false }).limit(20),
+    // 잠금 메모는 AI 분석에서 제외 (그래프 분석과 동일 규칙)
+    supabase.from('memos').select('title,content_text,tags').eq('user_id', user.id).eq('is_deleted', false).eq('is_locked', false).order('updated_at', { ascending: false }).limit(20),
     supabase.from('plans').select('title').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
   ])
 

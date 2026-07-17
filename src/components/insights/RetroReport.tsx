@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw, BookOpen, Star, ArrowRight, Heart } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatDistanceToNow, parseISO } from 'date-fns'
+import { ko } from 'date-fns/locale'
 
 type Period = 'week' | 'month' | 'quarter' | 'year'
 
@@ -13,6 +15,7 @@ interface Report {
   nextGoals: string[]
   encouragement: string
   cached?: boolean
+  cachedAt?: string
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -25,21 +28,34 @@ export default function RetroReport() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function load() {
+  const load = useCallback(async (mode: 'cache_only' | 'generate' | 'force' = 'generate') => {
     setLoading(true)
     setError('')
     setReport(null)
     try {
-      const res = await fetch(`/api/ai/report?period=${period}`)
+      const params = new URLSearchParams({ period })
+      if (mode === 'cache_only') params.set('cache_only', '1')
+      if (mode === 'force') params.set('force', '1')
+      const res = await fetch(`/api/ai/report?${params}`)
       const data = await res.json()
-      if (data.error) { setError('분석할 데이터가 없습니다.'); return }
+      if (data.none) return // 캐시 없음 — 빈 상태 유지 (AI 호출 안 함)
+      if (!res.ok || data.error) {
+        // 서버가 만든 사유(레이트리밋·생성 실패 등)를 그대로 노출
+        if (data.error === 'no_data') setError('이 기간에 작성한 메모·플랜이 없어요. 다른 기간을 선택해보세요.')
+        else setError(data.error ?? `리포트 생성 중 오류가 발생했어요. (${res.status})`)
+        return
+      }
       setReport(data)
     } catch {
-      setError('리포트 생성 중 오류가 발생했습니다.')
+      setError('네트워크 오류가 발생했어요. 연결 상태를 확인하고 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [period])
+
+  // 기간 선택 시 캐시된 리포트만 자동 표시 (AI 호출·한도 차감 없음)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 캐시 로더 (loading 상태 동기 설정)
+  useEffect(() => { load('cache_only') }, [load])
 
   return (
     <div className="p-4 md:p-6 space-y-5 md:space-y-6">
@@ -49,12 +65,12 @@ export default function RetroReport() {
           <p className="text-xs text-gray-500 mt-0.5">기간별 메모·플랜 데이터를 AI가 분석합니다</p>
         </div>
         <button
-          onClick={load}
+          onClick={() => load(report ? 'force' : 'generate')}
           disabled={loading}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 md:py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          생성하기
+          {report ? '다시 생성' : '생성하기'}
         </button>
       </div>
 
@@ -95,7 +111,11 @@ export default function RetroReport() {
       {report && !loading && (
         <div className="space-y-5">
           {report.cached && (
-            <p className="text-xs text-gray-400">캐시된 리포트 (24시간 내 생성)</p>
+            <p className="text-xs text-gray-400">
+              {report.cachedAt
+                ? `${formatDistanceToNow(parseISO(report.cachedAt), { addSuffix: true, locale: ko })} 생성된 리포트예요 — 최신 데이터로 보려면 '다시 생성'을 눌러주세요`
+                : '24시간 내 생성된 리포트예요'}
+            </p>
           )}
 
           {/* 헤드라인 */}
