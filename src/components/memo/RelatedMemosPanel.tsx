@@ -8,7 +8,7 @@
  * - 임베딩 없으면 안내 + "지금 생성" 버튼
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sparkles, RefreshCw, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -28,23 +28,43 @@ interface Props {
   refreshKey?: number
 }
 
+/** 자동 임베딩(저장 후 5초 디바운스)이 끝나길 기다리는 재시도 — 총 ~7.5초 커버 */
+const EMBED_POLL_RETRIES = 3
+const EMBED_POLL_INTERVAL_MS = 2500
+
 export default function RelatedMemosPanel({ memoId, refreshKey }: Props) {
   const router = useRouter()
   const [items, setItems] = useState<RelatedMemo[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [needsEmbedding, setNeedsEmbedding] = useState(false)
+  // 재시도 타이머가 stale memoId로 fetch하지 않도록 최신 값 추적
+  const memoIdRef = useRef(memoId)
+  memoIdRef.current = memoId
 
-  async function load() {
+  async function load(retriesLeft = EMBED_POLL_RETRIES) {
     if (!memoId) return
+    const idAtCall = memoId
     setLoading(true)
     setError(null)
     setNeedsEmbedding(false)
+    let scheduledRetry = false
     try {
       const res = await fetch(`/api/memos/${memoId}/related?limit=5&threshold=0.35`)
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'failed')
       if (data.reason === 'no embedding yet') {
+        // 자동 임베딩(저장 후 5초 디바운스)이 백그라운드 진행 중일 수 있음 —
+        // 몇 번 더 기다렸다가, 그래도 없으면 수동 생성 안내 노출
+        // ("고장난 것 같은" 첫인상 방지)
+        if (retriesLeft > 0) {
+          scheduledRetry = true
+          setTimeout(() => {
+            // 그 사이 다른 메모로 이동했으면 stale 재시도 중단
+            if (memoIdRef.current === idAtCall) load(retriesLeft - 1)
+          }, EMBED_POLL_INTERVAL_MS)
+          return // loading 유지 — "분석 중…" 표시
+        }
         setItems([])
         setNeedsEmbedding(true)
       } else {
@@ -54,12 +74,11 @@ export default function RelatedMemosPanel({ memoId, refreshKey }: Props) {
       setError(e instanceof Error ? e.message : 'failed')
       setItems([])
     } finally {
-      setLoading(false)
+      if (!scheduledRetry) setLoading(false)
     }
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- memoId 변경 시 비동기 로더 (loading 상태 동기 설정)
     if (memoId) load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memoId, refreshKey])
@@ -68,13 +87,14 @@ export default function RelatedMemosPanel({ memoId, refreshKey }: Props) {
     if (!memoId) return
     setLoading(true)
     try {
+      // generate 라우트는 임베딩 저장까지 완료 후 응답하므로 응답 직후 즉시 조회 가능
+      // (기존 setTimeout 500ms 고정 대기는 레이스 여지가 있었음)
       await fetch('/api/embeddings/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memoId }),
       })
-      // 임베딩 생성 후 약간 기다렸다가 다시 load
-      setTimeout(load, 500)
+      await load(0)
     } catch {
       setLoading(false)
     }
@@ -90,7 +110,7 @@ export default function RelatedMemosPanel({ memoId, refreshKey }: Props) {
           관련 메모
         </div>
         <button
-          onClick={load}
+          onClick={() => load(0)}
           disabled={loading}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 disabled:opacity-50"
           title="다시 분석"

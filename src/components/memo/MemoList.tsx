@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette, Sparkles } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -437,6 +437,7 @@ export default function MemoList() {
     results: searchResults,
     isSearching,
     isFetching: searchFetching,
+    isSemanticResult,
   } = useMemoSearch({
     query: search,
     folderId: isTrash ? 'trash' : selectedFolderId,
@@ -1141,6 +1142,16 @@ export default function MemoList() {
           )}
         </div>
       </div>
+
+      {/* 시맨틱 폴백 안내 — 단어 일치 결과가 없어 의미 유사 검색으로 찾은 경우 */}
+      {isSearching && isSemanticResult && (
+        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-violet-100 dark:border-violet-900/40 bg-violet-50/60 dark:bg-violet-950/20">
+          <Sparkles size={11} className="text-violet-500 flex-shrink-0" />
+          <span className="text-[11px] text-violet-600 dark:text-violet-400">
+            단어가 일치하는 메모가 없어 <strong>의미가 비슷한 메모</strong>를 찾았어요
+          </span>
+        </div>
+      )}
 
       {/* 검색 도움 칩 — 포커스 + 빈 입력일 때만 */}
       {searchFocused && !search.trim() && (
