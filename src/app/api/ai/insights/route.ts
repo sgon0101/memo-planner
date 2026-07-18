@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { gapAnalysisPrompt, interestAnalysisPrompt } from '@/lib/ai/prompts'
 import { extractMemoTexts } from '@/lib/ai/analyzer'
+import { selectMemosForAnalysis } from '@/lib/ai/select'
 import { checkRateLimit, rateLimitResponse } from '@/lib/security/rateLimit'
 
 export async function GET(req: NextRequest) {
@@ -40,13 +41,21 @@ export async function GET(req: NextRequest) {
     return Response.json({ none: true })
   }
 
-  const [{ data: memos }, { data: plans }] = await Promise.all([
-    // 잠금 메모는 AI 분석에서 제외 (그래프 분석과 동일 규칙)
-    supabase.from('memos').select('title,content_text,tags').eq('user_id', user.id).eq('is_deleted', false).eq('is_locked', false).order('updated_at', { ascending: false }).limit(20),
+  // 임베딩 기반 선별: 최근 20개(최근성) + 전체 이력 클러스터 대표(주제 커버리지)
+  // 임베딩 부족·오류 시 recent-only로 자동 강등 (기존 동작과 동일)
+  const [selection, { data: plans }] = await Promise.all([
+    selectMemosForAnalysis(supabase, user.id),
     supabase.from('plans').select('title').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
   ])
 
-  const memoTexts = extractMemoTexts(memos ?? [])
+  const memoTexts = extractMemoTexts(
+    selection.recent.map((m) => ({ title: m.title, content_text: m.content_text ?? '', tags: m.tags ?? [] }))
+  )
+  const representativeTexts = selection.representative.map((m) => {
+    const preview = (m.content_text ?? '').slice(0, 200)
+    const sizeNote = m.clusterSize && m.clusterSize > 1 ? ` (유사 메모 ${m.clusterSize}개 대표)` : ''
+    return `${m.title}${preview ? ` — ${preview}` : ''}${sizeNote}`
+  })
   const planTitles = (plans ?? []).map((p) => p.title)
 
   if (memoTexts.length === 0) {
@@ -57,9 +66,10 @@ export async function GET(req: NextRequest) {
   const rate = await checkRateLimit(supabase, 'ai-insights')
   if (!rate.ok) return rateLimitResponse(rate.message)
 
+  const scopeOpts = { representativeTexts, totalMemos: selection.totalMemos }
   const prompt = type === 'interest'
-    ? interestAnalysisPrompt(memoTexts)
-    : gapAnalysisPrompt(memoTexts, planTitles)
+    ? interestAnalysisPrompt(memoTexts, scopeOpts)
+    : gapAnalysisPrompt(memoTexts, planTitles, scopeOpts)
 
   try {
     const message = await anthropic.messages.create({
@@ -71,6 +81,15 @@ export async function GET(req: NextRequest) {
 
     const raw = message.content[0].type === 'text' ? message.content[0].text : ''
     const result = extractJSON(raw)
+
+    // 분석 범위 메타 — UI 범위 문구용 (캐시에도 함께 저장)
+    result.scope = {
+      mode: selection.mode,
+      total: selection.totalMemos,
+      recent: selection.recent.length,
+      representative: selection.representative.length,
+      plans: planTitles.length,
+    }
 
     // 캐시 저장
     await supabase.from('retro_reports').insert({

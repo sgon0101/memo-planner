@@ -1,12 +1,33 @@
-export function gapAnalysisPrompt(memoTexts: string[], planTitles: string[]) {
+/**
+ * 이력 대표 메모 섹션 (임베딩 클러스터 대표 — lib/ai/select.ts)
+ * "(유사 메모 N개 대표)" 표기가 이미 텍스트에 포함된 상태로 전달된다.
+ */
+export interface AnalysisScopeOpts {
+  /** 전체 이력 클러스터 대표 메모 발췌 (없으면 최근 메모만 사용) */
+  representativeTexts?: string[]
+  /** 분석이 커버하는 전체 메모 수 (범위 안내용) */
+  totalMemos?: number
+}
+
+function representativeSection(opts?: AnalysisScopeOpts): string {
+  const reps = opts?.representativeTexts ?? []
+  if (reps.length === 0) return ''
+  const totalNote = opts?.totalMemos ? ` — 전체 ${opts.totalMemos}개 메모의 주제 분포를 요약한 표본` : ''
+  return `\n\n## 전체 이력 대표 메모 (주제 클러스터별 대표 ${reps.length}개${totalNote})
+${reps.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+※ "(유사 메모 N개 대표)"는 해당 주제로 묶인 메모 수입니다. N이 클수록 반복적으로 다뤄온 주제입니다.`
+}
+
+export function gapAnalysisPrompt(memoTexts: string[], planTitles: string[], opts?: AnalysisScopeOpts) {
   return `당신은 개인 성장 코치입니다. 사용자의 메모와 플랜 데이터를 분석하여 생각과 행동 사이의 갭을 찾아주세요.
 
-## 메모 내용 (생각/관심사)
-${memoTexts.slice(0, 20).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+## 최근 메모 (생각/관심사 — 최신 ${Math.min(memoTexts.length, 20)}개)
+${memoTexts.slice(0, 20).map((t, i) => `${i + 1}. ${t}`).join('\n')}${representativeSection(opts)}
 
 ## 플랜 제목 (실제 행동)
 ${planTitles.slice(0, 30).map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
+분석 시 최근 메모는 "지금의 관심사", 이력 대표 메모는 "오래 지속된 관심사"로 구분해 반영하세요.
 위 데이터를 분석하여 다음 형식으로 JSON만 반환하세요 (다른 텍스트 없이):
 {
   "gaps": [
@@ -17,12 +38,13 @@ ${planTitles.slice(0, 30).map((t, i) => `${i + 1}. ${t}`).join('\n')}
 }`
 }
 
-export function interestAnalysisPrompt(memoTexts: string[]) {
+export function interestAnalysisPrompt(memoTexts: string[], opts?: AnalysisScopeOpts) {
   return `사용자의 메모를 분석하여 관심사 키워드를 추출해주세요.
 
-## 메모 내용
-${memoTexts.slice(0, 20).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+## 최근 메모 (최신 ${Math.min(memoTexts.length, 20)}개)
+${memoTexts.slice(0, 20).map((t, i) => `${i + 1}. ${t}`).join('\n')}${representativeSection(opts)}
 
+count는 표본 내 등장 빈도의 추정치입니다. 이력 대표 메모의 "(유사 메모 N개 대표)" N을 빈도 가중치로 활용하세요.
 다음 형식으로 JSON만 반환하세요 (다른 텍스트 없이):
 {
   "interests": [

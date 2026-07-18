@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { scopeLabel } from './GapAnalysis'
 
 interface Interest {
   keyword: string
@@ -15,6 +16,13 @@ interface InterestResult {
   topCategory: string
   cached?: boolean
   cachedAt?: string
+  scope?: {
+    mode: 'diverse' | 'recent-only'
+    total: number
+    recent: number
+    representative: number
+    plans?: number
+  }
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -100,7 +108,7 @@ export default function BubbleChart() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">관심사 분석</h3>
-          <p className="text-xs text-gray-500 mt-0.5">AI가 내 메모를 분석해 관심사와 주제별 키워드를 정리해드려요 · 최근 메모 20개 기준</p>
+          <p className="text-xs text-gray-500 mt-0.5">AI가 내 메모를 분석해 관심사와 주제별 키워드를 정리해드려요 · {scopeLabel(result?.scope, '최근 메모 20개 기준')}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {result?.cached && (
