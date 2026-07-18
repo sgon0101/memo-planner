@@ -11,12 +11,30 @@ interface GapItem {
   score: number
 }
 
+interface AnalysisScope {
+  mode: 'diverse' | 'recent-only'
+  total: number
+  recent: number
+  representative: number
+  plans?: number
+}
+
 interface GapResult {
   gaps: GapItem[]
   summary: string
   suggestions: string[]
   cached?: boolean
   cachedAt?: string
+  scope?: AnalysisScope
+}
+
+/** 분석 범위 안내 문구 — 임베딩 선별(diverse)이면 전체 커버리지 표기 */
+export function scopeLabel(scope: AnalysisScope | undefined, fallback: string): string {
+  if (!scope) return fallback
+  if (scope.mode === 'diverse') {
+    return `전체 메모 ${scope.total}개 기준 — 최근 ${scope.recent}개 + 주제별 대표 ${scope.representative}개${scope.plans ? `, 플랜 ${scope.plans}개` : ''}`
+  }
+  return `최근 메모 ${scope.recent}개${scope.plans ? `, 플랜 ${scope.plans}개` : ''} 기준`
 }
 
 export default function GapAnalysis() {
@@ -64,7 +82,7 @@ export default function GapAnalysis() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">생각 — 행동 갭 분석</h3>
-          <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다 · 최근 메모 20개, 플랜 30개 기준</p>
+          <p className="text-xs text-gray-500 mt-0.5">메모의 관심사와 실제 플랜의 일치도를 분석합니다 · {scopeLabel(result?.scope, '최근 메모 20개, 플랜 30개 기준')}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {result?.cached && (

@@ -58,9 +58,12 @@ export default function AIChatLayout() {
   const [loadingRooms, setLoadingRooms] = useState(true)
   const [suggestion, setSuggestion] = useState<ProfileSuggestion | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
+  const [messagesLoading, setMessagesLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // 방 전환 레이스 가드 — 이전 방의 fetch가 늦게 도착해 현재 방 메시지를 덮지 않도록
+  const selectedIdRef = useRef<string | null>(null)
   const confirm = useConfirm()
 
   // 언마운트 시 진행 중 스트림 정리
@@ -83,13 +86,24 @@ export default function AIChatLayout() {
 
   async function selectRoom(id: string) {
     setSelectedId(id)
+    selectedIdRef.current = id
     setSuggestion(null)
     setMessages([])
     setMobileView('chat')
-    const res = await fetch(`/api/ai/chat-rooms/${id}`)
-    if (!res.ok) return
-    const data = await res.json()
-    setMessages(data)
+    // 기존 대화방(메시지 있음)은 로딩 스켈레톤 표시 —
+    // "무엇이든 물어보세요" 빈 상태가 로딩 동안 스치듯 보이던 문제 방지.
+    // 새 대화방(message_count 0)은 어차피 빈 상태가 정답이므로 스켈레톤 생략.
+    const room = rooms.find((r) => r.id === id)
+    const expectEmpty = (room?.message_count ?? 0) === 0
+    if (!expectEmpty) setMessagesLoading(true)
+    try {
+      const res = await fetch(`/api/ai/chat-rooms/${id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (selectedIdRef.current === id) setMessages(data)
+    } finally {
+      if (selectedIdRef.current === id) setMessagesLoading(false)
+    }
   }
 
   async function createRoom() {
@@ -110,7 +124,7 @@ export default function AIChatLayout() {
       onConfirm: async () => {
         await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
         setRooms((prev) => prev.filter((r) => r.id !== id))
-        if (selectedId === id) { setSelectedId(null); setMessages([]); setMobileView('list') }
+        if (selectedId === id) { setSelectedId(null); selectedIdRef.current = null; setMessages([]); setMobileView('list') }
       },
     })
   }
@@ -328,7 +342,22 @@ export default function AIChatLayout() {
 
             {/* 메시지 영역 */}
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 bg-gray-50 dark:bg-gray-950">
-              {messages.length === 0 && !loading && (
+              {/* 기존 대화방 메시지 로딩 — 빈 상태 대신 스켈레톤 (플래시 방지) */}
+              {messagesLoading && messages.length === 0 && (
+                <div className="space-y-3">
+                  {[72, 44, 84].map((w, i) => (
+                    <div key={i} className={cn('flex gap-2', i === 1 && 'flex-row-reverse')}>
+                      <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 animate-pulse flex-shrink-0" />
+                      <div
+                        className={cn('h-12 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse', i === 1 ? 'rounded-tr-sm' : 'rounded-tl-sm')}
+                        style={{ width: `${w}%`, maxWidth: 420 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {messages.length === 0 && !loading && !messagesLoading && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
                   <Bot size={32} className="opacity-20" />
                   <p className="text-xs">무엇이든 물어보세요.</p>
