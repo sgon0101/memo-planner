@@ -13,11 +13,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LinkInputPopover from './LinkInputPopover'
-import { toast } from '@/components/ui/Toast'
-import { uploadImageOrQueue } from '@/lib/sync/withQueue'
 
 interface ToolbarProps {
   editor: Editor
+  /** 이미지 첨부 — 업로드·삽입·저장·토스트는 전부 MemoEditor의 단일 경로가 담당.
+   *  (툴바가 자체 구현을 갖고 있으면 붙여넣기/드롭 경로와 갈라져 한쪽만 고쳐지는 문제 발생) */
+  onImageUpload: (file: File) => Promise<void>
 }
 
 /**
@@ -674,7 +675,7 @@ function MoreMenu({ editor }: { editor: Editor }) {
 
 // ── 메인 툴바 ──────────────────────────────────────────────────────
 
-export default function EditorToolbar({ editor }: ToolbarProps) {
+export default function EditorToolbar({ editor, onImageUpload }: ToolbarProps) {
   const [imageUploading, setImageUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const linkBtnRef = useRef<HTMLButtonElement>(null)
@@ -703,28 +704,8 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
     e.target.value = ''
     setImageUploading(true)
     try {
-      // PR-M1-C: online이면 즉시 R2, offline이면 IDB+큐
-      const result = await uploadImageOrQueue(file)
-      if (result.queued) {
-        editor.chain().focus().insertContent({
-          type: 'image',
-          attrs: { src: '', localBlobId: result.localBlobId, width: '50%' },
-        }).run()
-        toast.success('오프라인 상태 — 이미지가 임시 저장됐어요. 온라인 복귀 시 자동 업로드돼요.')
-      } else {
-        editor.chain().focus().insertContent({
-          type: 'image',
-          attrs: {
-            src: result.src,
-            srcMd: result.srcMd ?? null,
-            srcSm: result.srcSm ?? null,
-            width: '50%',
-          },
-        }).run()
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '이미지 업로드 실패'
-      toast.error(msg.includes('upload failed: 413') ? '스토리지 한도를 초과했어요.' : '이미지 업로드에 실패했어요.')
+      // 업로드·삽입·즉시저장·토스트는 MemoEditor.handleImageUpload가 전담 (단일 경로)
+      await onImageUpload(file)
     } finally {
       setImageUploading(false)
     }

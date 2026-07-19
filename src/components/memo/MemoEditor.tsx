@@ -740,30 +740,69 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     finally { base64MigratingRef.current = false }
   }
 
+  /**
+   * 이미지 첨부 단일 경로 — 붙여넣기·드롭·툴바 버튼이 모두 여기를 탄다.
+   *
+   * 모바일(특히 설치형 PWA) 대응이 핵심:
+   *   ① 파일 피커는 앱을 백그라운드로 보냈다 복귀시킨다. 그 사이 editor가
+   *      파괴됐을 수 있어 업로드 완료 시점에 다시 살아있는지 확인한다.
+   *   ② 복귀 직후 selection이 무효라 chain().focus().insertContent()가 조용히
+   *      false를 반환할 수 있다 → 문서 끝 명시 위치로 재시도한다.
+   *   ③ 삽입이 실제 doc에 반영됐는지 검증한다(조용한 유실 금지).
+   *   ④ 30초 자동저장을 기다리지 않고 즉시 저장한다. 복귀 직후 안드로이드가
+   *      PWA를 정리하면 자동저장 전에 통째로 유실되기 때문.
+   */
   async function handleImageUpload(file: File) {
-    if (!editor) return
+    if (!editorRef.current || editorRef.current.isDestroyed) {
+      toast.error('에디터가 준비되지 않았어요. 메모를 다시 열고 시도해주세요.')
+      return
+    }
     // PR-M1-C: online이면 즉시 R2, offline이면 IDB+큐 (localBlobId만 attrs에 박힘)
     try {
       const result = await uploadImageOrQueue(file)
+
+      // ① 업로드 대기 중 에디터가 사라졌는지 재확인 — 여기서 조용히 끝나면 안 됨
+      const live = editorRef.current
+      if (!live || live.isDestroyed) {
+        toast.error('이미지는 업로드됐지만 에디터가 닫혀 삽입하지 못했어요. 메모를 다시 열고 한 번 더 시도해주세요.')
+        return
+      }
+
+      const attrs = result.queued
+        ? { src: '', localBlobId: result.localBlobId ?? null, srcMd: null, srcSm: null, width: '50%' }
+        : { src: result.src ?? '', localBlobId: null, srcMd: result.srcMd ?? null, srcSm: result.srcSm ?? null, width: '50%' }
+
+      // ② selection이 무효면 focus 체인이 실패 → 문서 끝에 명시 위치로 재시도
+      let applied = live.chain().focus().insertContent({ type: 'image', attrs }).run()
+      if (!applied) {
+        applied = live.chain().insertContentAt(live.state.doc.content.size, { type: 'image', attrs }).run()
+      }
+
+      // ③ 실제로 doc에 들어갔는지 확인
+      let present = false
+      live.state.doc.descendants((node) => {
+        if (present || node.type.name !== 'image') return !present
+        present = attrs.localBlobId
+          ? node.attrs.localBlobId === attrs.localBlobId
+          : node.attrs.src === attrs.src
+        return !present
+      })
+
+      if (!applied || !present) {
+        toast.error('이미지 삽입에 실패했어요. 메모를 다시 열고 시도해주세요.')
+        return
+      }
+
+      // ④ 즉시 저장 — 자동저장(30초)을 기다리다 앱이 정리되면 그대로 유실됨
+      hasUnsavedRef.current = true
+      try {
+        await saveRef.current(live.getJSON() as Record<string, unknown>, live.getText())
+      } catch { /* 저장 실패는 save() 내부에서 상태 표시 — 삽입 자체는 유지 */ }
+
       if (result.queued) {
-        // offline — localBlobId만 박고 ResizableImageView가 IDB blob URL 생성
-        editor.chain().focus().insertContent({
-          type: 'image',
-          attrs: { src: '', localBlobId: result.localBlobId, width: '50%' },
-        }).run()
         showUploadToast('오프라인 상태 — 이미지가 임시 저장됐어요. 온라인 복귀 시 자동 업로드돼요.')
         return
       }
-      // online — 진짜 R2 URL들로 즉시 표시
-      editor.chain().focus().insertContent({
-        type: 'image',
-        attrs: {
-          src: result.src,
-          srcMd: result.srcMd ?? null,
-          srcSm: result.srcSm ?? null,
-          width: '50%',
-        },
-      }).run()
       const orig = ((result.originalSize ?? 0) / 1024 / 1024).toFixed(1)
       const comp = ((result.compressedSize ?? 0) / 1024 / 1024).toFixed(1)
       if ((result.savedPercent ?? 0) > 0) {
@@ -772,9 +811,17 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         showUploadToast('이미지가 업로드됐어요')
       }
     } catch (e) {
-      // server validation/quota 실패 등 — 토스트로 알리고 종료
-      const msg = e instanceof Error ? e.message : '이미지 업로드 실패'
-      toast.error(msg.includes('upload failed: 413') ? '스토리지 한도를 초과했어요. 설정에서 정리 후 다시 시도해주세요.' : '이미지 업로드에 실패했어요. 잠시 후 다시 시도해주세요.')
+      // server validation/quota 실패 등 — 실제 사유를 그대로 노출
+      // (기존엔 413 외 모든 실패가 "잠시 후 다시 시도"로 뭉개져 원인 파악 불가였음)
+      const raw = e instanceof Error ? e.message : String(e)
+      if (raw.includes('upload failed: 413')) {
+        toast.error('스토리지 한도를 초과했어요. 설정에서 정리 후 다시 시도해주세요.')
+      } else if (raw.includes('허용되지 않는 파일 형식')) {
+        toast.error('지원하지 않는 이미지 형식이에요 (JPEG·PNG·WebP·GIF만 가능).')
+      } else {
+        const detail = raw.replace(/^upload failed:\s*/, '').slice(0, 120)
+        toast.error(detail ? `이미지 업로드 실패 — ${detail}` : '이미지 업로드에 실패했어요.')
+      }
     }
   }
 
@@ -1292,7 +1339,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         />
 
         {/* 툴바 */}
-        {editor && <EditorToolbar editor={editor} />}
+        {editor && <EditorToolbar editor={editor} onImageUpload={handleImageUpload} />}
         <EditorBubbleMenu editor={editor} />
 
         {/* 에디터 */}
