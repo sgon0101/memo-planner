@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
-  isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO,
+  isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO, isSameWeek,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
@@ -92,7 +92,16 @@ export default function CalendarView() {
   }
 
   const today = format(new Date(), 'yyyy-MM-dd')
-  const isViewingToday = selectedDate === today
+  // "오늘" 버튼 비활성 판정 — 뷰별로 다름.
+  // 이전엔 selectedDate === today만 봐서, 월 뷰에서 오늘을 클릭한 뒤
+  // 다른 달로 이동해도 selectedDate가 today로 남아 버튼이 계속 disabled였음.
+  const todayDate = new Date()
+  const isViewingToday =
+    viewMode === 'month'
+      ? isSameMonth(currentMonth, todayDate)
+      : viewMode === 'week'
+        ? isSameWeek(currentWeek, todayDate, { weekStartsOn: 0 })
+        : selectedDate === today
 
   function goToToday() {
     const now = new Date()
