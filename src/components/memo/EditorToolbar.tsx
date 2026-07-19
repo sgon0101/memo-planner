@@ -846,14 +846,29 @@ export default function EditorToolbar({ editor }: ToolbarProps) {
         />
       )}
 
-      {/* 이미지 — 공통 */}
-      <ToolBtn onClick={() => fileInputRef.current?.click()} disabled={imageUploading} title="이미지 삽입">
+      {/* 이미지 — 공통.
+         ToolBtn(onMouseDown + preventDefault)을 쓰지 않는 이유:
+         모바일 터치에서 합성 mousedown + preventDefault 조합은 사용자 제스처
+         컨텍스트를 벗어난 것으로 판정되어 file input의 click()이 차단됨.
+         파일 선택은 selection 보존이 불필요하므로 순수 onClick 사용. */}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={imageUploading}
+        title="이미지 삽입"
+        aria-label="이미지 삽입"
+        className={cn(
+          'flex items-center justify-center w-8 h-8 rounded-lg text-sm transition-colors duration-150 cursor-pointer',
+          'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200',
+          imageUploading && 'opacity-30 cursor-not-allowed',
+        )}
+      >
         {imageUploading ? (
           <span className="w-3.5 h-3.5 border border-violet-400 border-t-transparent rounded-full animate-spin" />
         ) : (
           <ImageIcon size={14} />
         )}
-      </ToolBtn>
+      </button>
 
       {/* 표 — 데스크톱만 (모바일은 더보기) */}
       <div className="hidden sm:flex">
