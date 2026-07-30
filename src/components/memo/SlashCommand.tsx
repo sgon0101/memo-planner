@@ -7,6 +7,7 @@ import {
   Quote, Code2, Minus, Table as TableIcon, Image as ImageIcon,
 } from 'lucide-react'
 import SlashCommandItem from './SlashCommandItem'
+import { isolateSelectedLines } from '@/lib/tiptap/isolateSelectedLines'
 
 interface Props {
   editor: Editor
@@ -53,13 +54,36 @@ function applyBlock(
     .run()
 }
 
+/**
+ * 제목(H1~H3) 전용 — 멀티라인 문단(hardBreak 포함)에서 "/제목" 명령을 쓰면
+ * setNode가 문단 전체를 제목으로 바꾸는 문제 방지 (EditorToolbar와 동일 규칙).
+ * "/명령" 텍스트 삭제 후 현재 줄만 분리하고 나서 제목을 적용한다.
+ */
+function applyHeadingBlock(e: Editor, from: number, to: number, level: 1 | 2 | 3) {
+  // 1) "/명령" 텍스트 삭제 + 마크 클리어
+  e.chain().focus()
+    .deleteRange({ from, to })
+    .unsetMark('textStyle')
+    .unsetMark('highlight')
+    .unsetAllMarks()
+    .command(({ tr }) => { tr.setStoredMarks(null); return true })
+    .run()
+  // 2) 커서가 있는 줄만 독립 문단으로 분리 (단일 줄 문단이면 no-op)
+  isolateSelectedLines(e)
+  // 3) 제목 적용 + storedMarks 재클리어
+  e.chain().focus()
+    .setNode('heading', { level })
+    .command(({ tr }) => { tr.setStoredMarks(null); return true })
+    .run()
+}
+
 const COMMANDS: Command[] = [
   { id: 'h1', label: '제목 1', keywords: ['h1', 'heading1', 'title', '제목', '큰제목'], icon: <Heading1 size={15} />,
-    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 1 })) },
+    run: (e, f, t) => applyHeadingBlock(e, f, t, 1) },
   { id: 'h2', label: '제목 2', keywords: ['h2', 'heading2', '제목', '중제목'], icon: <Heading2 size={15} />,
-    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 2 })) },
+    run: (e, f, t) => applyHeadingBlock(e, f, t, 2) },
   { id: 'h3', label: '제목 3', keywords: ['h3', 'heading3', '제목', '소제목'], icon: <Heading3 size={15} />,
-    run: (e, f, t) => applyBlock(e, f, t, (c) => c.setNode('heading', { level: 3 })) },
+    run: (e, f, t) => applyHeadingBlock(e, f, t, 3) },
   { id: 'paragraph', label: '본문', keywords: ['paragraph', 'text', 'p', '본문', '텍스트', '단락'], icon: <Pilcrow size={15} />,
     run: (e, f, t) => applyBlock(e, f, t, (c) => c.setParagraph()) },
   { id: 'bullet', label: '글머리표', keywords: ['bullet', 'list', 'ul', '글머리', '목록', '리스트'], icon: <List size={15} />,
