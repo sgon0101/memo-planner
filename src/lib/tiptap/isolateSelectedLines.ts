@@ -64,10 +64,14 @@ export function isolateSelectedLines(editor: Editor): void {
     tr.split(brBefore)
   }
 
-  // 선택 영역을 분리된 문단 안의 원래 텍스트 범위로 복원
-  const mFrom = tr.mapping.map(from)
-  const mTo = tr.mapping.map(to)
-  tr.setSelection(TextSelection.create(tr.doc, mFrom, mTo))
+  // 선택 영역을 분리된 문단 안의 원래 텍스트 범위로 복원.
+  // assoc 편향이 중요: to가 split 지점(줄 끝)에 있을 때 기본 매핑(assoc=1)은
+  // 다음 문단의 시작으로 넘어가 선택이 두 블록에 걸치게 되고, 이어지는
+  // toggleHeading이 다음 줄까지 제목으로 바꾼다 (라이브 검증에서 발견).
+  // from은 앞으로(1), to는 뒤로(-1) 붙여 선택이 분리된 문단 안에만 머물게 한다.
+  const mFrom = tr.mapping.map(from, 1)
+  const mTo = tr.mapping.map(to, -1)
+  tr.setSelection(TextSelection.create(tr.doc, Math.min(mFrom, mTo), Math.max(mFrom, mTo)))
 
   editor.view.dispatch(tr)
 }
