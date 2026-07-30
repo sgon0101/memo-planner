@@ -47,6 +47,19 @@ function colorFor(category: string, i: number) {
 
 export default function BubbleChart() {
   const router = useRouter()
+
+  /**
+   * 키워드 → 메모 검색 이동.
+   * client-side 라우팅에선 MemoList가 URL 갱신 전에 마운트될 수 있어
+   * URL ?q=만으로는 초기 검색어가 누락됨 — MemoList의 sessionStorage
+   * 복원 키('weave:memo-list-search')에 먼저 심어 두 경로 모두 보장.
+   * (?q=는 직접 로드·링크 공유용으로 유지)
+   */
+  const goToMemoSearch = useCallback((keyword: string) => {
+    try { sessionStorage.setItem('weave:memo-list-search', keyword) } catch { /* ignore */ }
+    router.push(`/memo?q=${encodeURIComponent(keyword)}`)
+  }, [router])
+
   const [result, setResult] = useState<InterestResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -271,7 +284,7 @@ export default function BubbleChart() {
                           key={k}
                           type="button"
                           title={`'${k}' 관련 메모 찾기`}
-                          onClick={() => router.push(`/memo?q=${encodeURIComponent(k)}`)}
+                          onClick={() => goToMemoSearch(k)}
                           className="px-2 py-0.5 rounded-full text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 hover:scale-105 transition-transform"
                         >
                           {k}
@@ -291,7 +304,7 @@ export default function BubbleChart() {
                           key={k}
                           type="button"
                           title={`'${k}' 관련 메모 다시 보기`}
-                          onClick={() => router.push(`/memo?q=${encodeURIComponent(k)}`)}
+                          onClick={() => goToMemoSearch(k)}
                           className="px-2 py-0.5 rounded-full text-xs bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform"
                         >
                           {k}
@@ -341,7 +354,7 @@ export default function BubbleChart() {
                           title={`'${item.keyword}' 관련 메모 찾기`}
                           onClick={(e) => {
                             e.stopPropagation() // 카드의 카테고리 선택 클릭과 분리
-                            router.push(`/memo?q=${encodeURIComponent(item.keyword)}`)
+                            goToMemoSearch(item.keyword)
                           }}
                           className="group/kw inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-transform hover:scale-105 focus:outline-none focus:ring-1"
                           style={{ backgroundColor: color + '15', color, border: `1px solid ${color}44` }}
