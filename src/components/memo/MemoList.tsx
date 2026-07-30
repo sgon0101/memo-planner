@@ -278,10 +278,15 @@ export default function MemoList() {
     selectAllRef.current.indeterminate = selectedTrashIds.size > 0 && selectedTrashIds.size < total
   }, [selectedTrashIds.size, memos.length])
 
-  // 뒤로가기 후 검색어 복원 — sessionStorage 유지
+  // 뒤로가기 후 검색어 복원 — sessionStorage 유지.
+  // URL ?q=키워드가 있으면 그것을 우선 (관심사 분석 키워드 클릭 등 외부 진입점)
   const [search, setSearch] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
-    try { return sessionStorage.getItem('weave:memo-list-search') || '' } catch { return '' }
+    try {
+      const urlQ = new URLSearchParams(window.location.search).get('q')
+      if (urlQ) return urlQ
+      return sessionStorage.getItem('weave:memo-list-search') || ''
+    } catch { return '' }
   })
   useEffect(() => {
     try { sessionStorage.setItem('weave:memo-list-search', search) } catch {}

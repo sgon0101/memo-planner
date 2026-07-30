@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Loader2, RefreshCw, Layers } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { format, parseISO } from 'date-fns'
+import { ko } from 'date-fns/locale'
+import { Loader2, RefreshCw, Layers, TrendingUp, TrendingDown, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { scopeLabel } from './GapAnalysis'
 
@@ -23,6 +26,12 @@ interface InterestResult {
     representative: number
     plans?: number
   }
+  /** 직전 분석 대비 키워드 변화 (서버 계산) */
+  changes?: {
+    added: string[]
+    removed: string[]
+    prevAt?: string
+  }
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -37,6 +46,7 @@ function colorFor(category: string, i: number) {
 }
 
 export default function BubbleChart() {
+  const router = useRouter()
   const [result, setResult] = useState<InterestResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -238,12 +248,68 @@ export default function BubbleChart() {
             </div>
           </section>
 
+          {/* ── 지난 분석 대비 변화 (재분석 시 재방문 가치) ── */}
+          {result.changes && (result.changes.added.length > 0 || result.changes.removed.length > 0) && (
+            <section>
+              <div className="mb-3">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">지난 분석 대비 변화</span>
+                {result.changes.prevAt && (
+                  <span className="ml-2 text-[10px] text-gray-400">
+                    {format(parseISO(result.changes.prevAt), 'M월 d일', { locale: ko })} 분석과 비교
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {result.changes.added.length > 0 && (
+                  <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 p-3 space-y-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      <TrendingUp size={13} /> 새로 등장한 관심사
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {result.changes.added.map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          title={`'${k}' 관련 메모 찾기`}
+                          onClick={() => router.push(`/memo?q=${encodeURIComponent(k)}`)}
+                          className="px-2 py-0.5 rounded-full text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 hover:scale-105 transition-transform"
+                        >
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {result.changes.removed.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                      <TrendingDown size={13} /> 뜸해진 관심사
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {result.changes.removed.map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          title={`'${k}' 관련 메모 다시 보기`}
+                          onClick={() => router.push(`/memo?q=${encodeURIComponent(k)}`)}
+                          className="px-2 py-0.5 rounded-full text-xs bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform"
+                        >
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* ── 2단계: 카테고리 카드 그리드 ── */}
           <section>
             <div className="mb-3">
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">2단계 · 주제별 키워드 그룹</span>
             </div>
-            <p className="text-xs text-gray-400 mb-4">AI가 분류한 주제별 관심사 키워드예요</p>
+            <p className="text-xs text-gray-400 mb-4">키워드를 누르면 관련 메모를 찾아드려요 (단어가 없으면 의미 검색으로 자동 전환)</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {categories.map((cat, ci) => {
@@ -269,13 +335,20 @@ export default function BubbleChart() {
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {groups[cat].map((item, ki) => (
-                        <span
+                        <button
                           key={ki}
-                          className="px-2 py-0.5 rounded-full text-xs"
+                          type="button"
+                          title={`'${item.keyword}' 관련 메모 찾기`}
+                          onClick={(e) => {
+                            e.stopPropagation() // 카드의 카테고리 선택 클릭과 분리
+                            router.push(`/memo?q=${encodeURIComponent(item.keyword)}`)
+                          }}
+                          className="group/kw inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-transform hover:scale-105 focus:outline-none focus:ring-1"
                           style={{ backgroundColor: color + '15', color, border: `1px solid ${color}44` }}
                         >
                           {item.keyword} <span className="opacity-60">·{item.count}</span>
-                        </span>
+                          <Search size={9} className="opacity-0 group-hover/kw:opacity-70 transition-opacity" />
+                        </button>
                       ))}
                     </div>
                   </div>
