@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { format, subDays } from 'date-fns'
+import { format, subDays, subHours } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { anthropic, HAIKU_MODEL } from '@/lib/ai/claude'
 import { gapAnalysisPrompt, interestAnalysisPrompt } from '@/lib/ai/prompts'
@@ -89,6 +89,31 @@ export async function GET(req: NextRequest) {
       recent: selection.recent.length,
       representative: selection.representative.length,
       plans: planTitles.length,
+    }
+
+    // 관심사 변화 추적 — 직전 분석(20시간 이전 스냅샷)과 키워드 비교
+    // count는 실행마다 표현이 달라질 수 있어 "등장/사라짐"만 비교 (안정적)
+    if (type === 'interest') {
+      const { data: prevRows } = await supabase
+        .from('retro_reports')
+        .select('report_json, created_at')
+        .eq('user_id', user.id)
+        .eq('period', cacheKey)
+        .lt('created_at', format(subHours(new Date(), 20), "yyyy-MM-dd'T'HH:mm:ssxxx"))
+        .order('created_at', { ascending: false })
+        .limit(1)
+      const prev = prevRows?.[0]?.report_json as { interests?: { keyword: string }[] } | undefined
+      const curInterests = result.interests as { keyword: string }[] | undefined
+      if (prev?.interests?.length && Array.isArray(curInterests)) {
+        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
+        const prevSet = new Set(prev.interests.map((i) => norm(i.keyword)))
+        const curSet = new Set(curInterests.map((i) => norm(i.keyword)))
+        const added = curInterests.filter((i) => !prevSet.has(norm(i.keyword))).map((i) => i.keyword).slice(0, 8)
+        const removed = prev.interests.filter((i) => !curSet.has(norm(i.keyword))).map((i) => i.keyword).slice(0, 8)
+        if (added.length || removed.length) {
+          result.changes = { added, removed, prevAt: prevRows![0].created_at }
+        }
+      }
     }
 
     // 캐시 저장
