@@ -50,7 +50,18 @@ export function planToGoogleEvent(plan: {
   }
 
   const startDt = `${dateStr}T${plan.startTime ?? '00:00'}:00`
-  const endDt = `${endDateStr}T${plan.endTime ?? plan.startTime ?? '00:00'}:00`
+
+  // 자정 종료(24:00)는 ISO에 없는 표기 — 다음날 00:00으로 변환 (Google API 호환)
+  let endTimeStr = plan.endTime ?? plan.startTime ?? '00:00'
+  let endDateForDt = endDateStr
+  if (endTimeStr.startsWith('24')) {
+    endTimeStr = '00:00'
+    const next = new Date(`${endDateStr}T12:00:00Z`) // UTC noon — DST 안전
+    next.setUTCDate(next.getUTCDate() + 1)
+    endDateForDt = next.toISOString().slice(0, 10)
+  }
+  const endDt = `${endDateForDt}T${endTimeStr}:00`
+
   return {
     summary: plan.title,
     start: { dateTime: startDt, timeZone: 'Asia/Seoul' },

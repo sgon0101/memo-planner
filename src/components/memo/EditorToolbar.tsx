@@ -12,6 +12,7 @@ import {
   Undo2, Redo2, ChevronDown, MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isolateSelectedLines } from '@/lib/tiptap/isolateSelectedLines'
 import LinkInputPopover from './LinkInputPopover'
 
 interface ToolbarProps {
@@ -28,6 +29,9 @@ interface ToolbarProps {
  * SlashCommand의 applyBlock과 동일한 패턴.
  */
 function applyHeading(e: Editor, level: 1 | 2 | 3) {
+  // 멀티라인 문단(hardBreak 포함)에서 선택한 줄만 제목이 되도록 먼저 분리
+  // — 드래그한 문장 주변 줄까지 제목으로 바뀌던 버그 수정
+  isolateSelectedLines(e)
   e.chain().focus()
     .toggleHeading({ level })
     .unsetMark('textStyle')
