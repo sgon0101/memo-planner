@@ -584,7 +584,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
-                <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} />
+                <TimePicker label="종료 시간" value={endTime} onChange={setEndTime} allowMidnight />
               </div>
               {calcDuration(startTime, endTime) && (
                 <p className="text-xs text-violet-500">소요 시간: {calcDuration(startTime, endTime)}</p>
