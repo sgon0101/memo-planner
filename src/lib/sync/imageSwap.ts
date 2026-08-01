@@ -81,3 +81,54 @@ export function swapImageNodesInContent<T>(
   const result = walk(content) as T
   return { content: result, swappedCount: count }
 }
+
+/**
+ * 업로드 give-up된 이미지 노드 제거 (2026-07-31).
+ *
+ * 업로드 큐가 최종 실패(give-up)하면 blob·큐가 삭제되는데, 본문의
+ * image node(src='' + localBlobId)는 남아 모든 기기에서 영구 깨짐 상태가 됐다.
+ * 큐에 아직 남아 있는 memo-insert/memo-body-update의 content에서
+ * 해당 localBlobId 이미지 노드를 제거해 깨진 노드가 서버에 저장되는 것을 막는다.
+ *
+ * swapImageNodesInContent와 동일하게 순수 함수 — 새 트리 반환.
+ */
+export function stripImageNodesInContent<T>(
+  content: T,
+  localBlobIds: Set<string>,
+): SwapResult<T> {
+  if (localBlobIds.size === 0) return { content, swappedCount: 0 }
+  let count = 0
+  const REMOVED = Symbol('removed-image-node')
+
+  function walk(node: unknown): unknown {
+    if (Array.isArray(node)) {
+      const mapped = node.map(walk).filter((v) => v !== REMOVED)
+      return mapped
+    }
+    if (!isObj(node)) return node
+
+    if (node.type === 'image' && isObj(node.attrs)) {
+      const attrs = node.attrs as Record<string, unknown>
+      const localBlobId = typeof attrs.localBlobId === 'string' ? attrs.localBlobId : null
+      if (localBlobId && localBlobIds.has(localBlobId)) {
+        count++
+        return REMOVED
+      }
+    }
+
+    let next: Record<string, unknown> = node
+    if (Array.isArray(next.content)) {
+      const newContent = (next.content as unknown[]).map(walk).filter((v) => v !== REMOVED)
+      if (
+        newContent.length !== (next.content as unknown[]).length ||
+        newContent.some((c, i) => c !== (next.content as unknown[])[i])
+      ) {
+        next = { ...next, content: newContent }
+      }
+    }
+    return next
+  }
+
+  const result = walk(content) as T
+  return { content: result, swappedCount: count }
+}

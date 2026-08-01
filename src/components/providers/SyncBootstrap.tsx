@@ -95,6 +95,11 @@ function applyGaveUp(
   if (parts.length > 0) {
     toast.warning(`${parts.join(' · ')}을 동기화하지 못해 임시 항목을 정리했어요.`)
   }
+  // 이미지 업로드 give-up — 조용히 사라지던 것을 사용자에게 알림 (2026-07-31)
+  const imageCount = entries.filter((e) => e.op === 'image-upload').length
+  if (imageCount > 0) {
+    toast.warning(`이미지 ${imageCount}장을 업로드하지 못했어요. 해당 이미지는 본문에서 '불러올 수 없음'으로 표시돼요.`)
+  }
 }
 
 /**
