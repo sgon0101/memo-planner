@@ -2,6 +2,7 @@
 
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { useState, useRef, useEffect } from 'react'
+import { ImageOff, RefreshCw, Trash2 } from 'lucide-react'
 import { getImageBlob } from '@/lib/sync/queueDB'
 import { withImgCacheVersion } from '@/lib/utils'
 
@@ -42,7 +43,7 @@ function pickSrc(
  *  - 리사이즈 핸들/드래그는 PointerEvent로 마우스+터치 통합
  *  - 모바일에서 핸들 크기 24px, 툴바 위치는 top 잘림 방지
  */
-export function ResizableImageView({ node, updateAttributes, editor, getPos, selected }: NodeViewProps) {
+export function ResizableImageView({ node, updateAttributes, editor, getPos, selected, deleteNode }: NodeViewProps) {
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
   const [activeSrc, setActiveSrc] = useState(node.attrs.src as string)
   const [toolbarBelow, setToolbarBelow] = useState(false)
@@ -59,18 +60,27 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
   // PR-M1-C: 오프라인 임시 이미지 — IDB의 image_blobs에서 blob을 꺼내 blob URL 생성
   const localBlobId = (node.attrs.localBlobId as string | null) ?? null
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  // blob 조회가 끝났는데 IDB에 없음 — 업로드 완료 전 원본이 사라진 이미지 (다른 기기·give-up 등)
+  const [blobMissing, setBlobMissing] = useState(false)
+  // src는 있는데 로드 실패 — 외부 원본 삭제·네트워크 문제 등
+  const [loadError, setLoadError] = useState(false)
 
   // localBlobId가 있으면 IDB에서 blob 가져와 URL 생성. unmount 시 revoke.
   useEffect(() => {
     let cancelled = false
     let url: string | null = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localBlobId 변경 시 missing 상태 리셋 (의도된 패턴)
+    setBlobMissing(false)
     if (!localBlobId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- localBlobId 사라지면 blobUrl 해제
       setBlobUrl(null)
       return
     }
     getImageBlob(localBlobId).then((entry) => {
-      if (cancelled || !entry) return
+      if (cancelled) return
+      if (!entry) {
+        setBlobMissing(true)
+        return
+      }
       url = URL.createObjectURL(entry.blob)
       setBlobUrl(url)
     })
@@ -79,6 +89,12 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
       if (url) URL.revokeObjectURL(url)
     }
   }, [localBlobId])
+
+  // src가 바뀌면(업로드 완료 swap 등) 로드 실패 상태 리셋
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- src 변경 시 에러 리셋 (의도된 패턴)
+    setLoadError(false)
+  }, [srcFull, blobUrl])
 
   // 실제 렌더 크기를 감시해 최적 해상도 URL 동적 선택
   // blobUrl이 있으면 (오프라인 임시 이미지) 그것을 우선 사용 — 변형본이 아직 없으므로 단일 URL
@@ -165,6 +181,12 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
     return `${img.offsetWidth} × ${img.offsetHeight}`
   }
 
+  // 깨진 이미지 판정:
+  //  - 로드 실패(loadError)
+  //  - localBlobId가 있는데 IDB에 blob이 없고 진짜 src도 없음 (업로드 미완 원본 유실)
+  //  - localBlobId도 src도 없음 (빈 노드 잔재)
+  const broken = loadError || (localBlobId ? (blobMissing && !srcFull) : (!srcFull && !blobUrl))
+
   return (
     <NodeViewWrapper
       ref={containerRef}
@@ -179,7 +201,48 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
         pointerEvents: 'none',
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {broken ? (
+        /* 깨진 이미지 placeholder — 브라우저 기본 깨짐 아이콘 대신 안내 + 제거 버튼 (2026-07-31) */
+        <div
+          className="flex flex-col items-center justify-center gap-1.5 py-6 px-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 text-center select-none"
+          style={{ pointerEvents: 'auto' }}
+          onClick={() => {
+            const pos = typeof getPos === 'function' ? getPos() : null
+            if (typeof pos === 'number' && editor) editor.commands.setNodeSelection(pos)
+          }}
+        >
+          <ImageOff size={20} className="text-gray-400" />
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">이미지를 불러올 수 없어요</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+            {localBlobId && blobMissing
+              ? '업로드가 완료되기 전에 원본이 사라진 이미지예요.'
+              : loadError
+                ? '원본이 삭제됐거나 일시적인 네트워크 문제일 수 있어요.'
+                : '이미지 주소가 비어 있어요.'}
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            {loadError && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setLoadError(false) }}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <RefreshCw size={10} /> 다시 시도
+              </button>
+            )}
+            {editor?.isEditable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); deleteNode() }}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+              >
+                <Trash2 size={10} /> 본문에서 제거
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+      /* eslint-disable-next-line @next/next/no-img-element */
       <img
         ref={imgRef}
         src={withImgCacheVersion(activeSrc)}
@@ -224,10 +287,15 @@ export function ResizableImageView({ node, updateAttributes, editor, getPos, sel
           if (!img) return
           setNaturalSize((prev) => prev ?? { w: img.naturalWidth, h: img.naturalHeight })
         }}
+        onError={() => {
+          // src가 실제로 있는 경우만 에러 취급 (src='' 는 broken 조건에서 별도 처리)
+          if (activeSrc) setLoadError(true)
+        }}
         draggable={false}
       />
+      )}
 
-      {selected && (
+      {!broken && selected && (
         <>
           {/* 우하단 리사이즈 핸들 — 데스크탑 16px, 모바일 24px */}
           <div

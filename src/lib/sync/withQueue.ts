@@ -36,7 +36,7 @@ import {
   type WriteTable,
   type PendingOp,
 } from './queueDB'
-import { swapImageNodesInContent } from './imageSwap'
+import { swapImageNodesInContent, stripImageNodesInContent } from './imageSwap'
 
 function isOnline(): boolean {
   if (typeof navigator === 'undefined') return true
@@ -350,6 +350,8 @@ export async function flushQueue(): Promise<FlushResult> {
   const idMappings: Array<{ tempId: string; realId: string }> = []
   const gaveUpEntries: GaveUpEntry[] = []
   const imageMappings: ImageMapping[] = []
+  // give-up된 이미지의 localBlobId — 큐 안 memo 본문에서 깨진 노드를 제거하기 위해 수집
+  const gaveUpImageIds: string[] = []
 
   // ─ M1-C: 1라운드 — image-upload op 먼저 처리 (본문 swap이 가능해야 그 다음 라운드가 진짜 URL을 server에 보냄) ─
   const imageItems = pending.filter((p) => p.payload.op === 'image-upload')
@@ -365,6 +367,7 @@ export async function flushQueue(): Promise<FlushResult> {
         await removePending(item.id)
         gaveUp++
         gaveUpEntries.push({ tempId: payload.localBlobId, op: 'image-upload', reason: 'image_blob missing' })
+        gaveUpImageIds.push(payload.localBlobId)
         continue
       }
       // /api/upload로 server insert
@@ -382,11 +385,13 @@ export async function flushQueue(): Promise<FlushResult> {
           await removeImageBlob(payload.localBlobId)
           gaveUp++
           gaveUpEntries.push({ tempId: payload.localBlobId, op: 'image-upload', reason: msg })
+          gaveUpImageIds.push(payload.localBlobId)
         } else if (item.attempts + 1 >= MAX_ATTEMPTS) {
           await removePending(item.id)
           await removeImageBlob(payload.localBlobId)
           gaveUp++
           gaveUpEntries.push({ tempId: payload.localBlobId, op: 'image-upload', reason: msg })
+          gaveUpImageIds.push(payload.localBlobId)
         } else {
           await markFailed(item.id, msg)
           failed++
@@ -411,6 +416,7 @@ export async function flushQueue(): Promise<FlushResult> {
         await removeImageBlob(payload.localBlobId)
         gaveUp++
         gaveUpEntries.push({ tempId: payload.localBlobId, op: 'image-upload', reason: msg.slice(0, 200) })
+        gaveUpImageIds.push(payload.localBlobId)
       } else {
         await markFailed(item.id, msg.slice(0, 200))
         failed++
@@ -444,6 +450,31 @@ export async function flushQueue(): Promise<FlushResult> {
           // 직접 put 대신 markFailed/removePending이 keyPath 인식하므로 그냥 처리 진행
           void db
         } catch { /* noop */ }
+      }
+    }
+  }
+
+  // ─ give-up된 이미지의 깨진 노드를 큐 안 memo 본문에서 제거 (2026-07-31) ─
+  // blob·큐가 삭제된 뒤 본문에 src=''+localBlobId 노드가 남으면 모든 기기에서
+  // 영구 깨짐 상태가 되므로, 서버로 나가기 전에 본문에서 걷어낸다.
+  // (1.5라운드 swap과 동일하게 in-memory 갱신 — 성공 시 removePending으로 정리됨)
+  if (gaveUpImageIds.length > 0) {
+    const stripSet = new Set(gaveUpImageIds)
+    for (const item of otherItems) {
+      const p = item.payload
+      let fields: Record<string, unknown> | null = null
+      if (p.op === 'memo-insert') fields = p.fields
+      else if (p.op === 'memo-body-update') fields = p.fields
+      if (!fields || !('content' in fields)) continue
+      const { content: newContent, swappedCount } = stripImageNodesInContent(fields.content, stripSet)
+      if (swappedCount > 0) {
+        const updatedFields = { ...fields, content: newContent }
+        if (p.op === 'memo-insert') {
+          (p as { fields: Record<string, unknown> }).fields = updatedFields
+        } else if (p.op === 'memo-body-update') {
+          (p as { fields: Record<string, unknown> }).fields = updatedFields
+        }
+        console.warn('[weave:queue:image-strip]', swappedCount, 'node(s) removed from queued memo content')
       }
     }
   }
