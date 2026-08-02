@@ -291,7 +291,7 @@ export function MemoSection({ memos, view, cols = 4, isTrash = false, onPin, onS
   onStar: (id: string, cur: boolean) => void
   onDelete: (id: string) => void
   onLock: (id: string, content: Record<string, unknown>, pw: string) => Promise<void>
-  onUnlock: (id: string, locked: string, pw: string) => Promise<void>
+  onUnlock: (id: string, pw: string) => Promise<void>
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
   onMoveToFolder?: (id: string, folderId: string | null) => void

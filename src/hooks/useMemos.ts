@@ -334,9 +334,22 @@ export function useMemos(folderId: string | null | undefined) {
 
   const unlockMemo = useCallback(async (
     id: string,
-    lockedContent: string,
     password: string
   ) => {
+    // ⚠️ 암호문은 목록 캐시에서 읽지 않는다.
+    // LIST_COLS는 성능을 위해 locked_content를 제외하므로 캐시의 lockedContent는 항상 null이고,
+    // 그걸 그대로 복호화에 넘기면 비밀번호가 맞아도 "비밀번호 오류"로 실패한다(2026-08-02 버그).
+    // 해제하는 순간 해당 메모만 단건 조회해 가져온다 — 목록은 계속 가볍게 유지된다.
+    const { data: row, error: fetchErr } = await supabase
+      .from('memos')
+      .select('locked_content')
+      .eq('id', id)
+      .single()
+
+    if (fetchErr) throw new Error(`잠금 정보를 불러오지 못했어요: ${fetchErr.message}`)
+    const lockedContent = (row?.locked_content as string | null) ?? null
+    if (!lockedContent) throw new Error('잠금 정보가 없습니다. 이미 해제된 메모일 수 있어요.')
+
     // PR-2: 옛 v1 ciphertext면 자동으로 v2(600k iter)로 업그레이드
     const { plaintext, upgraded } = await decryptAndMaybeUpgrade(lockedContent, password)
     const content = JSON.parse(plaintext) as Record<string, unknown>
