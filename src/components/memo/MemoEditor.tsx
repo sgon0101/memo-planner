@@ -428,7 +428,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     // (미설정 시 dev에서 "SSR has been detected" 런타임 에러로 에디터가 렌더되지 않음)
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ codeBlock: false }),
+      // link·underline은 아래에서 옵션을 지정해 따로 등록하므로 StarterKit 쪽은 끈다
+      // (둘 다 등록되면 "Duplicate extension names" 경고 + 중복 플러그인이 붙음)
+      StarterKit.configure({ codeBlock: false, link: false, underline: false }),
       CustomEnterExtension,
       Underline,
       TextStyle,
