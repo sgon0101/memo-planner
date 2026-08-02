@@ -747,7 +747,7 @@ export default function MemoList() {
     onStar: (id: string, cur: boolean) => toggleStar(id, cur).catch(console.error),
     onDelete: (id: string) => softDelete(id).catch(console.error),
     onLock: (id: string, content: Record<string, unknown>, pw: string) => lockMemo(id, content, pw),
-    onUnlock: (id: string, locked: string, pw: string) => unlockMemo(id, locked, pw),
+    onUnlock: (id: string, pw: string) => unlockMemo(id, pw),
     onRestore: (id: string) => restoreMemo(id).catch(console.error),
     onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
     onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),

@@ -32,7 +32,7 @@ interface MemoCardProps {
   onStar: (id: string, current: boolean) => void
   onDelete: (id: string) => void
   onLock: (id: string, content: Record<string, unknown>, password: string) => Promise<void>
-  onUnlock: (id: string, lockedContent: string, password: string) => Promise<void>
+  onUnlock: (id: string, password: string) => Promise<void>
   onRestore: (id: string) => void
   onPermanentDelete: (id: string) => void
   onMoveToFolder?: (id: string, folderId: string | null) => void
@@ -102,7 +102,8 @@ function MemoCard({ memo, onPin, onStar, onDelete, onLock, onUnlock, onRestore, 
   }
 
   async function handleUnlock(password: string) {
-    await onUnlock(memo.id, memo.lockedContent!, password)
+    // 암호문은 onUnlock 내부에서 단건 조회한다 — 목록 캐시의 lockedContent는 항상 null
+    await onUnlock(memo.id, password)
     router.push(`/memo/${memo.id}`)
   }
 
