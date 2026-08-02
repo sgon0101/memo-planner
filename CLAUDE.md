@@ -368,6 +368,12 @@ export interface PlanTemplate {
 - **타입**: interface 우선, 필요 시 type
 - **API Route**: `/app/api/` 하위, `route.ts`
 - **에러 처리**: try-catch 필수, 사용자에게 toast 알림
+- **토스트 원칙**: 토스트는 **화면이 스스로 보여주지 못하는 결과**에만 쓴다
+  - 넣는다: 서버/외부 작업의 완료·실패(백업, 복원, 동기화, 업로드, 내보내기), 화면에 흔적이 안 남는 실패
+  - 넣지 않는다: 결과가 UI에 즉시 반영되는 동작 (연결 해제 → 상태 배지가 바뀜, 정책 저장 → 선택이 그대로 남음, 메모 삭제 → 목록에서 사라짐)
+  - 예외: UI 변화만으로 구분 불가능한 정보가 있을 때는 넣는다 (예: 알림 토글은 on/off만 보여주므로 "백그라운드 푸시까지 성공"은 토스트로)
+  - 유실·되돌릴 수 없는 실패는 토스트만으로 부족 — 3.5초 후 사라지므로 **지속 표시와 함께** 쓴다 (예: 이미지 업로드 give-up = 토스트 + 본문 placeholder)
+  - 토스트를 띄우려면 `ToastProvider`가 마운트돼 있어야 한다 — 배선이 끊기면 모든 호출이 조용히 무시된다
 - **주석**: 복잡한 로직에만, 한국어 가능
 - **import 순서**: React → 외부 라이브러리 → 내부 모듈 → 타입
 - **Tailwind**: 인라인 클래스 사용, 복잡한 스타일은 `cn()` 유틸 활용
@@ -640,6 +646,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 | 2026-07-31 | 관심사 키워드 클릭 검색어 누락 핫픽스 (배포+프로덕션 검증 완료) | 관심사 분석 2단계 키워드 칩 클릭 시 메모 검색으로 이동하는데 client-side 라우팅에서 검색어(q)가 검색창에 반영되지 않던 버그 수정(`5569aa6`). dev push→PR #318 main merge→Vercel 배포. **프로덕션 라이브 검증 통과**: ①'심리학' 키워드 클릭→`/memo?q=심리학`(URL q 파라미터 정상)→검색창 '심리학' 자동 입력→매칭 메모 필터링+본문/위키링크 하이라이트 ②의미 검색 폴백도 확인 — 자연어 '몸을 단련해야 하는 이유'(FTS 0건) 입력 시 `/api/memos/search`(200, 0건)→`/api/memos/search-semantic`(200) 자동 폴백→'단어가 일치하는 메모가 없어 의미가 비슷한 메모를 찾았어요' 보라 배지+의미 유사 메모(클리어씽킹/도파미네이션/뇌과학 계열) 노출 | 100% |
 | 2026-08-02 | 로컬 dev 에디터 렌더 불가 수정 (immediatelyRender) | `MemoEditor.useEditor`에 `immediatelyRender: false` 명시 — 미설정 시 `@tiptap/react` v3가 SSR/Next 감지 후 **dev에서만** throw(`getInitialEditor`: 옵션이 `undefined`이고 `isSSR||isNext`이고 `isDev`일 때)해 `/memo/[id]` 진입 시 에디터가 아예 렌더되지 않았음(프로덕션은 정상이라 사용자 영향 없음, 로컬 개발만 차단). 발견 경위: 업로드 give-up 경로를 로컬에서 재현하려다 에디터 진입 불가로 확인. **교훈(재검증 시 필수)**: 수정 후에도 같은 에러가 지속됐는데 원인은 코드가 아니라 **서비스워커 캐시**였음 — dev 서버가 내보내는 청크에는 `immediatelyRender: false`가 이미 있었고(브라우저 밖 `Invoke-WebRequest`로 확인), SW 등록 해제 + `memo-planner-v5` 캐시 삭제 후 정상 렌더(본문 1,215자+이미지 11장). 같은 날 프로덕션에서도 "새 코드가 번들에 없다"고 오판한 원인이 동일한 SW 캐시였음 → **배포·수정 검증 시 SW 캐시를 먼저 의심할 것**. 검증: tsc 0에러, null byte 0, 파일 끝 정상, next build 통과 | 100% |
 | 2026-08-02 | Tiptap 중복 확장 경고 정리 | `[tiptap warn]: Duplicate extension names found: ['link','underline']` 제거 — StarterKit v3가 link·underline을 포함하는데 `MemoEditor`가 `Underline`/`Link.configure({openOnClick:false})`를 또 등록해 중복이었음. `StarterKit.configure({ codeBlock:false, link:false, underline:false })`로 StarterKit 쪽을 끄고 옵션 지정본만 남김. 중복 시 스키마는 `Object.fromEntries`라 마지막(옵션 지정본)이 이겼지만 **플러그인은 양쪽 다 등록**되어 StarterKit link의 클릭 핸들러가 함께 붙던 상태였음. 검증: link·underline을 모두 쓰는 메모(`090b2344`)에서 anchor 4개(href 정상)+underline 1개 그대로 렌더 — 마크 유실 없음, 콘솔 경고 0건, tsc 0에러, next build 통과 | 100% |
+| 2026-08-02 | 토스트 배선 복구 + 중복 토스트 정리 | **앱 전체의 `toast.*()` 호출 62곳이 전부 무동작이던 것을 복구.** 원인: `ui/Toast.tsx`의 `registerToastCallback`을 아무도 호출하지 않고 `ToastContainer`도 렌더되지 않아 `toastCallback`이 계속 null → `emitToast`가 조용히 무시(repo 전체 `git grep`으로 호출부 0건 확인). 그 결과 백업/복원/내보내기/Calendar 동기화/이미지 업로드 **실패가 사용자에게 전혀 전달되지 않았고**, 직전 PR #320의 give-up 알림도 절반이 죽어 있었음. 조치: `providers/ToastProvider.tsx` 신규(콜백 등록 + 컨테이너 렌더, 동시 최대 4개, 개별 자동 사라짐은 기존 Toast 컴포넌트가 처리) + `(main)/layout.tsx` 마운트. 동시에 **화면이 이미 결과를 보여주는 3곳의 중복 토스트 제거**(Calendar/Drive 연결 해제 → 상태 배지가 바뀜, 잠금 메모 백업 정책 저장 → 선택이 화면에 남음; 형제 함수 `saveRetainCount`는 원래도 토스트 없어 내부 불일치였음) 및 코딩 컨벤션에 토스트 원칙 추가. 발견 경위: give-up 토스트가 3회 재현에도 안 잡혀 추적하다 배선 부재 확인(MutationObserver 자체 검증으로 관측 실패 아님을 확인). 로컬 검증: 그래프 새로고침 토스트 + give-up 토스트("이미지 2장/1장을 업로드하지 못했어요") 3회 정상 표시, 장 수 정확, tsc 0에러, ESLint 클린 | 100% |
 
 ---
 

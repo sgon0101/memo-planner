@@ -214,7 +214,8 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backupLockedMemos: v }),
       })
-      toast.success('잠금 메모 백업 정책 저장됨')
+      // 성공 토스트 없음 — 선택된 옵션이 화면에 그대로 남아 결과를 보여줌
+      // (형제 함수 saveRetainCount도 같은 이유로 토스트가 없다)
     } catch { /* silent */ }
   }
 
@@ -450,8 +451,8 @@ export default function SettingsPage() {
     setCalendarLoading(true)
     try {
       await fetch('/api/calendar/disconnect', { method: 'DELETE' })
+      // 성공 토스트 없음 — 연결 상태 UI가 즉시 '연결 안 됨'으로 바뀌어 스스로 알려줌
       setCalendarConnected(false)
-      toast.success('Google Calendar 연결이 해제되었습니다.')
     } catch {
       toast.error('연결 해제 중 오류가 발생했습니다.')
     } finally {
@@ -479,8 +480,8 @@ export default function SettingsPage() {
       const user = session?.user ?? null
       if (!user) return
       await supabase.from('user_integrations').delete().eq('user_id', user.id).eq('provider', 'google_drive')
+      // 성공 토스트 없음 — 연결 상태 UI가 즉시 '연결 안 됨'으로 바뀌어 스스로 알려줌
       setDriveConnected(false)
-      toast.success('Google Drive 연결이 해제되었습니다.')
     } catch {
       toast.error('연결 해제 중 오류가 발생했습니다.')
     } finally {
