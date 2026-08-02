@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizeBackupImageFormat, type BackupImageFormat } from '@/lib/backup/imageFormat'
 
 export interface BackupSettings {
   autoBackup: boolean
@@ -7,6 +8,12 @@ export interface BackupSettings {
   retainCount: number
   /** PR-2: 잠금 메모 백업 정책. skip=백업 제외, placeholder=잠금 안내문만, ciphertext=암호문 그대로 */
   backupLockedMemos: 'skip' | 'placeholder' | 'ciphertext'
+  /**
+   * 백업본 이미지 포맷. R2 원본이 WebP라 일반 뷰어에서 안 열리는 경우가 있어
+   * 백업할 때만 변환한다. original=WebP 그대로, jpg=JPG(투명도 있으면 PNG), png=PNG.
+   * jpg/png/gif/svg 원본은 어떤 값이든 변환하지 않는다.
+   */
+  backupImageFormat: BackupImageFormat
   lastBackupAt: string | null
   nextBackupAt: string | null
 }
@@ -44,6 +51,7 @@ export async function GET() {
       period: (meta.period as BackupSettings['period']) ?? 'weekly',
       retainCount: Math.max(1, Math.min(100, (meta.retainCount as number) ?? 10)),
       backupLockedMemos: (meta.backupLockedMemos as BackupSettings['backupLockedMemos']) ?? 'skip',
+      backupImageFormat: normalizeBackupImageFormat(meta.backupImageFormat),
       lastBackupAt: (meta.lastBackupAt as string) ?? null,
       nextBackupAt: (meta.nextBackupAt as string) ?? null,
     }
@@ -76,6 +84,9 @@ export async function POST(req: NextRequest) {
     const blmRaw = body.backupLockedMemos ?? (prevMeta.backupLockedMemos as string) ?? 'skip'
     const backupLockedMemos: BackupSettings['backupLockedMemos'] =
       blmRaw === 'placeholder' || blmRaw === 'ciphertext' ? blmRaw : 'skip'
+    const backupImageFormat = normalizeBackupImageFormat(
+      body.backupImageFormat ?? prevMeta.backupImageFormat,
+    )
 
     const nextBackupAt = autoBackup ? calcNextBackupAt(period) : null
 
@@ -85,6 +96,7 @@ export async function POST(req: NextRequest) {
       period,
       retainCount,
       backupLockedMemos,
+      backupImageFormat,
       nextBackupAt,
     }
 
