@@ -3,6 +3,13 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { verifyCronAuth } from '@/lib/security/cronAuth'
 import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile, listDriveFiles } from '@/lib/google/drive'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
+import {
+  convertImageForBackup,
+  backupImageKey,
+  normalizeBackupImageFormat,
+  DEFAULT_BACKUP_IMAGE_FORMAT,
+  type BackupImageFormat,
+} from '@/lib/backup/imageFormat'
 
 export const maxDuration = 300
 
@@ -194,14 +201,15 @@ function extractR2OriginalUrls(content: unknown, publicUrlPrefix: string): strin
   )]
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function backupImagesIncremental(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   drive: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   userId: string,
   memos: Array<{ content: Record<string, unknown> | null; is_locked: boolean }>,
   deadlineAt: number,
+  imageFormat: BackupImageFormat = DEFAULT_BACKUP_IMAGE_FORMAT,
 ): Promise<{ uploaded: number; skipped: number; failed: number; timedOut: boolean }> {
   const publicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL ?? '').replace(/\/$/, '')
   if (!publicUrl) return { uploaded: 0, skipped: 0, failed: 0, timedOut: false }
@@ -236,9 +244,11 @@ async function backupImagesIncremental(
   const existing = await listBackupFolders(drive, ROOT_FOLDER_ID, IMAGES_FOLDER)
   const folderId = existing[0]?.id ?? await createDriveFolder(drive, IMAGES_FOLDER, ROOT_FOLDER_ID)
 
-  // 기존 백업 파일명 셋 → 증분 판정 (파일명 = R2 키의 파일명, uuid라 전역 유니크)
+  // 기존 백업 파일 셋 → 증분 판정.
+  // ⚠️ 확장자를 뗀 uuid로 비교한다 — 포맷 변환(webp→jpg)으로 확장자가 바뀌어도
+  //    같은 이미지로 인식해야 매 주기 전량 재업로드되는 것을 막을 수 있다.
   const existingFiles = await listDriveFiles(drive, folderId)
-  const existingNames = new Set(existingFiles.map((f) => f.name))
+  const existingKeys = new Set(existingFiles.map((f) => backupImageKey(f.name)))
 
   let uploaded = 0, skipped = 0, failed = 0
   for (const url of urlSet) {
@@ -246,19 +256,19 @@ async function backupImagesIncremental(
       return { uploaded, skipped, failed, timedOut: true }
     }
     const fileName = url.split('/').pop()!
-    if (existingNames.has(fileName)) { skipped++; continue }
+    if (existingKeys.has(backupImageKey(fileName))) { skipped++; continue }
     try {
       // 타임아웃 15s — hang된 fetch 하나가 deadline(240s)을 통째로 소모하는 것 방지
       const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
       if (!res.ok) { failed++; continue } // 404 = 이미 소실된 이미지 — 백업 불가
-      const buf = Buffer.from(await res.arrayBuffer())
+      const raw = Buffer.from(await res.arrayBuffer())
+      const srcMime = res.headers.get('content-type') || 'image/webp'
+      // WebP는 일반 뷰어에서 안 열리는 경우가 있어 백업본만 JPG(알파 시 PNG)로 변환
+      const out = await convertImageForBackup(raw, srcMime, fileName, imageFormat)
       const { Readable } = await import('stream')
       await drive.files.create({
-        requestBody: { name: fileName, parents: [folderId] },
-        media: {
-          mimeType: res.headers.get('content-type') || 'image/webp',
-          body: Readable.from(buf),
-        },
+        requestBody: { name: out.fileName, parents: [folderId] },
+        media: { mimeType: out.mimeType, body: Readable.from(out.buffer) },
       })
       uploaded++
     } catch (e) {
@@ -422,7 +432,8 @@ export async function GET(req: Request) {
       if (meta.backupImages !== false) {
         try {
           const deadlineAt = startedAt + 240_000 // maxDuration 300s — 60s 마진
-          const img = await backupImagesIncremental(drive, supabase, integration.user_id, memos, deadlineAt)
+          const imageFormat = normalizeBackupImageFormat(meta.backupImageFormat)
+          const img = await backupImagesIncremental(drive, supabase, integration.user_id, memos, deadlineAt, imageFormat)
           console.log(
             `[cron/backup] user ${integration.user_id} 이미지 — ` +
             `신규 ${img.uploaded}, 기존 ${img.skipped}, 실패 ${img.failed}` +

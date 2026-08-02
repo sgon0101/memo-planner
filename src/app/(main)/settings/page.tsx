@@ -9,6 +9,7 @@ import {
   CheckCircle, AlertCircle, Loader2, ExternalLink,
   Download, Upload, FileText, FileJson, HardDrive,
   CloudUpload, Bell, BellOff, Radio, Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react'
 import {
   isNotifSupported, getNotifPermission, isNotifEnabled, setNotifEnabled,
@@ -40,6 +41,9 @@ export default function SettingsPage() {
   const [restoreBusy, setRestoreBusy] = useState(false)
   const [retainCount, setRetainCount] = useState<number>(10)
   const [backupLockedMemos, setBackupLockedMemos] = useState<'skip' | 'placeholder' | 'ciphertext'>('skip')
+  const [backupImageFormat, setBackupImageFormat] = useState<'original' | 'jpg' | 'png'>('jpg')
+  const [imgBackupBusy, setImgBackupBusy] = useState(false)
+  const [imgBackupMsg, setImgBackupMsg] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
   const [nicknameSaving, setNicknameSaving] = useState(false)
@@ -111,6 +115,9 @@ export default function SettingsPage() {
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (d && typeof d.retainCount === 'number') setRetainCount(d.retainCount)
+        if (d && (d.backupImageFormat === 'original' || d.backupImageFormat === 'jpg' || d.backupImageFormat === 'png')) {
+          setBackupImageFormat(d.backupImageFormat)
+        }
         if (d && (d.backupLockedMemos === 'skip' || d.backupLockedMemos === 'placeholder' || d.backupLockedMemos === 'ciphertext')) {
           setBackupLockedMemos(d.backupLockedMemos)
         }
@@ -217,6 +224,60 @@ export default function SettingsPage() {
       // 성공 토스트 없음 — 선택된 옵션이 화면에 그대로 남아 결과를 보여줌
       // (형제 함수 saveRetainCount도 같은 이유로 토스트가 없다)
     } catch { /* silent */ }
+  }
+
+  const saveBackupImageFormat = async (v: 'original' | 'jpg' | 'png') => {
+    setBackupImageFormat(v)
+    try {
+      await fetch('/api/backup/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupImageFormat: v }),
+      })
+      // 성공 토스트 없음 — 선택된 옵션이 화면에 그대로 남아 결과를 보여줌
+    } catch { /* silent */ }
+  }
+
+  /**
+   * 이미지 백업 즉시 실행.
+   * 한 번의 요청(maxDuration 300s)에 다 못 끝내면 done=false로 돌아오므로,
+   * done이 될 때까지 이어서 호출한다 (이미 올라간 건 서버가 건너뜀).
+   */
+  const runImageBackup = async () => {
+    if (imgBackupBusy) return
+    setImgBackupBusy(true)
+    setImgBackupMsg('시작하는 중...')
+    let totalUploaded = 0, totalConverted = 0, totalFailed = 0
+    try {
+      for (let round = 1; round <= 20; round++) {
+        const r = await fetch('/api/backup/images', { method: 'POST' })
+        const d = await r.json()
+        if (!r.ok) {
+          toast.error(d.error ?? '이미지 백업에 실패했어요.')
+          setImgBackupMsg(null)
+          return
+        }
+        totalUploaded += d.uploaded ?? 0
+        totalConverted += d.converted ?? 0
+        totalFailed += d.failed ?? 0
+        if (d.done) {
+          const parts = [`${totalUploaded}장 백업`]
+          if (totalConverted > 0) parts.push(`${totalConverted}장 변환`)
+          if (totalFailed > 0) parts.push(`실패 ${totalFailed}장`)
+          toast.success(`이미지 백업 완료 — ${parts.join(' · ')}`)
+          setImgBackupMsg(`완료 — ${parts.join(' · ')}`)
+          return
+        }
+        setImgBackupMsg(`진행 중 — ${totalUploaded}장 완료, 남은 작업 이어서 처리 중...`)
+      }
+      toast.warning('아직 남은 이미지가 있어요. 다시 눌러 이어서 진행해주세요.')
+      setImgBackupMsg(`중단 — ${totalUploaded}장 완료, 남음`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '이미지 백업 중 오류가 발생했습니다.')
+      setImgBackupMsg(null)
+    } finally {
+      setImgBackupBusy(false)
+    }
   }
 
   const saveRetainCount = async (n: number) => {
@@ -1013,6 +1074,52 @@ export default function SettingsPage() {
                     {backupLockedMemos === 'skip' && '잠긴 메모는 백업에 포함되지 않습니다 (기본 — 가장 안전).'}
                     {backupLockedMemos === 'placeholder' && '잠긴 메모는 제목만 백업되고 본문은 "🔒 잠긴 메모" 안내문으로 대체됩니다.'}
                     {backupLockedMemos === 'ciphertext' && '잠긴 메모의 암호문이 그대로 Drive에 저장됩니다. 복원 시 원본 비밀번호 필요.'}
+                  </p>
+                </div>
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">백업 이미지 포맷</p>
+                  <div className="flex gap-2">
+                    {(['jpg', 'png', 'original'] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => saveBackupImageFormat(f)}
+                        className={cn(
+                          'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                          backupImageFormat === f
+                            ? 'bg-violet-600 border-violet-600 text-white'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        )}
+                      >
+                        {f === 'jpg' ? 'JPG' : f === 'png' ? 'PNG' : '원본 유지'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                    {backupImageFormat === 'jpg' && '앱에 저장된 WebP 이미지를 백업할 때만 JPG로 변환합니다 (투명도가 있으면 그 이미지만 PNG). 원본이 JPG·PNG·GIF면 그대로 둡니다.'}
+                    {backupImageFormat === 'png' && 'WebP 이미지를 PNG로 변환합니다. 무손실이라 화질 이득은 없고 용량이 3배 이상 커질 수 있어요 (JPG 권장).'}
+                    {backupImageFormat === 'original' && 'WebP를 그대로 백업합니다. 일부 뷰어에서 열리지 않을 수 있어요.'}
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={runImageBackup}
+                      disabled={imgBackupBusy || !driveConnected}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                        (imgBackupBusy || !driveConnected)
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-60 cursor-not-allowed'
+                          : 'bg-violet-600 hover:bg-violet-700 text-white'
+                      )}
+                    >
+                      {imgBackupBusy ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                      {imgBackupBusy ? '백업 중...' : '이미지 지금 백업'}
+                    </button>
+                    {imgBackupMsg && (
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400">{imgBackupMsg}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                    자동 백업(하루 1회)을 기다리지 않고 바로 실행합니다. 이미 백업된 이미지는 건너뛰고,
+                    한 번에 못 끝내면 남은 것부터 이어서 처리합니다.
                   </p>
                 </div>
                 <p className="text-xs font-medium text-gray-600 dark:text-gray-400">백업 주기</p>
