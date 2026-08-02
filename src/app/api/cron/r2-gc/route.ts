@@ -34,16 +34,25 @@ function extractR2KeyFromUrl(url: string): string | null {
   }
 }
 
-// content_text + content jsonb 안에 url이 나타나는지
-function contentReferencesUrl(contentText: string | null, content: unknown, url: string): boolean {
-  if (contentText && contentText.includes(url)) return true
+/**
+ * content_text + content jsonb에서 R2 URL을 뽑아 집합에 넣는다.
+ *
+ * 파일마다 전체 본문을 재순회(JSON.stringify)하던 기존 방식 대신 한 번만 훑어
+ * URL 집합을 만든다 — 메모+버전 이력까지 스캔해야 해서 비용 차이가 크다.
+ */
+function collectR2Urls(contentText: string | null, content: unknown, into: Set<string>): void {
+  const pieces: string[] = []
+  if (contentText) pieces.push(contentText)
   if (content) {
     try {
-      const j = typeof content === 'string' ? content : JSON.stringify(content)
-      if (j.includes(url)) return true
+      pieces.push(typeof content === 'string' ? content : JSON.stringify(content))
     } catch { /* ignore */ }
   }
-  return false
+  for (const p of pieces) {
+    for (const m of p.match(/https?:\/\/[^"'\s\\)]+/g) ?? []) {
+      into.add(m.split('?')[0])
+    }
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -95,20 +104,28 @@ export async function GET(req: NextRequest) {
     // (16MB base64 메모가 배치를 터뜨림 → 이후 배치 미페치 → 해당 메모들 이미지 삭제)
     // ①페치 에러 시 해당 사용자 GC 전체 스킵 ②페치 수와 실제 메모 수 대조
     // ③memo_id가 활성 메모에 연결된 파일은 URL 스캔 없이 무조건 보존 (잠금 메모 커버)
-    const memoBodies: Array<{ id: string; content_text: string | null; content: unknown }> = []
+    const referencedUrls = new Set<string>()
+    const memoIds: string[] = []
+    let lockedMemoCount = 0
     let fetchFailed = false
+    let fetchedMemos = 0
     let from = 0
     while (true) {
       const { data: batch, error } = await supabase
         .from('memos')
-        .select('id, content_text, content')
+        .select('id, content_text, content, is_locked')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: true })
         .range(from, from + 199)  // 1000→200: 대용량 content로 인한 배치 실패 확률 축소
       if (error) { fetchFailed = true; break }
       if (!batch || batch.length === 0) break
-      memoBodies.push(...batch as typeof memoBodies)
+      for (const m of batch as Array<{ id: string; content_text: string | null; content: unknown; is_locked: boolean }>) {
+        memoIds.push(m.id)
+        if (m.is_locked) lockedMemoCount++
+        collectR2Urls(m.content_text, m.content, referencedUrls)
+      }
+      fetchedMemos += batch.length
       if (batch.length < 200) break
       from += 200
     }
@@ -120,12 +137,39 @@ export async function GET(req: NextRequest) {
       .eq('user_id', userId)
       .eq('is_deleted', false)
 
-    if (fetchFailed || countErr || memoCount == null || memoBodies.length !== memoCount) {
-      errors.push(`user ${userId}: memo fetch incomplete (${memoBodies.length}/${memoCount ?? '?'}) — GC 스킵 (fail-safe)`)
+    if (fetchFailed || countErr || memoCount == null || fetchedMemos !== memoCount) {
+      errors.push(`user ${userId}: memo fetch incomplete (${fetchedMemos}/${memoCount ?? '?'}) — GC 스킵 (fail-safe)`)
       continue
     }
 
-    const activeMemoIds = new Set(memoBodies.map((m) => m.id))
+    // 가드 ④(신규): 버전 이력도 스캔한다.
+    // 본문에서 지웠지만 이전 버전에만 남은 이미지를 orphan으로 오판하면,
+    // 나중에 버전 복원을 해도 이미지가 이미 삭제된 상태가 된다.
+    let versionFetchFailed = false
+    for (let i = 0; i < memoIds.length && !versionFetchFailed; i += 50) {
+      const chunk = memoIds.slice(i, i + 50)
+      let vFrom = 0
+      while (true) {
+        const { data: vBatch, error: vErr } = await supabase
+          .from('memo_versions')
+          .select('content, content_text')
+          .in('memo_id', chunk)
+          .range(vFrom, vFrom + 199)
+        if (vErr) { versionFetchFailed = true; break }
+        if (!vBatch || vBatch.length === 0) break
+        for (const v of vBatch as Array<{ content: unknown; content_text: string | null }>) {
+          collectR2Urls(v.content_text, v.content, referencedUrls)
+        }
+        if (vBatch.length < 200) break
+        vFrom += 200
+      }
+    }
+    if (versionFetchFailed) {
+      errors.push(`user ${userId}: memo_versions fetch 실패 — GC 스킵 (fail-safe)`)
+      continue
+    }
+
+    const activeMemoIds = new Set(memoIds)
 
     for (const f of userFiles) {
       totalChecked++
@@ -136,13 +180,24 @@ export async function GET(req: NextRequest) {
         totalKept++
         continue
       }
-      const url = f.public_url as string
-      // 메모 본문 어딘가에 url이 들어있나?
-      const isReferenced = memoBodies.some((m) =>
-        contentReferencesUrl(m.content_text as string | null, m.content, url)
-      )
 
-      if (isReferenced) {
+      // 가드 ⑤(신규): 잠금 메모가 하나라도 있으면, memo_id가 없는 파일은 "참조 없음"을
+      // 증명할 수 없다 — 잠금 메모는 content가 암호화라 URL 스캔이 통하지 않기 때문.
+      // 증명 불가 = 보존 (잘못 지우는 쪽이 쓰레기를 남기는 쪽보다 훨씬 나쁘다).
+      if (lockedMemoCount > 0 && !linkedMemoId) {
+        totalKept++
+        continue
+      }
+
+      // 가드 ⑥(신규): 원본뿐 아니라 변형(md_/thumb_) URL도 참조로 인정한다.
+      // 본문 image node의 src가 변형 URL인 경우가 있어(에디터 소형 표시 등),
+      // 원본 URL만 비교하면 살아있는 이미지를 orphan으로 오판하고
+      // 삭제 시 변형까지 함께 지워버린다.
+      const candidateUrls = [f.public_url, f.medium_url, f.thumbnail_url]
+        .filter((u): u is string => typeof u === 'string' && u.length > 0)
+        .map((u) => u.split('?')[0])
+
+      if (candidateUrls.some((u) => referencedUrls.has(u))) {
         totalKept++
         continue
       }
