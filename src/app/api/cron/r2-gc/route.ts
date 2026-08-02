@@ -95,6 +95,9 @@ export async function GET(req: NextRequest) {
   let totalChecked = 0
   let totalDeleted = 0
   let totalKept = 0
+  // 보존 사유 분해 — 어떤 가드가 실제로 일하고 있는지 운영 중에 확인할 수 있어야 한다
+  // (가드가 조용히 무효화돼 있던 게 2026-08-02에 발견된 문제였다)
+  const keptBy = { memoLink: 0, lockFailsafe: 0, referenced: 0 }
   const errors: string[] = []
 
   for (const [userId, userFiles] of byUser.entries()) {
@@ -177,7 +180,7 @@ export async function GET(req: NextRequest) {
       // (잠금 메모는 content가 암호화돼 URL 스캔이 불가능 — memo_id 연결로만 판정 가능)
       const linkedMemoId = (f as Record<string, unknown>).memo_id as string | null
       if (linkedMemoId && activeMemoIds.has(linkedMemoId)) {
-        totalKept++
+        totalKept++; keptBy.memoLink++
         continue
       }
 
@@ -185,7 +188,7 @@ export async function GET(req: NextRequest) {
       // 증명할 수 없다 — 잠금 메모는 content가 암호화라 URL 스캔이 통하지 않기 때문.
       // 증명 불가 = 보존 (잘못 지우는 쪽이 쓰레기를 남기는 쪽보다 훨씬 나쁘다).
       if (lockedMemoCount > 0 && !linkedMemoId) {
-        totalKept++
+        totalKept++; keptBy.lockFailsafe++
         continue
       }
 
@@ -198,7 +201,7 @@ export async function GET(req: NextRequest) {
         .map((u) => u.split('?')[0])
 
       if (candidateUrls.some((u) => referencedUrls.has(u))) {
-        totalKept++
+        totalKept++; keptBy.referenced++
         continue
       }
 
@@ -238,6 +241,7 @@ export async function GET(req: NextRequest) {
     checked: totalChecked,
     deleted: totalDeleted,
     kept: totalKept,
+    keptBy,
     users: byUser.size,
     dryRun,
     errors: errors.slice(0, 20),
