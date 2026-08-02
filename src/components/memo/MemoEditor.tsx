@@ -424,6 +424,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   saveRef.current = save
 
   const editor = useEditor({
+    // SSR 환경에서 즉시 렌더하면 hydration mismatch — Tiptap 권장대로 false
+    // (미설정 시 dev에서 "SSR has been detected" 런타임 에러로 에디터가 렌더되지 않음)
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       CustomEnterExtension,
