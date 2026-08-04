@@ -106,6 +106,11 @@ export default function Modal({
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape' && closeOnEscapeRef.current) {
+        // 모달 위에 겹쳐 뜬 레이어(드롭다운/팝오버 등)가 열려 있으면 Escape는 그쪽 몫이다.
+        // 이 핸들러는 capture 단계라 무조건 닫으면 안쪽 레이어가 Escape를 받아보지도 못하고
+        // 모달째 닫혀버린다(시간 드롭다운을 닫으려다 플랜 폼이 통째로 사라지던 문제).
+        // stopPropagation 없이 그냥 넘겨 bubble 단계의 레이어 핸들러가 스스로 닫게 한다.
+        if (document.querySelector('[data-escape-layer]')) return
         e.stopPropagation()
         attemptClose()
         return

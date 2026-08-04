@@ -180,6 +180,9 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
+          // Modal(capture 단계 Escape 핸들러)에게 "여기 겹친 레이어가 있다"고 알리는 표식 —
+          // 이게 없으면 드롭다운을 닫으려는 Escape가 모달을 통째로 닫는다.
+          data-escape-layer="time-picker"
           className="fixed z-[200] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1"
           style={{ top: coords.top, left: coords.left, width: coords.width, maxHeight: coords.maxH }}
         >
