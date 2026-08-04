@@ -52,3 +52,6 @@ supabase memoPlanner  pw.txt
 
 supabase/.temp/
 supabase/.branches/
+
+# 세션 임시 파일 (git lock 우회·스테이징 사본 등 — 삭제 대상)
+/_to_delete/
