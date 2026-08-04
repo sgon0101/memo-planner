@@ -12,6 +12,15 @@
  *    minutesToTime/뷰 좌표 계산(dragHelpers)은 이미 1440분(=24:00)을 지원함.
  * 3) 직접 타이핑 — 시/분 필드가 input이라 키보드로 바로 입력 가능
  *    (45 외의 임의 분도 허용). blur/Enter 시 정규화·clamp.
+ *
+ * 버그 수정 (2026-08-04): 드롭다운에서 시/분을 골라도 값이 원래대로 돌아가던 문제
+ *    — 옵션 선택 핸들러가 onCommit 직후 input.blur()를 직접 호출했는데,
+ *      blur는 동기적으로 onBlur→commit(text)를 실행하고 그 클로저의 text는
+ *      직전 렌더의 옛 값(포커스 시 채워둔 현재값)이라 방금 고른 값을 덮어썼음.
+ *      (setText(null)은 비동기라 그 시점 클로저에 반영되지 않음)
+ *      → 대기 텍스트를 ref로 미러링해 commit이 항상 최신값을 보게 하고,
+ *        옵션 선택은 mousedown에서 preventDefault로 포커스를 유지(=blur 미발생)한 뒤
+ *        click에서 커밋하도록 변경.
  */
 
 import { useState, useRef, useEffect, useCallback, useId } from 'react'
@@ -52,18 +61,26 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; maxH: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  // 대기 텍스트 ref 미러 — blur가 동기 실행될 때 stale 클로저 값으로 커밋되는 것 방지
+  const textRef = useRef<string | null>(null)
+
+  const setPending = useCallback((v: string | null) => {
+    textRef.current = v
+    setText(v)
+  }, [])
 
   const display = text ?? String(value).padStart(2, '0')
 
   const clamp = useCallback((n: number) => Math.max(0, Math.min(max, n)), [max])
 
-  const commit = useCallback((raw: string | null) => {
+  const commit = useCallback(() => {
+    const raw = textRef.current
     if (raw !== null && raw.trim() !== '') {
       const n = parseInt(raw, 10)
       if (!isNaN(n)) onCommit(clamp(n))
     }
-    setText(null)
-  }, [onCommit, clamp])
+    setPending(null)
+  }, [onCommit, clamp, setPending])
 
   const updateCoords = useCallback(() => {
     const b = inputRef.current?.getBoundingClientRect()
@@ -133,7 +150,7 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
         aria-controls={listboxId}
         onFocus={(e) => {
           if (disabled) return
-          setText(String(value).padStart(2, '0'))
+          setPending(String(value).padStart(2, '0'))
           setOpen(true)
           const target = e.target
           requestAnimationFrame(() => target.select())
@@ -141,13 +158,13 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
         onClick={() => { if (!disabled && !open) setOpen(true) }}
         onChange={(e) => {
           const digits = e.target.value.replace(/\D/g, '').slice(0, 2)
-          setText(digits)
+          setPending(digits)
         }}
-        onBlur={() => { commit(text); setOpen(false) }}
+        onBlur={() => { commit(); setOpen(false) }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); commit(text); setOpen(false); inputRef.current?.blur() }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); onCommit(clamp(value + 1)); setText(null) }
-          else if (e.key === 'ArrowDown') { e.preventDefault(); onCommit(clamp(value - 1)); setText(null) }
+          if (e.key === 'Enter') { e.preventDefault(); commit(); setOpen(false); inputRef.current?.blur() }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setPending(null); onCommit(clamp(value + 1)) }
+          else if (e.key === 'ArrowDown') { e.preventDefault(); setPending(null); onCommit(clamp(value - 1)) }
         }}
         className={cn(
           'w-[52px] px-2 py-1.5 text-sm text-center font-medium tabular-nums rounded-lg border',
@@ -173,13 +190,13 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
                 key={o}
                 type="button"
                 data-selected={isSel}
-                // mousedown에서 처리 — input blur(commit)보다 먼저 실행되도록
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  setText(null)
+                // mousedown의 기본 동작(포커스 이동)만 차단 — input이 blur되지 않으므로
+                // 대기 텍스트가 뒤늦게 커밋돼 선택값을 덮어쓰는 일이 없다.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setPending(null) // 대기 텍스트 폐기 (ref 동기 반영)
                   onCommit(o)
                   setOpen(false)
-                  inputRef.current?.blur()
                 }}
                 className={cn(
                   'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors tabular-nums',
