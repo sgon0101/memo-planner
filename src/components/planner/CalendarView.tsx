@@ -167,6 +167,9 @@ export default function CalendarView() {
   }
 
   // 특정 주에 걸리는 범위 플랜 (startCol, endCol, slot 포함)
+  // MAX_RANGE_BARS는 "겹치는 플랜 수"가 아니라 "차지하는 줄 수" 상한이다.
+  // 개수로 먼저 자르면 서로 겹치지 않아 같은 줄에 나란히 놓일 수 있는 플랜까지
+  // 통째로 사라진다 (2026-08: 7/23~26 나고야 여행이 4번째라는 이유만으로 누락).
   function getWeekRangePlans(week: Date[]) {
     const weekStrs = week.map((d) => format(d, 'yyyy-MM-dd'))
     const weekStart = weekStrs[0]
@@ -175,10 +178,19 @@ export default function CalendarView() {
     const overlapping = expandedPlans
       .filter((p) => p.startDate && p.endDate)
       .filter((p) => p.startDate! <= weekEnd && p.endDate! >= weekStart)
+      // greedy 슬롯 할당은 시작일 순서를 전제로 한다. 유입 순서(쿼리 병합 순)로는
+      // 슬롯 재사용이 어긋나 줄 수가 불필요하게 늘어난다. 동률은 id로 안정 정렬.
+      .sort((a, b) => {
+        const s = (a.startDate! < b.startDate! ? -1 : a.startDate! > b.startDate! ? 1 : 0)
+        return s !== 0 ? s : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      })
 
     // 슬롯 할당 (greedy)
     const slotEnds: string[] = [] // slotEnds[i] = 해당 슬롯의 마지막 날짜
-    return overlapping.slice(0, MAX_RANGE_BARS).map((plan) => {
+    const bars: { plan: Plan; startCol: number; endCol: number; slot: number }[] = []
+    let hidden = 0
+
+    for (const plan of overlapping) {
       const visStart = plan.startDate! < weekStart ? weekStart : plan.startDate!
       const visEnd = plan.endDate! > weekEnd ? weekEnd : plan.endDate!
       const startCol = weekStrs.indexOf(visStart)
@@ -187,10 +199,15 @@ export default function CalendarView() {
       // 빈 슬롯 찾기
       let slot = slotEnds.findIndex((end) => end < visStart)
       if (slot === -1) { slot = slotEnds.length }
+
+      // 줄 수 상한을 넘는 것만 숨기고, 숨겼다는 사실은 화면에 남긴다
+      if (slot >= MAX_RANGE_BARS) { hidden++; continue }
       slotEnds[slot] = visEnd
 
-      return { plan, startCol, endCol, slot }
-    })
+      bars.push({ plan, startCol, endCol, slot })
+    }
+
+    return { bars, hidden }
   }
 
   // panelDismissed — 일 뷰에서 panel만 숨기고 selectedDate는 유지하기 위한 별도 상태
@@ -332,7 +349,7 @@ export default function CalendarView() {
           onClickCapture={onSwipeClickCapture}
         >
           {viewMode === 'month' && weeks.map((week, wi) => {
-            const rangePlans = getWeekRangePlans(week)
+            const { bars: rangePlans, hidden: hiddenRangeCount } = getWeekRangePlans(week)
             const rangeSlotCount = rangePlans.reduce((m, r) => Math.max(m, r.slot + 1), 0)
             const barAreaHeight = rangeSlotCount > 0 ? rangeSlotCount * 22 + 4 : 0
 
@@ -440,6 +457,17 @@ export default function CalendarView() {
                       onClick={() => selectDate(format(week[startCol], 'yyyy-MM-dd'))}
                     />
                   ))}
+
+                  {/* 줄 수 상한으로 숨긴 범위 플랜 — 침묵 누락 방지 */}
+                  {hiddenRangeCount > 0 && (
+                    <div
+                      className="absolute right-1 z-20 text-[10px] font-medium px-1 rounded bg-gray-200/90 text-gray-600 dark:bg-gray-700/90 dark:text-gray-300"
+                      style={{ top: `${2 + (MAX_RANGE_BARS - 1) * 22}px` }}
+                      title={`이 주에 ${hiddenRangeCount}개의 범위 플랜이 더 있습니다 (날짜를 클릭하면 전체 목록이 보입니다)`}
+                    >
+                      +{hiddenRangeCount}
+                    </div>
+                  )}
                 </div>
               </div>
             )
