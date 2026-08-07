@@ -53,6 +53,29 @@ interface DragState {
 
 const MIN_DURATION_MIN = 15  // 리사이즈 최소 길이
 
+/**
+ * 드래그-생성(터치 long-press) 중 스크롤 잠금 — 해제 함수를 반환한다.
+ *
+ * 렌더가 아니라 포인터 제스처 시작 시점에만 호출되는 명령형 DOM 조작이라
+ * effect로 옮길 수 없다(잠금/해제 시점이 제스처 수명에 묶여 있음).
+ * 컴포넌트 밖 모듈 스코프에 두는 이유: 컴포넌트 본문 안에 있으면
+ * react-hooks/immutability가 "렌더 중 외부 값 수정"으로 오인해 에러를 낸다.
+ */
+function lockScrollForRangeSelect(scrollEl: HTMLElement | null): () => void {
+  const oldBodyOverflow = document.body.style.overflow
+  const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
+  document.body.style.overflow = 'hidden'
+  if (scrollEl) scrollEl.style.overflowY = 'hidden'
+  // touch-action은 제스처 시작 시점에 확정 — non-passive touchmove로 스크롤 강제 차단 (startDrag와 동일 패턴)
+  const preventTouchScroll = (ev: TouchEvent) => { ev.preventDefault() }
+  document.addEventListener('touchmove', preventTouchScroll, { passive: false })
+  return () => {
+    document.removeEventListener('touchmove', preventTouchScroll)
+    document.body.style.overflow = oldBodyOverflow
+    if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
+  }
+}
+
 export default function WeekView({
   weekStart, plans, today, selectedDate,
   onSelectDate, onNewPlan, onEditPlan,
@@ -345,21 +368,13 @@ export default function WeekView({
   const colPressPos = useRef<{ x: number; y: number } | null>(null)
   const rangeScrollUnlock = useRef<(() => void) | null>(null)
 
-  function lockScrollForRangeSelect() {
-    const oldBodyOverflow = document.body.style.overflow
-    const scrollEl = scrollRef.current
-    const oldScrollOverflow = scrollEl?.style.overflowY ?? ''
-    document.body.style.overflow = 'hidden'
-    if (scrollEl) scrollEl.style.overflowY = 'hidden'
-    // touch-action은 제스처 시작 시점에 확정 — non-passive touchmove로 스크롤 강제 차단 (startDrag와 동일 패턴)
-    const preventTouchScroll = (ev: TouchEvent) => { ev.preventDefault() }
-    document.addEventListener('touchmove', preventTouchScroll, { passive: false })
-    rangeScrollUnlock.current = () => {
-      document.removeEventListener('touchmove', preventTouchScroll)
-      document.body.style.overflow = oldBodyOverflow
-      if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
-      rangeScrollUnlock.current = null
-    }
+  function acquireRangeScrollLock() {
+    rangeScrollUnlock.current = lockScrollForRangeSelect(scrollRef.current)
+  }
+
+  function releaseRangeScrollLock() {
+    rangeScrollUnlock.current?.()
+    rangeScrollUnlock.current = null
   }
 
   function cancelColPress() {
@@ -394,7 +409,7 @@ export default function WeekView({
       colPressTimer.current = setTimeout(() => {
         colPressTimer.current = null
         colPressPos.current = null
-        lockScrollForRangeSelect()
+        acquireRangeScrollLock()
         beginRangeSelect(col, dayStr, clientY, pointerId)
         navigator.vibrate?.(40)
       }, LONG_PRESS_MS)
@@ -420,7 +435,7 @@ export default function WeekView({
   function handleColumnPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     // long-press 만료 전 손가락 뗌 → 짧은 탭: onClick(handleColumnClick)이 담당
     cancelColPress()
-    rangeScrollUnlock.current?.()
+    releaseRangeScrollLock()
     if (!rangeSelect || e.pointerId !== rangeSelect.pointerId) return
     const sel = rangeSelect
     setRangeSelect(null)
@@ -438,7 +453,7 @@ export default function WeekView({
   function handleColumnPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
     // 브라우저가 스크롤 제스처를 가져가면 pointercancel — 대기/선택 모두 정리
     cancelColPress()
-    rangeScrollUnlock.current?.()
+    releaseRangeScrollLock()
     if (!rangeSelect) return
     try { e.currentTarget.releasePointerCapture(rangeSelect.pointerId) } catch { /* ignore */ }
     setRangeSelect(null)

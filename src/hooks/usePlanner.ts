@@ -12,7 +12,7 @@ import { makeTempId } from '@/lib/sync/queueDB'
 import { broadcast } from '@/lib/sync/broadcast'
 import {
   planKeys,
-  readPlansLocalCache, readPlansLocalCacheTs, writePlansLocalCache,
+  readPlansLocalCache, writePlansLocalCache,
   patchPlanInCaches, addPlanToCaches, removePlanFromCaches, findPlanInCaches,
   setRecurringCompletionInCaches, deleteRecurringCompletionInCaches,
   patchHomeStatsOnPlanCreate, patchHomeStatsOnPlanUpdate, patchHomeStatsOnPlanDelete,
@@ -71,13 +71,19 @@ export function useCalRange(): { calStart: string; calEnd: string } {
 /**
  * 플랜 서버 상태 — React Query 단일 출처 (상태 이중화 정리 2단계).
  * 구 plannerStore.plans[] 거울 + zustand persist를 대체한다.
- * LS 캐시(lsPlansCache)를 initialData로 사용해 즉시 페인트.
+ * LS 캐시(lsPlansCache)를 placeholderData로 사용해 즉시 페인트.
+ *
+ * 주의: initialData가 아니라 placeholderData여야 한다. LS 캐시는 "마지막으로
+ * 실제 fetch한 범위"의 플랜만 담고 있는데, initialData + 최신 ts로 넘기면
+ * staleTime(5분) 동안 새 범위 키가 '신선'으로 판정되어 서버 fetch 자체가
+ * 생략된다 → 과거 달로 이동해도 그 범위 플랜을 영영 안 불러오는 버그
+ * (2026-08 수정). placeholderData는 즉시 페인트만 하고 fetch는 항상 수행한다.
  */
 export function usePlansQuery(): { plans: Plan[]; isLoading: boolean } {
   const supabase = createClient()
   const { calStart, calEnd } = useCalRange()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: planKeys.range(calStart, calEnd),
     queryFn: async (): Promise<Plan[]> => {
       const [{ data: single }, { data: range }, { data: recurring }] = await Promise.all([
@@ -89,13 +95,14 @@ export function usePlansQuery(): { plans: Plan[]; isLoading: boolean } {
       const unique = all.filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
       return unique.map(toPlan)
     },
-    initialData: readPlansLocalCache,
-    initialDataUpdatedAt: readPlansLocalCacheTs,
+    placeholderData: () => readPlansLocalCache(),
   })
 
   useEffect(() => {
-    if (data) writePlansLocalCache(data)
-  }, [data])
+    // placeholder(LS 스냅샷 재유입)는 저장하지 않는다 — ts만 갱신되어
+    // 실제 서버 데이터인 척 신선도가 유지되는 문제 방지.
+    if (data && !isPlaceholderData) writePlansLocalCache(data)
+  }, [data, isPlaceholderData])
 
   return { plans: data ?? [], isLoading }
 }
