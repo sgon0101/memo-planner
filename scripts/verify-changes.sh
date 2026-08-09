@@ -44,15 +44,15 @@ echo "=== 2) 파일 끝 정상성 (마지막 byte) ==="
 for f in $FILES; do
   [ -f "$f" ] || continue
   case "$f" in
-    *.css)   last=$(tail -c 50 "$f" | tr -d ' \n\t' | tail -c 1)
+    *.css)   last=$(tail -c 50 "$f" | tr -d ' \r\n\t' | tail -c 1)
              [ "$last" = "}" ] || { echo "  ❌ $f: CSS 마지막이 '}' 아님 ($last)"; FAIL=1; } ;;
     *.ts|*.tsx)
-             last=$(tail -c 50 "$f" | tr -d ' \n\t' | tail -c 1)
+             last=$(tail -c 50 "$f" | tr -d ' \r\n\t' | tail -c 1)
              case "$last" in
                '}'|')'|';'|']') ;;
                *) echo "  ❌ $f: TS 마지막이 비정상 ($last) — truncation 의심"; FAIL=1 ;;
              esac ;;
-    *.json)  last=$(tail -c 5 "$f" | tr -d ' \n\t' | tail -c 1)
+    *.json)  last=$(tail -c 5 "$f" | tr -d ' \r\n\t' | tail -c 1)
              case "$last" in
                '}'|']') ;;
                *) echo "  ❌ $f: JSON 마지막이 비정상 ($last)"; FAIL=1 ;;
