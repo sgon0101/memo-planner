@@ -532,7 +532,9 @@ export default function WeekView({
         const rangeBarHeight = rangeSlotCount > 0 ? rangeSlotCount * 22 + 4 : 0
         return (
           <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 min-h-8" style={{ paddingRight: scrollbarWidth }}>
-            <div className="w-14 flex-shrink-0 flex items-start justify-end pr-2 pt-1.5" style={{ paddingTop: `${Math.max(6, rangeBarHeight + 4)}px` }}>
+            {/* 라벨을 레인 전체 높이 기준 세로 중앙에 — 기존 paddingTop 밀어내기는
+                범위 바 줄 수에 따라 라벨이 바닥까지 밀렸음 */}
+            <div className="w-14 flex-shrink-0 flex items-center justify-end pr-2">
               <span className="text-xs text-gray-400">종일</span>
             </div>
             <div className="flex-1 grid grid-cols-7 relative">

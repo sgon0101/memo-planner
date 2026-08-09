@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Plus, Check, Trash2, Clock, Pencil } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, eachDayOfInterval } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
@@ -12,16 +12,18 @@ import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
 
-type DeleteMode = null | 'confirm' | 'recurring'
-
 interface PlanPanelProps {
   date: string
+  /** 주/월 뷰: 셋 다 주어지면 기간 전체 플랜 모드 — 기간 플랜 섹션 + 날짜별 그룹 */
+  periodStart?: string
+  periodEnd?: string
+  periodLabel?: string
   onNewPlan: () => void
   onEditPlan: (plan: Plan) => void
   onClose: () => void
 }
 
-export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
+export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, onNewPlan, onEditPlan, onClose }: PlanPanelProps) {
   const { expandedPlans } = useExpandedPlans()
   const { toggleComplete, removePlan, toggleRecurringComplete, skipRecurringInstance, stopRecurringFromDate } = usePlanner()
   const [detailPlan, setDetailPlan] = useState<Plan | null>(null)
@@ -56,6 +58,33 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
     }
     return false
   })
+
+  // ── 기간 모드 (주/월 뷰) — 해당 기간의 모든 플랜 ─────────────────
+  // 이전엔 뷰와 무관하게 선택일 하루치만 보여서 주/월 뷰 패널이 "일요일/1일 플랜"에
+  // 그쳤음. 범위 플랜은 날짜 그룹마다 반복되지 않도록 별도 섹션에 1회만.
+  const isPeriod = !!periodStart && !!periodEnd
+  const periodRangePlans = isPeriod
+    ? expandedPlans
+        .filter((p) => p.startDate && p.endDate && p.startDate <= periodEnd && p.endDate >= periodStart)
+        .sort((a, b) => (a.startDate! < b.startDate! ? -1 : a.startDate! > b.startDate! ? 1 : 0))
+    : []
+  const periodDayGroups = isPeriod
+    ? eachDayOfInterval({ start: parseISO(periodStart), end: parseISO(periodEnd) })
+        .map((d) => {
+          const dayStr = format(d, 'yyyy-MM-dd')
+          const items = expandedPlans
+            .filter((p) => p.date === dayStr)
+            .sort((a, b) => {
+              // 종일 먼저, 나머지는 시작 시간순
+              const ka = a.isAllDay || !a.startTime ? '' : a.startTime
+              const kb = b.isAllDay || !b.startTime ? '' : b.startTime
+              return ka < kb ? -1 : ka > kb ? 1 : 0
+            })
+          return { dayStr, items }
+        })
+        .filter((g) => g.items.length > 0)
+    : []
+  const periodEmpty = periodRangePlans.length === 0 && periodDayGroups.length === 0
 
   const displayDate = format(parseISO(date), 'M월 d일 (EEE)', { locale: ko })
   const isToday = date === format(new Date(), 'yyyy-MM-dd')
@@ -93,10 +122,10 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       {/* 헤더 — 모바일: 날짜 가운데, X 숨김 (스와이프-다운으로 닫음) / 데스크탑: 양쪽 정렬 + X */}
       <div className="relative z-10 flex items-center justify-center md:justify-between px-4 py-2.5 md:py-3 border-b border-gray-200 dark:border-gray-800">
         <div className="text-center md:text-left">
-          <p className={cn('text-sm font-semibold', isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
-            {displayDate}
+          <p className={cn('text-sm font-semibold', !isPeriod && isToday ? 'text-violet-600' : 'text-gray-900 dark:text-white')}>
+            {isPeriod ? periodLabel : displayDate}
           </p>
-          {isToday && <p className="text-[11px] text-violet-500 leading-tight">오늘</p>}
+          {!isPeriod && isToday && <p className="text-[11px] text-violet-500 leading-tight">오늘</p>}
         </div>
         {/* X 버튼 — 데스크탑 전용 (모바일은 스와이프-다운으로 닫음) */}
         <button
@@ -110,33 +139,61 @@ export default function PlanPanel({ date, onNewPlan, onEditPlan, onClose }: Plan
       </div>
 
       {/* 플랜 목록 */}
-      <div className="flex-1 overflow-y-auto">
-        {dayPlans.length === 0 ? (
+      {(() => {
+        const renderItem = (plan: Plan) => (
+          <PlanItem
+            key={plan.id}
+            plan={plan}
+            onToggle={() => {
+              if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
+                toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
+              } else {
+                toggleComplete(plan.id, plan.isCompleted).catch(console.error)
+              }
+            }}
+            onEdit={() => onEditPlan(plan)}
+            onDelete={() => setDeletingPlan(plan)}
+            onDetail={() => setDetailPlan(plan)}
+          />
+        )
+        const empty = (
           <div className="flex flex-col items-center justify-center h-32 text-gray-400 gap-2">
             <Clock size={20} className="opacity-40" />
             <p className="text-xs">플랜이 없습니다</p>
           </div>
-        ) : (
-          <ul className="p-2 space-y-1">
-            {dayPlans.map((plan) => (
-              <PlanItem
-                key={plan.id}
-                plan={plan}
-                onToggle={() => {
-                  if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
-                    toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
-                  } else {
-                    toggleComplete(plan.id, plan.isCompleted).catch(console.error)
-                  }
-                }}
-                onEdit={() => onEditPlan(plan)}
-                onDelete={() => setDeletingPlan(plan)}
-                onDetail={() => setDetailPlan(plan)}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+        )
+        return (
+          <div className="flex-1 overflow-y-auto">
+            {isPeriod ? (
+              periodEmpty ? empty : (
+                <div className="p-2 space-y-3">
+                  {/* 범위 플랜 — 날짜 그룹마다 반복하지 않고 1회만 */}
+                  {periodRangePlans.length > 0 && (
+                    <div>
+                      <p className="px-2 pb-1 text-xs font-medium text-gray-400">기간 플랜</p>
+                      <ul className="space-y-1">{periodRangePlans.map(renderItem)}</ul>
+                    </div>
+                  )}
+                  {/* 날짜별 그룹 — 선택일은 보라 강조 */}
+                  {periodDayGroups.map(({ dayStr, items }) => (
+                    <div key={dayStr}>
+                      <p className={cn(
+                        'px-2 pb-1 text-xs font-medium',
+                        dayStr === date ? 'text-violet-500' : 'text-gray-400',
+                      )}>
+                        {format(parseISO(dayStr), 'M월 d일 (EEE)', { locale: ko })}
+                      </p>
+                      <ul className="space-y-1">{items.map(renderItem)}</ul>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : dayPlans.length === 0 ? empty : (
+              <ul className="p-2 space-y-1">{dayPlans.map(renderItem)}</ul>
+            )}
+          </div>
+        )
+      })()}
 
       {/* 새 플랜 버튼 */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-800">
