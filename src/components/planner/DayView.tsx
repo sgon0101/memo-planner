@@ -272,18 +272,19 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
           오독됐고(모바일), PC에선 여러 플랜이 한 줄에 뭉개졌다. 범위 플랜은
           우측에 실제 기간(M/d – M/d)을 명시해 오독 여지를 제거. */}
       {allDayPlans.length > 0 && (
-        <div className="border-b border-gray-200 dark:border-gray-800 flex-shrink-0 py-1 pr-2 space-y-0.5 max-h-28 overflow-y-auto">
-          {allDayPlans.map((plan, idx) => {
-            const isRange = !!plan.startDate && !!plan.endDate
-            return (
-              <div key={plan.id} className="flex items-center">
-                {/* 시간 열(w-14)과 정렬되는 라벨 컬럼 — 첫 줄에만 '종일' 표기 */}
-                <span className="w-14 flex-shrink-0 text-xs text-gray-400 text-right pr-2">
-                  {idx === 0 ? '종일' : ''}
-                </span>
+        <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+          {/* 시간 열(w-14)과 정렬되는 라벨 컬럼 — 영역 전체 높이 기준 세로 중앙 (주뷰 레인과 동일) */}
+          <div className="w-14 flex-shrink-0 flex items-center justify-end pr-2">
+            <span className="text-xs text-gray-400">종일</span>
+          </div>
+          <div className="flex-1 min-w-0 py-1 pr-2 space-y-0.5 max-h-28 overflow-y-auto">
+            {allDayPlans.map((plan) => {
+              const isRange = !!plan.startDate && !!plan.endDate
+              return (
                 <div
+                  key={plan.id}
                   className={cn(
-                    'flex-1 min-w-0 flex items-center gap-2 text-xs px-2 py-1 rounded cursor-pointer transition-opacity hover:opacity-80',
+                    'flex items-center gap-2 text-xs px-2 py-1 rounded cursor-pointer transition-opacity hover:opacity-80',
                     plan.isCompleted && 'opacity-50',
                   )}
                   style={{ backgroundColor: plan.color + '22', borderLeft: `3px solid ${plan.color}`, color: plan.color }}
@@ -298,9 +299,9 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                     </span>
                   )}
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
 

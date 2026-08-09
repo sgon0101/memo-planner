@@ -102,7 +102,9 @@ export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, o
 
   return (
     <div
-      className="w-full md:w-72 flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none"
+      // md:h-full — 데스크탑에서 높이 기준이 없으면 목록이 길 때 flex-1 overflow-y-auto가
+      // 잘라낼 기준이 없어 스크롤이 아예 생기지 않았음 (기간 패널 도입으로 표면화)
+      className="w-full md:w-72 md:h-full flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-none max-h-[60vh] md:max-h-none"
       style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: 'none' } : { transition: 'transform 0.2s ease-out' }}
     >
       {/* 그립 핸들만 touch-action:none — X 버튼이 click 이벤트를 못 받는 버그 방지 */}
