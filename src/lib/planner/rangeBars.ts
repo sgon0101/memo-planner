@@ -5,6 +5,8 @@ export interface RangeBarItem {
   startCol: number // 0–6 (주 내 시작 컬럼)
   endCol: number   // 0–6 (주 내 끝 컬럼)
   slot: number     // 세로 슬롯 (0, 1, 2...)
+  continuesLeft: boolean  // 플랜이 이 주 이전부터 이어짐 (좌측 끝단 flat 처리용)
+  continuesRight: boolean // 플랜이 이 주 이후로 이어짐 (우측 끝단 flat 처리용)
 }
 
 /**
@@ -56,7 +58,11 @@ export function computeRangeBars(
     if (slot >= maxSlots) { hidden++; continue }
     slotEnds[slot] = visEnd
 
-    bars.push({ plan, startCol, endCol, slot })
+    bars.push({
+      plan, startCol, endCol, slot,
+      continuesLeft: plan.startDate! < rangeStart,
+      continuesRight: plan.endDate! > rangeEnd,
+    })
   }
 
   return { bars, hidden }
