@@ -138,9 +138,18 @@ function ComboField({ value, options, max, onCommit, ariaLabel, disabled }: Comb
     <>
       <input
         ref={inputRef}
-        type="text"
+        // 앱 표준 autofill 차단 패턴 (CLAUDE.md 2026-07-05 규칙: 새 텍스트 input은
+        // type="search"). 기존 type="text"는 AutofillBlocker의 사후 변환(MutationObserver)에
+        // 의존했는데, React가 vdom상 type="text"를 소유한 채라 재렌더/리마운트 경로에서
+        // 원복될 수 있고 모바일(삼성 키보드/Chrome)은 autocomplete="off"를 무시해
+        // 타이핑 시 autofill 바가 노출됐다 → JSX에서 직접 search로 선언해 원천 차단.
+        // inputMode="numeric"은 유지(숫자 키패드), 웹킷 search 장식은 globals.css가 전역 제거.
+        type="search"
         inputMode="numeric"
         autoComplete="off"
+        data-form-type="other"
+        data-1p-ignore="true"
+        data-lpignore="true"
         value={display}
         disabled={disabled}
         role="combobox"

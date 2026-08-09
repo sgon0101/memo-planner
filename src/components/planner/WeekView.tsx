@@ -8,6 +8,7 @@ import {
   HOUR_H, DRAG_THRESHOLD_PX, LONG_PRESS_MS,
   timeToMinutes, minutesToTime, snapMinutes, addDaysToISO, pxToMinutes,
 } from '@/lib/planner/dragHelpers'
+import { computeRangeBars } from '@/lib/planner/rangeBars'
 import type { Plan } from '@/types'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -52,6 +53,7 @@ interface DragState {
 }
 
 const MIN_DURATION_MIN = 15  // 리사이즈 최소 길이
+const MAX_ALLDAY_SLOTS = 6   // 종일 레인 범위 바 줄 수 상한 (초과분은 +N 배지)
 
 /**
  * 드래그-생성(터치 long-press) 중 스크롤 잠금 — 해제 함수를 반환한다.
@@ -119,24 +121,11 @@ export default function WeekView({
   }
 
   // 주 범위 플랜 (startCol/endCol/slot) — spanning bar 오버레이로 1회만 렌더
+  // 슬롯 로직은 월뷰와 공용 단일 출처(computeRangeBars) — 시작일 정렬 + 줄 수 기준
+  // 상한 + hidden 카운트 (구버전: 정렬 없음 + 개수 slice(0,6) → 슬롯 어긋남/침묵 누락)
   function getWeekRangePlans() {
     const dayStrs = days.map((d) => format(d, 'yyyy-MM-dd'))
-    const weekStart = dayStrs[0]
-    const weekEnd = dayStrs[6]
-    const overlapping = plans
-      .filter((p) => p.startDate && p.endDate)
-      .filter((p) => p.startDate! <= weekEnd && p.endDate! >= weekStart)
-    const slotEnds: string[] = []
-    return overlapping.slice(0, 6).map((plan) => {
-      const visStart = plan.startDate! < weekStart ? weekStart : plan.startDate!
-      const visEnd = plan.endDate! > weekEnd ? weekEnd : plan.endDate!
-      const startCol = dayStrs.indexOf(visStart)
-      const endCol = dayStrs.indexOf(visEnd)
-      let slot = slotEnds.findIndex((end) => end < visStart)
-      if (slot === -1) slot = slotEnds.length
-      slotEnds[slot] = visEnd
-      return { plan, startCol, endCol, slot }
-    })
+    return computeRangeBars(dayStrs, plans, MAX_ALLDAY_SLOTS)
   }
 
   function measureColWidth(): number {
@@ -487,7 +476,25 @@ export default function WeekView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 날짜 헤더 — 시간 그리드 스크롤바 폭만큼 우측 padding으로 컬럼 정렬 */}
+      {/* 요일 행 — 시간 열(w-14) 스페이서 + 스크롤바 폭 padding으로 각 날짜 컬럼과
+          중앙 정렬 (월뷰 요일 헤더와 동일한 톤/타이포). CalendarView의 전역 요일
+          행은 시간 열을 모른 채 화면 전체를 7등분해 컬럼과 어긋났음 → 주뷰 전용으로 내재화 */}
+      <div className="flex border-b border-gray-100 dark:border-gray-800 flex-shrink-0" style={{ paddingRight: scrollbarWidth }}>
+        <div className="w-14 flex-shrink-0" />
+        {days.map((_, i) => (
+          <div
+            key={i}
+            className={cn(
+              'flex-1 py-2 text-center text-xs font-medium',
+              i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-500 dark:text-gray-400',
+            )}
+          >
+            {WEEKDAYS_SHORT[i]}
+          </div>
+        ))}
+      </div>
+
+      {/* 날짜 헤더 — 숫자만 (요일은 위 행이 담당). 스크롤바 폭만큼 우측 padding으로 컬럼 정렬 */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0" style={{ paddingRight: scrollbarWidth }}>
         <div className="w-14 flex-shrink-0" />
         {days.map((day, i) => {
@@ -497,16 +504,13 @@ export default function WeekView({
             <div
               key={i}
               className={cn(
-                'flex-1 py-2 text-center border-l border-gray-100 dark:border-gray-800 cursor-pointer',
+                'flex-1 py-1.5 text-center border-l border-gray-100 dark:border-gray-800 cursor-pointer',
                 isToday && 'bg-violet-50/50 dark:bg-violet-950/20',
               )}
               onClick={() => onSelectDate(dayStr === selectedDate ? '' : dayStr)}
             >
-              <span className={cn('text-xs text-gray-400', i === 0 && 'text-red-400', i === 6 && 'text-blue-400')}>
-                {WEEKDAYS_SHORT[i]}
-              </span>
               <div className={cn(
-                'mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium',
+                'mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium',
                 isToday ? 'bg-violet-600 text-white' : 'text-gray-700 dark:text-gray-300',
               )}>
                 {format(day, 'd')}
@@ -518,7 +522,7 @@ export default function WeekView({
 
       {/* 종일 영역 — 단일일 plans는 셀당, 범위 plans는 spanning overlay (Saturday 빈칸 버그 fix) */}
       {(() => {
-        const rangePlans = getWeekRangePlans()
+        const { bars: rangePlans, hidden: hiddenRangeCount } = getWeekRangePlans()
         const rangeSlotCount = rangePlans.reduce((m, r) => Math.max(m, r.slot + 1), 0)
         const rangeBarHeight = rangeSlotCount > 0 ? rangeSlotCount * 22 + 4 : 0
         return (
@@ -575,6 +579,16 @@ export default function WeekView({
                   </div>
                 )
               })}
+              {/* 줄 수 상한으로 숨긴 범위 플랜 — 침묵 누락 방지 (월뷰와 동일 패턴) */}
+              {hiddenRangeCount > 0 && (
+                <div
+                  className="absolute right-1 z-20 text-[10px] font-medium px-1 rounded bg-gray-200/90 text-gray-600 dark:bg-gray-700/90 dark:text-gray-300"
+                  style={{ top: `${2 + (MAX_ALLDAY_SLOTS - 1) * 22}px` }}
+                  title={`이 주에 ${hiddenRangeCount}개의 범위 플랜이 더 있습니다 (날짜를 클릭하면 전체 목록이 보입니다)`}
+                >
+                  +{hiddenRangeCount}
+                </div>
+              )}
             </div>
           </div>
         )
