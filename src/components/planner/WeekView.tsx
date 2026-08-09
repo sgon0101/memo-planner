@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { format, addDays } from 'date-fns'
+import { format, addDays, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import {
@@ -99,7 +99,12 @@ export default function WeekView({
   useEffect(() => { plansRef.current = plans }, [plans])
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 8 * HOUR_H - 20
+    // 초기 스크롤을 고정 08:00 대신 현재 시각 부근으로 (일뷰와 동일 패턴)
+    if (scrollRef.current) {
+      const now = new Date()
+      const top = ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_H
+      scrollRef.current.scrollTop = Math.max(0, top - 100)
+    }
   }, [])
 
   // 언마운트 시 안전망 — drag 중에 컴포넌트 사라지면 cleanup
@@ -535,10 +540,13 @@ export default function WeekView({
                 const dayStr = format(day, 'yyyy-MM-dd')
                 const single = getSingleAllDayPlans(dayStr)
                 return (
+                  // 빈 영역 탭 → 해당 날짜 종일 플랜 생성 (initialTime 없이 열면 폼의 종일이 기본 on).
+                  // 칩/범위 바는 각자 stopPropagation이라 편집 클릭과 충돌 없음.
                   <div
                     key={i}
-                    className="border-l border-gray-100 dark:border-gray-800 px-0.5 pb-0.5 space-y-0.5"
+                    className="border-l border-gray-100 dark:border-gray-800 px-0.5 pb-0.5 space-y-0.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
                     style={{ paddingTop: `${rangeBarHeight + 2}px` }}
+                    onClick={() => onNewPlan(dayStr)}
                   >
                     {single.slice(0, 2).map((plan) => (
                       <div
@@ -555,27 +563,38 @@ export default function WeekView({
                 )
               })}
               {/* 범위 플랜 spanning 오버레이 */}
-              {rangePlans.map(({ plan, startCol, endCol, slot }) => {
+              {rangePlans.map(({ plan, startCol, endCol, slot, continuesLeft, continuesRight }) => {
                 const span = endCol - startCol + 1
                 return (
                   <div
                     key={`range-${plan.id}`}
                     onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
-                    title={plan.title}
+                    title={`${plan.title} (${plan.startDate} ~ ${plan.endDate})`}
                     className={cn(
-                      'absolute h-5 text-xs flex items-center px-1.5 truncate cursor-pointer transition-opacity hover:opacity-80 z-10 rounded',
+                      'absolute h-5 text-xs flex items-center px-1.5 cursor-pointer transition-opacity hover:opacity-80 z-10',
                       plan.isCompleted && 'opacity-50 line-through',
+                      // 주 경계에서 잘린 쪽은 flat — "이전/다음 주로 계속됨" 신호 (월뷰 RangeBar와 동일)
+                      'rounded',
+                      continuesLeft && 'rounded-l-none',
+                      continuesRight && 'rounded-r-none',
                     )}
                     style={{
                       top: `${2 + slot * 22}px`,
                       left: `calc(${startCol} / 7 * 100% + 1px)`,
                       width: `calc(${span} / 7 * 100% - 2px)`,
                       backgroundColor: plan.color + '28',
-                      borderLeft: `3px solid ${plan.color}`,
+                      // 시작 마커(3px 보더)는 실제 시작 주에서만
+                      borderLeft: continuesLeft ? undefined : `3px solid ${plan.color}`,
                       color: plan.color,
                     }}
                   >
-                    {plan.title}
+                    <span className="truncate">{plan.title}</span>
+                    {/* 실제 전체 기간 라벨 — 3칸 이상일 때만 (좁으면 제목 우선) */}
+                    {span >= 3 && plan.startDate && plan.endDate && (
+                      <span className="ml-auto pl-1.5 flex-shrink-0 opacity-70 tabular-nums">
+                        {format(parseISO(plan.startDate), 'M/d')} – {format(parseISO(plan.endDate), 'M/d')}
+                      </span>
+                    )}
                   </div>
                 )
               })}

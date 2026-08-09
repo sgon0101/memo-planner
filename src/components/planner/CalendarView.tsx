@@ -67,6 +67,10 @@ export default function CalendarView() {
     open: false, date: '',
   })
   const [syncing, setSyncing] = useState(false)
+  // 마지막 성공 동기화 시각 (ISO) — 새로고침에도 유지되도록 localStorage 미러
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('weave:planner-last-sync') : null,
+  )
 
   async function handleSync() {
     setSyncing(true)
@@ -84,6 +88,9 @@ export default function CalendarView() {
         return
       }
       await refresh()
+      const now = new Date().toISOString()
+      setLastSyncAt(now)
+      try { localStorage.setItem('weave:planner-last-sync', now) } catch { /* quota 등 무시 */ }
       toast.success(`Google Calendar 동기화 완료 (${json.synced}개 추가)`)
     } catch {
       toast.error('동기화 중 오류가 발생했습니다.')
@@ -109,6 +116,23 @@ export default function CalendarView() {
     setCurrentMonth(now)
     setCurrentWeek(startOfWeek(now, { weekStartsOn: 0 }))
     selectDate(today)
+  }
+
+  // 뷰 모드 전환 시 기간 동기화 — 보고 있던 날짜(선택일, 없으면 현재 기간 기준점)가
+  // 새 뷰에서도 보이도록 currentMonth/currentWeek을 정렬한다. 이전엔 월에서 10월을
+  // 보다가 주로 바꾸면 엉뚱한 (마지막으로 보던) 주가 떴음. 일뷰 전환은 기존대로
+  // selectedDate || today 기준이라 별도 처리 불필요.
+  function changeViewMode(mode: 'month' | 'week' | 'day') {
+    if (mode !== viewMode) {
+      const anchor = selectedDate
+        ? parseISO(selectedDate)
+        : viewMode === 'month' ? startOfMonth(currentMonth)
+          : viewMode === 'week' ? currentWeek
+            : parseISO(today)
+      if (mode === 'month') setCurrentMonth(anchor)
+      else if (mode === 'week') setCurrentWeek(startOfWeek(anchor, { weekStartsOn: 0 }))
+    }
+    setViewMode(mode)
   }
 
   // 주/월 네비 시 우측 플랜 패널 날짜 동기화 — 패널이 열려 있을 때만.
@@ -279,7 +303,9 @@ export default function CalendarView() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              title="Google Calendar 동기화"
+              title={lastSyncAt
+                ? `Google Calendar 동기화 — 마지막: ${format(parseISO(lastSyncAt), 'M/d HH:mm')}`
+                : 'Google Calendar 동기화'}
               className="flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={13} className={cn('flex-shrink-0', syncing && 'animate-spin')} />
@@ -293,7 +319,7 @@ export default function CalendarView() {
               {(['month', 'week', 'day'] as const).map((mode) => (
                 <button
                   key={mode}
-                  onClick={() => setViewMode(mode)}
+                  onClick={() => changeViewMode(mode)}
                   className={cn(
                     'px-3 py-1.5 text-xs font-medium transition-colors',
                     viewMode === mode
@@ -308,7 +334,7 @@ export default function CalendarView() {
 
             {/* 모바일: 드롭다운 */}
             <div className="sm:hidden">
-              <ViewModeDropdown viewMode={viewMode} onChange={setViewMode} />
+              <ViewModeDropdown viewMode={viewMode} onChange={changeViewMode} />
             </div>
           </div>
         </div>
@@ -437,13 +463,15 @@ export default function CalendarView() {
                   })}
 
                   {/* 범위 플랜 바 오버레이 */}
-                  {rangePlans.map(({ plan, startCol, endCol, slot }) => (
+                  {rangePlans.map(({ plan, startCol, endCol, slot, continuesLeft, continuesRight }) => (
                     <RangeBar
                       key={`${plan.id}-${wi}`}
                       plan={plan}
                       startCol={startCol}
                       endCol={endCol}
                       slot={slot}
+                      continuesLeft={continuesLeft}
+                      continuesRight={continuesRight}
                       onClick={() => selectDate(format(week[startCol], 'yyyy-MM-dd'))}
                     />
                   ))}

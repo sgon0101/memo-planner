@@ -79,7 +79,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   // 언마운트 시 안전망
   useEffect(() => () => { cleanupRef.current?.() }, [])
 
-  const today = new Date().toISOString().slice(0, 10)
+  // toISOString()은 UTC 기준이라 KST 오전 9시 이전엔 '오늘'이 어제로 판정됐음 → 로컬 기준 통일
+  const today = format(new Date(), 'yyyy-MM-dd')
   const isToday = date === today
 
   const timedPlans = plans.filter(
