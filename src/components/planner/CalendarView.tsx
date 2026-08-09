@@ -242,6 +242,21 @@ export default function CalendarView() {
 
   const panelOpen = !!selectedDate && !panelDismissed
 
+  // 주/월 뷰: 우측 패널을 선택일 하루치가 아니라 기간 전체 플랜 모드로
+  const panelPeriod = viewMode === 'week'
+    ? {
+        start: format(currentWeek, 'yyyy-MM-dd'),
+        end: format(addDays(currentWeek, 6), 'yyyy-MM-dd'),
+        label: `${format(currentWeek, 'M월 d일', { locale: ko })} – ${format(addDays(currentWeek, 6), 'M월 d일', { locale: ko })}`,
+      }
+    : viewMode === 'month'
+      ? {
+          start: format(startOfMonth(currentMonth), 'yyyy-MM-dd'),
+          end: format(endOfMonth(currentMonth), 'yyyy-MM-dd'),
+          label: format(currentMonth, 'yyyy년 M월', { locale: ko }),
+        }
+      : null
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* 캘린더 메인 */}
@@ -534,6 +549,9 @@ export default function CalendarView() {
           <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:flex-shrink-0">
             <PlanPanel
               date={selectedDate}
+              periodStart={panelPeriod?.start}
+              periodEnd={panelPeriod?.end}
+              periodLabel={panelPeriod?.label}
               onNewPlan={() => setFormState({ open: true, date: selectedDate })}
               onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
               onClose={handlePanelClose}
