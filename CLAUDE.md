@@ -113,7 +113,8 @@ memo-planner/
 │   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
 │   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
 │   │   ├── planCache.ts            # 플랜 RQ+LS 캐시 헬퍼 (planKeys, patch/add/remove/swap/find)
-│   │   └── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
+│   │   ├── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
+│   │   └── rangeBars.ts            # 범위 플랜 바 슬롯 레이아웃 (월뷰 그리드·주뷰 종일 레인 공용)
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기
@@ -511,6 +512,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-08-09 | 플래너 월/주/일 뷰 버그·디자인 정비 (5파일+1신규) | ① **주뷰 종일 레인 슬롯 로직 단일 출처화** — 월뷰만 고쳐진 2026-08 "자리가 남는데도 누락" 패턴(정렬 없음+개수 slice(0,6))이 주뷰 종일 레인에 잔존 → `lib/planner/rangeBars.ts` 신규(`computeRangeBars`: 시작일 정렬+줄 수 기준 상한+hidden 카운트)로 월뷰·주뷰 공용화, 주뷰에도 +N 배지 추가 ② **일뷰 종일 영역 재설계** — flex-wrap 칩(폭=텍스트 길이)이 PC에선 여러 플랜이 한 줄에 뭉개지고 모바일에선 상단 요일 행 아래서 칩 폭이 기간으로 오독됨("8/1~8/31 플랜이 수요일에서 끊김" 증상의 실체 — 주뷰 바 폭 계산은 %기반이라 원래 정상) → 플랜당 한 줄·전체 폭 바 + 범위 플랜 우측에 M/d – M/d 기간 명시 + 완료 시 취소선 ③ **주/월 네비 시 우측 플랜 패널 미갱신** — 일뷰 네비만 selectedDate를 갱신하고 주/월 네비는 currentWeek/currentMonth만 갱신하는 구조 → `syncPanelToPeriod`: 패널이 열려 있을 때만 새 기간 첫날(오늘이 기간 내면 오늘)로 동기화, 닫혀 있으면 열지 않음 ④ **TimePicker 모바일 autofill 바** — type="text"+전역 AutofillBlocker 사후 변환(MutationObserver) 의존이라 React 재렌더 경로에서 원복 여지 + 모바일은 autocomplete=off 무시 → 앱 표준 패턴(2026-07-05 규칙)대로 JSX에 type="search"+autoComplete="off"+data-form-type 직접 선언, inputMode="numeric" 유지 ⑤ **주뷰 헤더 요일/날짜 정렬** — CalendarView 전역 요일 행이 시간 열(w-14) 오프셋을 모른 채 화면을 7등분해 컬럼과 어긋남 → 요일 행을 WeekView 내부로 이동(w-14 스페이서+스크롤바 padding, 월뷰 요일 헤더와 동일 타이포), 날짜 행은 숫자만 남김, 전역 요일 행은 월뷰 전용화 ⑥ **일뷰 상단 요일 행 제거** — 단일 날짜 뷰에 7요일 행은 정보 가치가 없고 오독만 유발(②의 원인 일부), 헤더 'M/d (요일)' 표기가 요일 담당 ⑦ **모바일 헤더 컨트롤 통일** — Google 동기화 버튼 2줄(10px) 스택 → 한 줄 '동기화'+font-medium으로 뷰 셀렉터와 높이·radius·border 톤 통일(MASTER.md Secondary 버튼 토큰). 검증: tsc --noEmit 0·변경 파일 ESLint 클린·verify-changes.sh 통과 + 격리 렌더 하니스(esbuild+Playwright, 390px/1400px × 주뷰/일뷰 4종 스크린샷)로 레이아웃 확인. 미배포 — dev 커밋만, main PR은 사용자 승인 후 | 100% |
 | 2026-04-17 | 초기 설정 | CLAUDE.md 생성, 프로젝트 구조 정의 | - |
 | 2026-04-17 | 1단계 완료 | Next.js memo-planner 프로젝트 생성, 패키지 설치 | 100% |
 | 2026-04-17 | 2단계 완료 | Supabase 프로젝트 생성, 테이블 7개 + RLS 정책 적용 | 100% |

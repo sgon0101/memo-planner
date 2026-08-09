@@ -7,6 +7,7 @@ import {
   startOfWeek, endOfWeek, eachDayOfInterval,
   isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO, isSameWeek,
 } from 'date-fns'
+import { computeRangeBars } from '@/lib/planner/rangeBars'
 import { ko } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -110,16 +111,39 @@ export default function CalendarView() {
     selectDate(today)
   }
 
+  // 주/월 네비 시 우측 플랜 패널 날짜 동기화 — 패널이 열려 있을 때만.
+  // 일뷰 네비는 selectedDate 자체를 옮기지만, 주/월 네비는 currentWeek/currentMonth만
+  // 갱신해 패널이 이전 기간 날짜에 고착돼 있었다. 오늘이 새 기간 안이면 오늘,
+  // 아니면 기간 첫날로 옮긴다 (패널이 닫혀 있으면 열지 않음 — 빈 selectedDate 유지).
+  function syncPanelToPeriod(periodStart: Date, periodEnd: Date) {
+    if (!selectedDate) return
+    const startStr = format(periodStart, 'yyyy-MM-dd')
+    const endStr = format(periodEnd, 'yyyy-MM-dd')
+    selectDate(today >= startStr && today <= endStr ? today : startStr)
+  }
+
   // 이전/다음 — 헤더 버튼 + 모바일 스와이프 공용
   function goPrev() {
-    if (viewMode === 'month') setCurrentMonth(subMonths(currentMonth, 1))
-    else if (viewMode === 'week') setCurrentWeek(subWeeks(currentWeek, 1))
-    else selectDate(format(subDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+    if (viewMode === 'month') {
+      const m = subMonths(currentMonth, 1)
+      setCurrentMonth(m)
+      syncPanelToPeriod(startOfMonth(m), endOfMonth(m))
+    } else if (viewMode === 'week') {
+      const w = subWeeks(currentWeek, 1)
+      setCurrentWeek(w)
+      syncPanelToPeriod(w, addDays(w, 6))
+    } else selectDate(format(subDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
   }
   function goNext() {
-    if (viewMode === 'month') setCurrentMonth(addMonths(currentMonth, 1))
-    else if (viewMode === 'week') setCurrentWeek(addWeeks(currentWeek, 1))
-    else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
+    if (viewMode === 'month') {
+      const m = addMonths(currentMonth, 1)
+      setCurrentMonth(m)
+      syncPanelToPeriod(startOfMonth(m), endOfMonth(m))
+    } else if (viewMode === 'week') {
+      const w = addWeeks(currentWeek, 1)
+      setCurrentWeek(w)
+      syncPanelToPeriod(w, addDays(w, 6))
+    } else selectDate(format(addDays(parseISO(selectedDate || today), 1), 'yyyy-MM-dd'))
   }
 
   // 모바일 좌우 스와이프 (월/주/일 네비게이션) — useSwipeGesture 통합 파이프라인
@@ -167,47 +191,11 @@ export default function CalendarView() {
   }
 
   // 특정 주에 걸리는 범위 플랜 (startCol, endCol, slot 포함)
-  // MAX_RANGE_BARS는 "겹치는 플랜 수"가 아니라 "차지하는 줄 수" 상한이다.
-  // 개수로 먼저 자르면 서로 겹치지 않아 같은 줄에 나란히 놓일 수 있는 플랜까지
-  // 통째로 사라진다 (2026-08: 7/23~26 나고야 여행이 4번째라는 이유만으로 누락).
+  // 슬롯 로직은 주뷰 종일 레인과 공용 단일 출처 — lib/planner/rangeBars.ts
+  // (2026-08 "자리가 남는데도 누락" 수정판: 시작일 정렬 + 줄 수 기준 상한 + hidden)
   function getWeekRangePlans(week: Date[]) {
     const weekStrs = week.map((d) => format(d, 'yyyy-MM-dd'))
-    const weekStart = weekStrs[0]
-    const weekEnd = weekStrs[6]
-
-    const overlapping = expandedPlans
-      .filter((p) => p.startDate && p.endDate)
-      .filter((p) => p.startDate! <= weekEnd && p.endDate! >= weekStart)
-      // greedy 슬롯 할당은 시작일 순서를 전제로 한다. 유입 순서(쿼리 병합 순)로는
-      // 슬롯 재사용이 어긋나 줄 수가 불필요하게 늘어난다. 동률은 id로 안정 정렬.
-      .sort((a, b) => {
-        const s = (a.startDate! < b.startDate! ? -1 : a.startDate! > b.startDate! ? 1 : 0)
-        return s !== 0 ? s : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-      })
-
-    // 슬롯 할당 (greedy)
-    const slotEnds: string[] = [] // slotEnds[i] = 해당 슬롯의 마지막 날짜
-    const bars: { plan: Plan; startCol: number; endCol: number; slot: number }[] = []
-    let hidden = 0
-
-    for (const plan of overlapping) {
-      const visStart = plan.startDate! < weekStart ? weekStart : plan.startDate!
-      const visEnd = plan.endDate! > weekEnd ? weekEnd : plan.endDate!
-      const startCol = weekStrs.indexOf(visStart)
-      const endCol = weekStrs.indexOf(visEnd)
-
-      // 빈 슬롯 찾기
-      let slot = slotEnds.findIndex((end) => end < visStart)
-      if (slot === -1) { slot = slotEnds.length }
-
-      // 줄 수 상한을 넘는 것만 숨기고, 숨겼다는 사실은 화면에 남긴다
-      if (slot >= MAX_RANGE_BARS) { hidden++; continue }
-      slotEnds[slot] = visEnd
-
-      bars.push({ plan, startCol, endCol, slot })
-    }
-
-    return { bars, hidden }
+    return computeRangeBars(weekStrs, expandedPlans, MAX_RANGE_BARS)
   }
 
   // panelDismissed — 일 뷰에서 panel만 숨기고 selectedDate는 유지하기 위한 별도 상태
@@ -292,14 +280,12 @@ export default function CalendarView() {
               onClick={handleSync}
               disabled={syncing}
               title="Google Calendar 동기화"
-              className="flex items-center gap-1.5 text-xs px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={13} className={cn('flex-shrink-0', syncing && 'animate-spin')} />
+              {/* 모바일도 한 줄 라벨 — 2줄(10px) 스택은 우측 뷰 셀렉터와 높이/톤이 어긋났음 */}
               <span className="hidden sm:inline">Google 동기화</span>
-              <span className="sm:hidden flex flex-col items-start leading-tight text-[10px]">
-                <span>Google</span>
-                <span>동기화</span>
-              </span>
+              <span className="sm:hidden">동기화</span>
             </button>
 
             {/* 데스크톱: 평탄 뷰 토글 */}
@@ -327,20 +313,24 @@ export default function CalendarView() {
           </div>
         </div>
 
-        {/* 요일 헤더 */}
-        <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-          {WEEKDAYS.map((day, i) => (
-            <div
-              key={day}
-              className={cn(
-                'py-2 text-center text-xs font-medium',
-                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-500 dark:text-gray-400'
-              )}
-            >
-              {day}
-            </div>
-          ))}
-        </div>
+        {/* 요일 헤더 — 월뷰 전용. 주뷰는 시간 열(w-14) 오프셋을 아는 WeekView가 자체
+            렌더(전역 7등분 행은 컬럼과 어긋남), 일뷰는 단일 날짜라 요일 행이 정보 가치가
+            없고 헤더의 'M/d (요일)' 표기가 이미 요일을 담당 → 둘 다 제거 */}
+        {viewMode === 'month' && (
+          <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+            {WEEKDAYS.map((day, i) => (
+              <div
+                key={day}
+                className={cn(
+                  'py-2 text-center text-xs font-medium',
+                  i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                )}
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 달력 그리드 (모바일 스와이프 핸들러 부착) */}
         <div

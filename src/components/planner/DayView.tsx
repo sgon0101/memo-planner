@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { format, parseISO } from 'date-fns'
 import { usePlanner } from '@/hooks/usePlanner'
 import {
   HOUR_H, DRAG_THRESHOLD_PX, LONG_PRESS_MS,
@@ -265,20 +266,40 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 종일 영역 */}
+      {/* 종일 영역 — 플랜당 한 줄, 전체 폭 바 (이 날 하루를 온전히 덮는다는 의미).
+          구버전 flex-wrap 칩은 폭이 텍스트 길이라 범위 플랜의 기간이 바 길이로
+          오독됐고(모바일), PC에선 여러 플랜이 한 줄에 뭉개졌다. 범위 플랜은
+          우측에 실제 기간(M/d – M/d)을 명시해 오독 여지를 제거. */}
       {allDayPlans.length > 0 && (
-        <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0 py-1 px-1 gap-1 flex-wrap">
-          <span className="text-xs text-gray-400 self-center mr-1 w-14 text-right pr-2">종일</span>
-          {allDayPlans.map((plan) => (
-            <div
-              key={plan.id}
-              className="text-xs px-2 py-0.5 rounded cursor-pointer"
-              style={{ backgroundColor: plan.color + '22', borderLeft: `2px solid ${plan.color}`, color: plan.color }}
-              onClick={() => onEditPlan(plan)}
-            >
-              {plan.title}
-            </div>
-          ))}
+        <div className="border-b border-gray-200 dark:border-gray-800 flex-shrink-0 py-1 pr-2 space-y-0.5 max-h-28 overflow-y-auto">
+          {allDayPlans.map((plan, idx) => {
+            const isRange = !!plan.startDate && !!plan.endDate
+            return (
+              <div key={plan.id} className="flex items-center">
+                {/* 시간 열(w-14)과 정렬되는 라벨 컬럼 — 첫 줄에만 '종일' 표기 */}
+                <span className="w-14 flex-shrink-0 text-xs text-gray-400 text-right pr-2">
+                  {idx === 0 ? '종일' : ''}
+                </span>
+                <div
+                  className={cn(
+                    'flex-1 min-w-0 flex items-center gap-2 text-xs px-2 py-1 rounded cursor-pointer transition-opacity hover:opacity-80',
+                    plan.isCompleted && 'opacity-50',
+                  )}
+                  style={{ backgroundColor: plan.color + '22', borderLeft: `3px solid ${plan.color}`, color: plan.color }}
+                  onClick={() => onEditPlan(plan)}
+                >
+                  <span className={cn('font-medium truncate', plan.isCompleted && 'line-through')}>
+                    {plan.title}
+                  </span>
+                  {isRange && (
+                    <span className="ml-auto flex-shrink-0 opacity-70 tabular-nums">
+                      {format(parseISO(plan.startDate!), 'M/d')} – {format(parseISO(plan.endDate!), 'M/d')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
