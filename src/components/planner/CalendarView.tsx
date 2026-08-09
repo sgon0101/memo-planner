@@ -354,6 +354,9 @@ export default function CalendarView() {
           </div>
         </div>
 
+        {/* 그리드 영역 래퍼 — 모바일 바텀시트 backdrop의 absolute 기준. 헤더는 래퍼
+            밖이라 backdrop이 못 덮는다 (top 오프셋 하드코딩 없이 구조로 해결) */}
+        <div className="relative flex-1 flex flex-col overflow-hidden">
         {/* 요일 헤더 — 월뷰 전용. 주뷰는 시간 열(w-14) 오프셋을 아는 WeekView가 자체
             렌더(전역 7등분 행은 컬럼과 어긋남), 일뷰는 단일 날짜라 요일 행이 정보 가치가
             없고 헤더의 'M/d (요일)' 표기가 이미 요일을 담당 → 둘 다 제거 */}
@@ -532,21 +535,26 @@ export default function CalendarView() {
             />
           )}
         </div>
+
+        {/* 모바일 바텀시트 backdrop — 기존 fixed inset-0은 헤더까지 덮어 뷰 전환·이전/다음·
+            오늘·동기화 버튼의 첫 탭을 삼켰음(<768px, 특히 640~767px에선 셀렉터가 보이는데
+            첫 클릭 불가). 그리드 영역만 absolute로 덮어 헤더 조작은 첫 탭에 먹히고,
+            바깥 탭으로 닫기 + 딤 처리는 유지. 일 뷰는 기존대로 backdrop 없음. */}
+        {panelOpen && viewMode !== 'day' && (
+          <div
+            className="absolute inset-0 z-30 bg-black/30 md:hidden"
+            onClick={handlePanelClose}
+          />
+        )}
+        </div>
       </div>
 
       {/* 플랜 패널 — 데스크탑: 사이드, 모바일: 바텀 시트 */}
       {panelOpen && (
         <>
-          {/* 모바일 오버레이 배경 — 일 뷰에서는 헤더의 chevron 버튼을 가려서
-              navigation을 막아버리는 버그 때문에 제외. 일 뷰는 day grid 자체가
-              주 뷰이고 panel은 보조 정보라 backdrop 없이 노출. 닫기는 swipe-down + X로. */}
-          {viewMode !== 'day' && (
-            <div
-              className="fixed inset-0 z-30 bg-black/30 md:hidden"
-              onClick={handlePanelClose}
-            />
-          )}
-          <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:flex-shrink-0">
+          {/* backdrop은 그리드 영역 래퍼 안(absolute)으로 이동 — 헤더 첫 탭 삼킴 해소.
+              md:h-full: 데스크탑에서 패널 루트에 높이 기준을 줘야 내부 flex-1 목록이 스크롤됨 */}
+          <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:h-full md:flex-shrink-0">
             <PlanPanel
               date={selectedDate}
               periodStart={panelPeriod?.start}
