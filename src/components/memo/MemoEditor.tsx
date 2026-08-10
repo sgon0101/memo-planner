@@ -483,7 +483,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     content: Object.keys(initialContent).length > 0 ? initialContent : EMPTY_DOC,
     editorProps: {
       attributes: {
-        class: 'outline-none min-h-[calc(100vh-220px)] px-3 md:px-8 py-4 md:py-6 prose prose-sm dark:prose-invert max-w-none',
+        class: 'outline-none min-h-[calc(100vh-220px)] px-5 md:px-8 py-4 md:py-6 prose prose-sm dark:prose-invert max-w-none',
       },
       // 이미지 노드 옆 빈 공간 클릭/터치 시 selection을 image NodeSelection이 아닌
       // 인접 TextSelection으로 강제 변환 — 활성화 해제 효과.
@@ -973,7 +973,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     <div className="flex h-full bg-white dark:bg-gray-900">
       <div className="flex flex-col flex-1 min-w-0">
         {/* 상단 바 */}
-        <div className="flex items-center justify-between px-3 md:px-8 py-1.5 md:py-2 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between px-5 md:px-8 py-1.5 md:py-2 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <button
               onClick={handleBackToList}
@@ -1161,7 +1161,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         </div>
 
         {/* 폴더 선택 */}
-        <div className="relative px-3 md:px-8 pt-3 md:pt-4">
+        <div className="relative px-5 md:px-8 pt-3 md:pt-4">
           <button
             onClick={() => setShowFolderDropdown((v) => !v)}
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -1293,7 +1293,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           data-form-type="other"
           data-autofill-preset="1"
           data-no-focus-ring="true"
-          className="w-full px-3 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
+          className="w-full px-5 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
 
         {/* 툴바 — onImageUpload: 붙여넣기/드롭/슬래시와 동일한 단일 업로드 경로 */}
@@ -1322,7 +1322,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         >
           {/* 빈 메모 마크다운/슬래시 안내 — 한 번만 표시 */}
           {showMdHint && charCount === 0 && (
-            <div className="px-3 md:px-8 pt-3">
+            <div className="px-5 md:px-8 pt-3">
               <div className="inline-flex flex-wrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50/70 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 text-xs text-violet-700 dark:text-violet-300">
                 <span aria-hidden="true">💡</span>
                 <span className="font-mono"><kbd className="font-sans">/</kbd> 블록 메뉴</span>
@@ -1352,7 +1352,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
         </div>
 
         {/* 하단 푸터 */}
-        <div className="flex items-center gap-3 px-3 md:px-8 py-1.5 md:py-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">
+        <div className="flex items-center gap-3 px-5 md:px-8 py-1.5 md:py-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">
           <span>{charCount.toLocaleString()}자</span>
           <span className="text-gray-200 dark:text-gray-700">|</span>
           <span>약 {readMinutes}분 분량</span>
