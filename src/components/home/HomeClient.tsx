@@ -248,7 +248,10 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
-            autoComplete="new-password"
+            // type="search"가 실제 autofill 차단을 담당(앱 표준, 2026-07-05 규칙).
+            // 'new-password'를 쓰면 AutofillBlocker가 preset 표식 없는 입력을 'off'로
+            // 덮어써 SSR HTML ↔ 클라 렌더가 어긋나 hydration mismatch가 발생한다.
+            autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"
