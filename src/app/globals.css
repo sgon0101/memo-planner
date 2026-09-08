@@ -248,6 +248,22 @@ aside {
   color: inherit;
 }
 
+/* ⑤ 인라인 글자색 자동 대비 (lib/tiptap/adaptiveTextColor.ts와 한 쌍)
+   외부에서 붙여넣은 near-black(rgb(48,48,56) 등)이나 팔레트의 흰색처럼
+   해당 테마에서 배경에 묻히는 색만 보정색(--tc-adapt)으로 교체한다.
+   양쪽에서 읽히는 색(빨강·파랑 등 팔레트 기본색)은 data-color-tone이 아예
+   붙지 않으므로 원본 그대로 렌더된다. */
+.dark .tiptap [data-color-tone="dark"] {
+  color: var(--tc-adapt) !important;
+}
+:root:not(.dark) .tiptap [data-color-tone="light"] {
+  color: var(--tc-adapt) !important;
+}
+/* 형광펜 위 글자는 배경이 밝으므로 원본 색(--tc)을 유지 — 위 보정이 역효과 */
+.dark .tiptap [style*="background-color"] [data-color-tone="dark"] {
+  color: var(--tc) !important;
+}
+
 /* 헤딩 색 명시 — prose-invert 변수 누락 환경 대비 */
 .tiptap h1, .tiptap h2, .tiptap h3,
 .tiptap h4, .tiptap h5, .tiptap h6 {
@@ -435,6 +451,28 @@ aside {
 }
 
 .prose-invert {
+  --tw-prose-body: #CBD5E1;
+  --tw-prose-headings: #F1F5F9;
+  --tw-prose-links: #A78BFA;
+  --tw-prose-bold: #F1F5F9;
+  --tw-prose-counters: #94A3B8;
+  --tw-prose-bullets: #64748B;
+  --tw-prose-hr: #334155;
+  --tw-prose-quotes: #CBD5E1;
+  --tw-prose-quote-borders: #7C3AED;
+  --tw-prose-captions: #94A3B8;
+  --tw-prose-code: #A78BFA;
+  --tw-prose-pre-code: #CBD5E1;
+  --tw-prose-pre-bg: #0F172A;
+  --tw-prose-th-borders: #334155;
+  --tw-prose-td-borders: #1E293B;
+}
+
+/* 위 .prose 블록은 @import "tailwindcss" 뒤의 unlayered CSS라
+   typography 플러그인이 layer 안에서 만드는 dark:prose-invert보다 우선한다
+   → 다크모드에서도 라이트 값이 남아 blockquote(#1E293B)·링크·코드·목록 불릿이
+   배경에 묻혔다. 같은 변수를 .dark .prose로 한 번 더 덮어 해결. */
+.dark .prose {
   --tw-prose-body: #CBD5E1;
   --tw-prose-headings: #F1F5F9;
   --tw-prose-links: #A78BFA;

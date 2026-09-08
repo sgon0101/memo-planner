@@ -8,7 +8,6 @@ import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
-import { Color } from '@tiptap/extension-color'
 import { TextStyle } from '@tiptap/extension-text-style'
 import Highlight from '@tiptap/extension-highlight'
 import Link from '@tiptap/extension-link'
@@ -38,6 +37,7 @@ import Modal from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
 import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
+import { AdaptiveTextColor } from '@/lib/tiptap/adaptiveTextColor'
 import type { Memo, MemoVersion } from '@/types'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
 import { useAutoEmbed } from '@/hooks/useAutoEmbed'
@@ -434,7 +434,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       CustomEnterExtension,
       Underline,
       TextStyle,
-      Color.configure({ types: ['textStyle'] }),
+      AdaptiveTextColor.configure({ types: ['textStyle'] }),
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       Image.extend({

@@ -43,10 +43,11 @@ function applyHeading(e: Editor, level: 1 | 2 | 3) {
   e.view.dispatch(e.state.tr.setStoredMarks(null))
 }
 
+// #FFFFFF / #000000은 테마에 따라 자동 대비 보정된다
+// (야간모드에서 검정 → 밝게, 주간모드에서 흰색 → 어둡게 — adaptiveTextColor.ts)
 const TEXT_COLORS = [
-  '#000000', '#EF4444', '#F97316',
-  '#EAB308', '#22C55E', '#3B82F6',
-  '#8B5CF6', '#EC4899',
+  '#FFFFFF', '#000000', '#EF4444', '#F97316', '#EAB308',
+  '#22C55E', '#3B82F6', '#8B5CF6', '#EC4899',
 ]
 
 const HIGHLIGHT_OPTIONS = [
@@ -216,7 +217,7 @@ function TextColorPicker({ editor }: { editor: Editor }) {
       </button>
       <PortalDropdown anchorRef={btnRef} open={open} onClose={() => setOpen(false)} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-3 w-64">
         <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">기본 색상</p>
-        <div className="grid grid-cols-4 gap-1.5 mb-3">
+        <div className="grid grid-cols-5 gap-1.5 mb-3">
           {TEXT_COLORS.map((c) => (
             <button
               key={c}
@@ -229,7 +230,8 @@ function TextColorPicker({ editor }: { editor: Editor }) {
                 'w-full aspect-square rounded-lg border-2 transition-all hover:scale-105 active:scale-95',
                 currentColor && currentColor.toLowerCase() === c.toLowerCase()
                   ? 'border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700'
-                  : 'border-gray-200 dark:border-gray-700',
+                  // 흰색·검정 스와치가 드롭다운 배경에 묻히지 않도록 테두리를 한 단계 진하게
+                  : 'border-gray-300 dark:border-gray-600',
               )}
               style={{ background: c }}
               title={c}

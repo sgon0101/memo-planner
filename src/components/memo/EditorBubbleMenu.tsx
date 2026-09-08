@@ -21,7 +21,7 @@ import { Bold, Italic, Underline as UnderlineIcon, Highlighter, ChevronDown } fr
 import { cn } from '@/lib/utils'
 
 const QUICK_COLORS = [
-  '#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#8B5CF6', '#000000',
+  '#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#8B5CF6', '#000000', '#FFFFFF',
 ]
 
 const QUICK_HIGHLIGHTS = [
