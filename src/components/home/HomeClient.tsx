@@ -242,19 +242,29 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
           className="flex gap-2"
           autoComplete="off"
           data-form-type="other"
+          // 아래 input의 data-autofill-blocked 주석 참고 (form도 hardenForm 대상)
+          data-autofill-blocked="1"
         >
           <input
             type="search"
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             placeholder="메모 제목을 입력하고 Enter..."
-            autoComplete="new-password"
+            // type="search"가 실제 autofill 차단을 담당(앱 표준, 2026-07-05 규칙).
+            // 'new-password'를 쓰면 AutofillBlocker가 preset 표식 없는 입력을 'off'로
+            // 덮어써 SSR HTML ↔ 클라 렌더가 어긋난다.
+            autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
             data-bitwarden-ignore="true"
             data-form-type="other"
+            // AutofillBlocker의 useEffect는 이 입력이 속한 <Suspense> 경계가 hydrate되기
+            // 전에 실행돼, 서버 HTML에 없는 속성(data-autofill-blocked/type/name)을 DOM에
+            // 먼저 주입한다 → hydration mismatch. 완료 표식을 서버 렌더에 미리 포함시켜
+            // harden()이 즉시 return하게 만든다(이 입력은 이미 차단 속성을 모두 갖췄다).
+            data-autofill-blocked="1"
             name={`quick-memo-${autofillBlockId}`}
             className="flex-1 [&::-webkit-search-cancel-button]:hidden px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors duration-150"
           />
