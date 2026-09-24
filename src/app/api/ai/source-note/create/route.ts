@@ -56,6 +56,11 @@ export async function POST(req: NextRequest) {
     if (!row) return NextResponse.json({ error: '분석 결과를 찾을 수 없어요. 다시 분석해주세요.' }, { status: 404 })
     const stored = row.analysis as StoredAnalysis
     const fileIds = (row.file_ids as string[]) ?? []
+    // 분할 경로에서 종합(②)이 아직 안 끝난 분석으로는 노트를 만들 수 없다
+    if (stored.phase === 'extracted' || !stored.result) {
+      return NextResponse.json({ error: '분석이 아직 끝나지 않았어요. 잠시 후 다시 시도해주세요.' }, { status: 409 })
+    }
+    const result = stored.result
 
     if (folderId) {
       const { data: folder } = await supabase.from('folders').select('id').eq('id', folderId).eq('user_id', user.id).maybeSingle()
@@ -73,9 +78,9 @@ export async function POST(req: NextRequest) {
       .map(cleanTag)
       .filter(Boolean)
 
-    const title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, 200) || stored.result.title
+    const title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, 200) || result.title
     const built = buildNoteDoc({
-      analysis: stored.result,
+      analysis: result,
       meta: stored.meta,
       date: format(new Date(), 'yyyy-MM-dd'),
       wikis,

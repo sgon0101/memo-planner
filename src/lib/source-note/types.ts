@@ -10,6 +10,8 @@ export interface NoteSuggestion {
   reason: string
   /** source === 'neighbor'일 때 — 이 위키를 가진 유사 메모 수 */
   neighborCount?: number
+  /** 이 자료의 핵심 개념(concepts)에서 서버가 만든 새 위키 후보 — 모달 기본 해제 */
+  fromConcept?: boolean
 }
 
 /** Claude 응답 스키마 (4-3) + 서버 후처리로 neighbor가 추가될 수 있다 */
@@ -65,18 +67,33 @@ export interface ChunkExtract {
 
 /** source_analyses.analysis jsonb 형태 */
 export interface StoredAnalysis {
-  result: SourceNoteAnalysis
-  related: RelatedMemoRef[]
+  /**
+   * 'extracted' = 분할 추출만 끝나고 종합 대기(①→② 사이). 없으면 'done'(이전 행 호환).
+   * 분할 경로는 300초 한도 때문에 추출(①)과 종합(②)을 별도 요청으로 나눈다.
+   */
+  phase?: 'extracted' | 'done'
+  /** phase 'extracted'에서는 없을 수 있다 (재분석 중이면 이전 결과가 남아 있음) */
+  result?: SourceNoteAnalysis
+  related?: RelatedMemoRef[]
   meta: SourceMeta
   extracted?: ChunkExtract[]
 }
 
-/** analyze API 응답 */
+/** 분석 완료 응답 (analyze 단일 경로 · synthesize) */
 export interface AnalyzeResponse {
+  phase?: 'done'
   analysisId: string
   analysis: SourceNoteAnalysis
   related: RelatedMemoRef[]
   meta: SourceMeta
   cached: boolean
   createdAt: string
+}
+
+/** 분할 경로 ① 추출 완료 응답 — 클라이언트는 이어서 /synthesize를 호출한다 */
+export interface ExtractPhaseResponse {
+  phase: 'extracted'
+  analysisId: string
+  meta: SourceMeta
+  cached: boolean
 }

@@ -365,7 +365,9 @@ function SourceNoteBody({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {stage === 'analyzing' && <AnalyzingView long={totalTiles > CHUNK_THRESHOLD} />}
+        {stage === 'analyzing' && (
+          <AnalyzingView long={totalTiles > CHUNK_THRESHOLD} phase={job.status === 'running' ? job.phase : 'read'} />
+        )}
 
         {stage === 'error' && (
           <div className="py-4">
@@ -459,17 +461,33 @@ function ErrorBox({ message }: { message: string }) {
   )
 }
 
-function AnalyzingView({ long }: { long: boolean }) {
+/**
+ * phase 'read' = ①(읽기). 분할 경로면 ①이 추출만 하고, 끝나면 'synthesize'(②)로 넘어간다.
+ * 단일 호출 경로는 ①에서 바로 끝나므로 ② 문구를 보지 않는다.
+ */
+function AnalyzingView({ long, phase }: { long: boolean; phase: 'read' | 'synthesize' }) {
   const [step, setStep] = useState(0)
   useEffect(() => {
     const t = setInterval(() => setStep((s) => (s + 1) % ANALYZE_STEPS.length), 4000)
     return () => clearInterval(t)
   }, [])
   return (
-    <div className="flex flex-col items-center gap-3 py-10 text-center">
+    <div data-phase={phase} className="flex flex-col items-center gap-3 py-10 text-center">
       <Loader2 size={28} className="animate-spin text-violet-500" />
-      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{ANALYZE_STEPS[step]}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{long ? '긴 이미지라 1~3분 걸려요' : '30~90초 걸려요'}</p>
+      {phase === 'synthesize' ? (
+        <>
+          <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400">2/2단계 · 1단계(구간별 읽기) 완료</p>
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">읽은 내용을 종합해 노트를 정리하는 중…</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">1~2분 걸려요</p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{ANALYZE_STEPS[step]}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {long ? '긴 이미지라 구간별로 먼저 읽어요 (1/2단계, 1~2분)' : '30~90초 걸려요 · 긴 자료면 구간별로 읽은 뒤 종합해요'}
+          </p>
+        </>
+      )}
     </div>
   )
 }
@@ -703,7 +721,8 @@ function ReviewView({
 }
 
 function toChips(list: NoteSuggestion[], prefix: string): ChipState[] {
-  return list.map((s, i) => ({ ...s, id: `${prefix}${i}-${s.name}`, selected: s.source !== 'neighbor' }))
+  // 이웃 추천·개념 출신 새 위키는 기본 해제 — 사용자가 고르게 (모델이 확신한 기존/새 위키만 기본 선택)
+  return list.map((s, i) => ({ ...s, id: `${prefix}${i}-${s.name}`, selected: s.source !== 'neighbor' && !s.fromConcept }))
 }
 
 function flattenFolders(folders: FolderLite[]): { id: string; label: string }[] {

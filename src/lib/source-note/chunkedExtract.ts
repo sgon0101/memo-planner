@@ -47,7 +47,15 @@ async function extractOne(chunkIndex: number, tiles: ImageTile[], usage: UsageEn
       role: 'user',
       content: [
         ...tileBlocks(safeTiles),
-        { type: 'text', text: `위 ${safeTiles.length}개 조각의 내용을 순서대로 압축 전사하세요.` },
+        {
+          type: 'text',
+          // 형식 지시를 마지막 턴에도 반복 — system에만 두면 인용 후보 구획을 빼먹는 경우가 실측에서 나왔다
+          text: [
+            `위 ${safeTiles.length}개 조각의 내용을 순서대로 압축 전사하세요.`,
+            `출력 형식: ① 압축 본문 → ② "${QUOTE_MARKER}" 한 줄 → ③ 인용 후보 목록 \`- "원문 그대로" (p.N · 조각 M)\`.`,
+            '하이라이트·굵은 글씨·인용 박스 문장은 반드시 ③에 넣고, 위치는 그 문장 바로 위 [라벨] 하나만.',
+          ].join('\n'),
+        },
       ],
     }],
   })
@@ -87,27 +95,37 @@ export function parseChunkOutput(raw: string): { body: string; quoteCandidates: 
   return { body, quoteCandidates: quoteCandidates.length ? quoteCandidates : harvestInlineQuotes(body) }
 }
 
-/** `> "문장"` 인용 블록 (뒤에 — 화자 표기 허용) */
-const INLINE_QUOTE = /^>\s*["“](.+)["”]\s*(?:[—–-].*)?$/
+/** `> "문장" (p.3 · 조각 1)` 인용 블록 — 위치 괄호·"— 화자" 꼬리는 선택 */
+const INLINE_QUOTE = /^>\s*["“](.+)["”]\s*(?:\(([^()]*)\))?\s*(?:[—–-].*)?$/
 /** 위치 라벨: (p.4 · 조각 2) / (이미지 2 · 조각 3) / (p.9) */
 const LOC_LABEL = /\(((?:p\.\d+|이미지 \d+)[^()]*)\)/
+const IS_LOC = /^(?:p\.\d+|이미지 \d+)/
 
 /**
  * 폴백: 모델이 인용 후보 구획을 빼먹고 인용할 문장을 본문 안 `> "…"` 블록으로만 넣는 경우가
- * 실측에서 나왔다(이소정 캡처 PDF 5구간 전부). 따옴표 인용 블록은 원문 발언이므로 후보로 회수하고,
- * 직전에 나온 위치 라벨을 위치로 붙인다. 저장된 추출문에도 적용된다(재분석 시 재추출 불필요).
+ * 실측에서 나왔다(이소정 캡처 PDF 5구간 전부). 따옴표 인용 블록은 원문 발언이므로 후보로 회수한다.
+ *
+ * 위치: 인용 줄 끝의 조각 라벨이 있으면 그것을 쓴다. 없을 때만 직전 라벨(보통 소제목의 라벨)을
+ * 물려받는다 — 이 물려받기가 "p.2 → 실제 p.3"처럼 한 쪽씩 밀리던 원인이었다(소제목 구간이
+ * 다음 쪽까지 이어지므로). 그래서 추출 프롬프트가 인용마다 자기 라벨을 붙이게 한다.
  */
 export function harvestInlineQuotes(body: string): QuoteCandidate[] {
   const out: QuoteCandidate[] = []
-  let loc: string | undefined
+  let carried: string | undefined
   for (const line of body.split('\n')) {
-    const label = line.match(LOC_LABEL)
-    if (label) loc = label[1].trim()
     const m = line.trim().match(INLINE_QUOTE)
-    if (!m) continue
-    const text = m[1].trim()
-    if (text) out.push(loc ? { text, loc } : { text })
-    if (out.length >= MAX_CANDIDATES_PER_CHUNK) break
+    if (m) {
+      const text = m[1].trim()
+      const own = m[2]?.trim()
+      const loc = own && IS_LOC.test(own) ? own : carried
+      // 인용 줄의 자기 라벨이 가장 최근 위치 — 다음 라벨 없는 인용은 이것을 물려받는다
+      if (own && IS_LOC.test(own)) carried = own
+      if (text) out.push(loc ? { text, loc } : { text })
+      if (out.length >= MAX_CANDIDATES_PER_CHUNK) break
+      continue
+    }
+    const label = line.match(LOC_LABEL)
+    if (label) carried = label[1].trim()
   }
   return out
 }

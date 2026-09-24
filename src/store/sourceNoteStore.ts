@@ -10,11 +10,12 @@
 
 import { create } from 'zustand'
 import type { UploadedSource } from '@/lib/files/uploadSources'
-import type { AnalyzeResponse } from '@/lib/source-note/types'
+import type { AnalyzeResponse, ExtractPhaseResponse } from '@/lib/source-note/types'
 
 export type AnalysisJob =
   | { status: 'idle' }
-  | { status: 'running'; key: string; uploaded: UploadedSource[]; force: boolean }
+  /** phase: 'read' = ①(/analyze) 진행 중, 'synthesize' = 분할 경로 ②(/synthesize) 진행 중 */
+  | { status: 'running'; key: string; uploaded: UploadedSource[]; force: boolean; phase: 'read' | 'synthesize' }
   | { status: 'done'; key: string; uploaded: UploadedSource[]; response: AnalyzeResponse }
   | { status: 'error'; key: string; uploaded: UploadedSource[]; error: string }
 
@@ -58,19 +59,28 @@ export const useSourceNoteStore = create<SourceNoteState>((set, get) => ({
 
   runAnalysis: async (uploaded, opts) => {
     const key = uploaded.map((u) => u.fileId).join(',') + (opts?.force ? ':force' : '')
-    set({ job: { status: 'running', key, uploaded, force: !!opts?.force } })
+    set({ job: { status: 'running', key, uploaded, force: !!opts?.force, phase: 'read' } })
+    const stillMine = () => { const j = get().job; return j.status === 'running' && j.key === key }
+    const post = async (url: string, payload: unknown) => {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      return { res, data: await res.json().catch(() => ({})) }
+    }
     let next: AnalysisJob
     try {
-      const res = await fetch('/api/ai/source-note/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileIds: uploaded.map((u) => u.fileId), force: !!opts?.force }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        next = { status: 'error', key, uploaded, error: data?.error || `분석에 실패했어요 (${res.status}).` }
+      // ① 읽기 — 단일 호출 경로면 여기서 완성 결과, 분할 경로면 추출만 끝난 'extracted'
+      const first = await post('/api/ai/source-note/analyze', { fileIds: uploaded.map((u) => u.fileId), force: !!opts?.force })
+      if (!first.res.ok) {
+        next = { status: 'error', key, uploaded, error: first.data?.error || `분석에 실패했어요 (${first.res.status}).` }
+      } else if ((first.data as ExtractPhaseResponse).phase === 'extracted') {
+        // ② 종합 — 300초 한도 때문에 별도 요청 (서버는 캐시된 추출문만 사용)
+        if (!stillMine()) return
+        set({ job: { status: 'running', key, uploaded, force: !!opts?.force, phase: 'synthesize' } })
+        const second = await post('/api/ai/source-note/synthesize', { analysisId: (first.data as ExtractPhaseResponse).analysisId })
+        next = second.res.ok
+          ? { status: 'done', key, uploaded, response: second.data as AnalyzeResponse }
+          : { status: 'error', key, uploaded, error: second.data?.error || `내용 종합에 실패했어요 (${second.res.status}).` }
       } else {
-        next = { status: 'done', key, uploaded, response: data as AnalyzeResponse }
+        next = { status: 'done', key, uploaded, response: first.data as AnalyzeResponse }
       }
     } catch {
       next = { status: 'error', key, uploaded, error: '네트워크 오류로 분석하지 못했어요. 다시 시도해주세요.' }

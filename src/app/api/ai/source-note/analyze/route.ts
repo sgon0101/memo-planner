@@ -7,10 +7,15 @@
  *  - 텍스트형 PDF  → document 블록(URL, 실패 시 1회 base64)
  *  - 이미지형 PDF  → 페이지 JPEG 추출 → 여백 크롭 → 타일  (추출 실패 시 URL 폴백)
  *  - 이미지 묶음   → 여백 크롭 → 타일
- *  - 타일 > 40    → 분할 추출(30개씩, 병렬 3) → 텍스트 종합
+ *  - 타일 > 40    → 분할 경로: **여기서는 추출(①)만** 하고 phase 'extracted'로 캐시한 뒤 응답,
+ *                   종합(②)은 클라이언트가 이어서 /synthesize로 요청 — 한 요청에 둘 다 하면
+ *                   실측 268초로 Vercel 300초 한도에 걸릴 위험이 있어 분리했다
  *
- * 캐시: source_analyses(user_id, source_key) 히트 + force 아님 → AI 호출·한도 차감 없음.
- * force일 때 분할 추출문이 저장돼 있으면 추출은 재사용하고 종합만 다시 호출한다.
+ * 응답: 단일 호출 경로는 phase 'done'(완성 결과), 분할 경로는 phase 'extracted'(→ /synthesize).
+ * 캐시: source_analyses(user_id, source_key) 히트 + force 아님 → AI 호출·한도 차감 없음
+ *       (종합 대기 캐시면 'extracted'를 돌려줘 ②만 이어서 하게 한다).
+ * force일 때 분할 추출문이 저장돼 있으면 추출은 재사용 — 'extracted'로 되돌리고 ②만 다시.
+ * 한도(ai-source-note)는 이 요청에서만 차감한다. ②는 phase 'extracted'일 때만 실행되므로 1회로 묶인다.
  *
  * ⚠️ 저장은 원본 그대로 — 크롭·타일·페이지 JPEG는 이 요청의 메모리에서만 쓰고 버린다.
  */
@@ -26,12 +31,12 @@ import { CHUNK_THRESHOLD, MAX_SET_TILES, countTiles } from '@/lib/source-note/co
 import { detectCrop, unifyCrops, type CropResult } from '@/lib/source-note/cropMargins'
 import { reencodeIfTooLarge, tileImage, type ImageTile } from '@/lib/source-note/tileImage'
 import { extractPageJpegs, inspectPdfText } from '@/lib/source-note/pdfInput'
-import { extractChunks, synthesizeFromChunks } from '@/lib/source-note/chunkedExtract'
+import { extractChunks } from '@/lib/source-note/chunkedExtract'
 import {
   TruncatedError, callSourceNote, describeAnthropicError, estimateCostUsd, tileBlocks, type UsageEntry,
 } from '@/lib/source-note/claudeCall'
-import { buildVocab, findNeighbors, normalizeAnalysis } from '@/lib/source-note/postprocess'
-import type { AnalyzeResponse, ChunkExtract, SourceMeta, StoredAnalysis } from '@/lib/source-note/types'
+import { buildVocab, finalizeAnalysis } from '@/lib/source-note/postprocess'
+import type { AnalyzeResponse, ChunkExtract, ExtractPhaseResponse, SourceMeta, StoredAnalysis } from '@/lib/source-note/types'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -119,7 +124,12 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (cached && !force) {
       const stored = cached.analysis as StoredAnalysis
+      // 추출만 끝나고 종합이 안 된(또는 실패한) 캐시 → ②를 이어서 하도록 (AI·한도 차감 없음)
+      if (stored.phase === 'extracted' || !stored.result) {
+        return NextResponse.json({ phase: 'extracted', analysisId: cached.id, meta: stored.meta, cached: true } satisfies ExtractPhaseResponse)
+      }
       return NextResponse.json({
+        phase: 'done',
         analysisId: cached.id,
         analysis: stored.result,
         related: stored.related ?? [],
@@ -136,16 +146,20 @@ export async function POST(req: NextRequest) {
     const vocabForPrompt = { wikis: vocab.wikiList, tags: vocab.tagList }
     const crops: (CropResult & { index: number })[] = []
 
-    let raw: Record<string, unknown>
+    let raw: Record<string, unknown> | undefined
     let meta: SourceMeta
     let extracted: ChunkExtract[] | undefined
     const prevStored = cached?.analysis as StoredAnalysis | undefined
 
-    if (force && prevStored?.extracted?.length) {
-      // [다시 분석] — 분할 추출문 재사용, 종합만 다시
-      extracted = prevStored.extracted
-      meta = prevStored.meta
-      raw = await synthesizeFromChunks(extracted, vocabForPrompt, usage, 'synthesis(reuse)')
+    if (force && prevStored?.extracted?.length && cached) {
+      // [다시 분석] — 분할 추출문 재사용. 종합 대기 상태로 되돌리고 ②(/synthesize)로 넘긴다
+      // (이전 결과는 종합이 끝날 때까지 남겨 둔다 — 실패해도 잃지 않게)
+      const { error: updErr } = await supabase
+        .from('source_analyses')
+        .update({ analysis: { ...prevStored, phase: 'extracted' } })
+        .eq('id', cached.id)
+      if (updErr) throw new Error(`재분석 준비 실패: ${updErr.message}`)
+      return NextResponse.json({ phase: 'extracted', analysisId: cached.id, meta: prevStored.meta, cached: true } satisfies ExtractPhaseResponse)
     } else if (isPdf) {
       const file = files[0]
       const buffer = await getObjectBuffer(file.r2_key)
@@ -198,17 +212,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 후처리 (프롬프트를 믿지 않는다) ──
-    const analysis = normalizeAnalysis(raw, vocab)
-    const { related, neighbors } = await findNeighbors(supabase, user.id, analysis, vocab)
-    analysis.wikiSuggestions.push(...neighbors)
-
-    const stored: StoredAnalysis = { result: analysis, related, meta, ...(extracted ? { extracted } : {}) }
     const costUsd = estimateCostUsd(usage)
     const usageDoc = { calls: usage, costUsd, crops: crops.length ? crops : undefined }
-    console.error('[source-note] done', JSON.stringify({ mode: meta.mode, tiles: meta.tileCount, chunked: meta.chunked, costUsd, crops: crops.map((c) => [c.index, c.x0, c.x1, c.width, c.cropped]) }))
+    console.error('[source-note] done', JSON.stringify({ mode: meta.mode, tiles: meta.tileCount, chunked: meta.chunked, phase: raw ? 'done' : 'extracted', costUsd, crops: crops.map((c) => [c.index, c.x0, c.x1, c.width, c.cropped]) }))
 
-    const { data: saved, error: saveErr } = await supabase
+    const save = (stored: StoredAnalysis) => supabase
       .from('source_analyses')
       .upsert({
         user_id: user.id,
@@ -221,9 +229,22 @@ export async function POST(req: NextRequest) {
       }, { onConflict: 'user_id,source_key' })
       .select('id, created_at')
       .single()
+
+    // ── 분할 경로 ①: 추출만 캐시하고 응답 — 종합은 ②(/synthesize)가 별도 요청으로 (300초 한도 분리) ──
+    if (!raw) {
+      if (!extracted?.length) throw new Error('추출 결과가 비었어요')
+      const { data: saved, error: saveErr } = await save({ phase: 'extracted', meta, extracted })
+      if (saveErr || !saved) throw new Error(`추출 결과 저장 실패: ${saveErr?.message}`)
+      return NextResponse.json({ phase: 'extracted', analysisId: saved.id, meta, cached: false } satisfies ExtractPhaseResponse)
+    }
+
+    // ── 단일 호출 경로: 후처리 (프롬프트를 믿지 않는다) ──
+    const { analysis, related } = await finalizeAnalysis(supabase, user.id, raw, vocab)
+    const { data: saved, error: saveErr } = await save({ phase: 'done', result: analysis, related, meta })
     if (saveErr || !saved) throw new Error(`분석 결과 저장 실패: ${saveErr?.message}`)
 
     return NextResponse.json({
+      phase: 'done',
       analysisId: saved.id,
       analysis,
       related,
@@ -279,7 +300,7 @@ async function runImageSet(
   vocab: { wikis: string[]; tags: string[] },
   usage: UsageEntry[],
   cropLog: (CropResult & { index: number })[],
-): Promise<{ raw: Record<string, unknown>; extracted?: ChunkExtract[]; tileCount: number }> {
+): Promise<{ raw?: Record<string, unknown>; extracted?: ChunkExtract[]; tileCount: number }> {
   const detected: CropResult[] = []
   for (let i = 0; i < count; i++) detected.push(await detectCrop(await load(i)))
   const crops = unifyCrops(detected)
@@ -297,7 +318,7 @@ async function runImageSet(
     return { raw, tileCount: tiles.length }
   }
 
+  // 분할 경로: 추출만 (종합은 /synthesize)
   const extracted = await extractChunks(tiles, usage)
-  const raw = await synthesizeFromChunks(extracted, vocab, usage, 'synthesis')
-  return { raw, extracted, tileCount: tiles.length }
+  return { extracted, tileCount: tiles.length }
 }

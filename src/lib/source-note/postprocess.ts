@@ -127,16 +127,47 @@ export function normalizeSuggestions(
   return out
 }
 
+/** 종합 출력 길이 상한 — 섹션당 불릿 6개, 불릿당 2문장 (프롬프트와 같은 값, 서버가 다시 강제) */
+export const MAX_BULLETS_PER_SECTION = 6
+export const MAX_SENTENCES_PER_BULLET = 2
+
+/** 불릿을 앞 N문장으로 자른다 (마침표·물음표·느낌표 + 공백 기준) */
+export function limitSentences(s: string, n = MAX_SENTENCES_PER_BULLET): string {
+  const parts = s.split(/(?<=[.!?。])\s+/)
+  return parts.length <= n ? s : parts.slice(0, n).join(' ')
+}
+
+/**
+ * 개념 이름 → 위키로 쓸 수 있는 하나의 명사.
+ * 괄호 설명 제거("매출선형모델(S=…)" → "매출선형모델"), 가운뎃점·슬래시로 묶인 쌍은 앞쪽 하나
+ * ("선행지표·후행지표" → "선행지표"), 붙여쓰기.
+ */
+export function cleanConceptName(name: string): string {
+  const noParen = name.replace(/\([^)]*\)|（[^）]*）/g, ' ')
+  const first = noParen.split(/[·‧・/]/)[0]
+  return cleanWiki(first)
+}
+
 /** 모델 원본 JSON → SourceNoteAnalysis (형식 강제 + 위키·태그 교정) */
 export function normalizeAnalysis(raw: Record<string, unknown>, vocab: Vocab): SourceNoteAnalysis {
   const sections = Array.isArray(raw.sections)
     ? raw.sections
-        .map((s) => ({ heading: str((s as Record<string, unknown>)?.heading), bullets: strArr((s as Record<string, unknown>)?.bullets) }))
+        .map((s) => ({
+          heading: str((s as Record<string, unknown>)?.heading),
+          bullets: strArr((s as Record<string, unknown>)?.bullets).slice(0, MAX_BULLETS_PER_SECTION).map((b) => limitSentences(b)),
+        }))
         .filter((s) => s.heading || s.bullets.length)
     : []
   const concepts = Array.isArray(raw.concepts)
     ? raw.concepts
-        .map((c) => ({ name: cleanWiki(str((c as Record<string, unknown>)?.name)), definition: str((c as Record<string, unknown>)?.definition) }))
+        .map((c) => {
+          const original = str((c as Record<string, unknown>)?.name)
+          const name = cleanConceptName(original)
+          const definition = str((c as Record<string, unknown>)?.definition)
+          // 이름을 줄였으면 원래 표기를 정의 앞에 남긴다 (예: (선행지표·후행지표) …)
+          const dropped = original && cleanWiki(original) !== name
+          return { name, definition: dropped ? `(${original}) ${definition}`.trim() : definition }
+        })
         .filter((c) => c.name)
     : []
   const quotes = Array.isArray(raw.quotes)
@@ -164,6 +195,41 @@ export function normalizeAnalysis(raw: Record<string, unknown>, vocab: Vocab): S
     tagSuggestions: normalizeSuggestions(rawSuggestions(raw.tagSuggestions), 'tag', vocab.tagCanonical),
     textAmount,
   }
+}
+
+/**
+ * 개념 → 새 위키 후보. 실측에서 어휘가 많으면 모델이 전부 기존 표기만 재사용해 새 위키가 0개였다
+ * (이 자료만의 핵심 개념이 그래프 허브가 되지 못함). concepts 중 기존 어휘에 같은 키가 없는 것을
+ * 새 위키 후보로 넣는다 — 새 위키 총 3개 안에서 개념 출신을 우선하고, 서버가 만든 후보는
+ * fromConcept로 표시해 모달에서 기본 해제(사용자가 고른다).
+ */
+export function promoteConceptWikis(analysis: SourceNoteAnalysis, vocab: Vocab): void {
+  const conceptKeys = new Set(analysis.concepts.map((c) => wikiKey(c.name)).filter(Boolean))
+  const suggested = new Set(analysis.wikiSuggestions.map((s) => wikiKey(s.name)))
+  const existing = analysis.wikiSuggestions.filter((s) => s.source !== 'new')
+  const modelNew = analysis.wikiSuggestions.filter((s) => s.source === 'new')
+
+  const fromConcepts: NoteSuggestion[] = []
+  for (const c of analysis.concepts) {
+    const key = wikiKey(c.name)
+    if (!key || suggested.has(key) || vocab.wikiCanonical.has(key)) continue
+    suggested.add(key)
+    const def = c.definition.replace(/^\([^)]*\)\s*/, '')
+    fromConcepts.push({
+      name: c.name,
+      source: 'new',
+      reason: `이 자료의 핵심 개념${def ? ` — ${def.slice(0, 50)}${def.length > 50 ? '…' : ''}` : ''}`,
+      fromConcept: true,
+    })
+  }
+
+  // 우선순위: 모델 new 중 개념과 같은 것 → 개념 출신 → 나머지 모델 new, 총 MAX_NEW_WIKIS개
+  const ordered = [
+    ...modelNew.filter((s) => conceptKeys.has(wikiKey(s.name))),
+    ...fromConcepts,
+    ...modelNew.filter((s) => !conceptKeys.has(wikiKey(s.name))),
+  ].slice(0, MAX_NEW_WIKIS)
+  analysis.wikiSuggestions = [...existing, ...ordered]
 }
 
 /**
@@ -232,4 +298,18 @@ export async function findNeighbors(
     console.warn('[source-note] 이웃 추천 건너뜀:', e instanceof Error ? e.message : e)
     return { related: [], neighbors: [] }
   }
+}
+
+/** 모델 원본 → 정규화 → 개념 출신 새 위키 → 이웃 추천 (analyze 단일 경로·synthesize 공용) */
+export async function finalizeAnalysis(
+  supabase: SupabaseClient,
+  userId: string,
+  raw: Record<string, unknown>,
+  vocab: Vocab,
+): Promise<{ analysis: SourceNoteAnalysis; related: RelatedMemoRef[] }> {
+  const analysis = normalizeAnalysis(raw, vocab)
+  promoteConceptWikis(analysis, vocab)
+  const { related, neighbors } = await findNeighbors(supabase, userId, analysis, vocab)
+  analysis.wikiSuggestions.push(...neighbors)
+  return { analysis, related }
 }
