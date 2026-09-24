@@ -1,8 +1,9 @@
 /**
  * 긴 세트 분할 처리 (타일 > 40) — 서버 전용
  *
- * ① 타일을 최대 15개씩 청크로 (경계 타일 1개 공유)
- * ② 청크별 '추출' 호출(병렬 최대 5): 이미지 속 내용을 구조 그대로 **압축 전사**
+ * ① 타일을 최대 10개씩 청크로 (경계 타일 1개 공유)
+ * ② 청크별 '추출' 호출(병렬 최대 6): 이미지 속 내용을 구조 그대로 **압축 전사**
+ *    출력 한도에서 잘리면 그 청크만 반으로 나눠(경계 1조각 공유) 다시 추출해 합친다
  * ③ 추출문을 이어 붙여 '종합' 호출 (이미지 없이 텍스트만 → 저렴)
  *
  * 인용: 압축 본문에서 뽑으면 원문이 아니게 되므로, 추출 단계에서 따옴표·강조·결론 문장을
@@ -10,11 +11,12 @@
  * 서버가 번호를 원문으로 치환한다 (모델이 문장을 고쳐 써도 저장되는 건 항상 원문).
  *
  * 실패하면 전체를 에러로 — 부분 요약 금지 (누락을 모른 채 노트가 생기는 게 최악).
- * 재시도는 네트워크·API 오류만 1회. 출력 한도 잘림은 같은 입력이면 또 잘리므로
- * 재시도하지 않는다 (E2E에서 잘림 재시도가 비용만 두 배로 만든 것을 확인).
+ * 재시도는 네트워크·API 오류만 1회. 출력 한도 잘림은 같은 입력이면 또 잘리므로 그대로
+ * 재시도하지 않고 반으로 나눈다 (반쪽도 잘리면 실패).
  *
  * 설계안(30조각·충실 전사·4000토큰)은 글자가 빽빽한 캡처에서 30조각 전사문이 2만 자를
- * 넘어 출력 한도에서 잘렸다 → 15조각 + 압축 전사(요점·예시·수치는 모두, 문장은 짧게)로 조정.
+ * 넘어 출력 한도에서 잘렸다 → 압축 전사(요점·예시·수치는 모두, 문장은 짧게)로 조정.
+ * 15조각·6000토큰도 실제 이소정 캡처 PDF(63분 분량 기사)에서 잘려 → 10조각·8000토큰 + 반분할.
  *
  * 추출 출력은 JSON이 아니라 마크다운 본문으로 받는다 — 긴 전사문을 JSON 문자열로 받으면
  * 이스케이프 오류로 통째 파싱 실패할 위험이 커서. headings는 서버에서 `#` 줄로 뽑는다.
@@ -27,9 +29,9 @@ import { callSourceNote, messageText, tileBlocks, toUsageEntry, type UsageEntry 
 import { reencodeIfTooLarge, type ImageTile } from './tileImage'
 import type { ChunkExtract, QuoteCandidate } from './types'
 
-/** 최대 150조각 = 11청크 → 3라운드 안에 끝나도록 */
-const PARALLEL = 5
-const EXTRACT_MAX_TOKENS = 6000
+/** 최대 150조각 = 17청크 → 3라운드 안에 끝나도록 */
+const PARALLEL = 6
+const EXTRACT_MAX_TOKENS = 8000
 
 class ChunkTruncatedError extends Error {}
 
@@ -138,6 +140,27 @@ export async function synthesizeFromChunks(
   return resolveChunkQuotes(raw, candidates)
 }
 
+/** 잘리면 반으로 나눠(경계 1조각 공유) 두 번 추출해 하나의 청크로 합친다 */
+async function extractWithSplit(chunkIndex: number, tiles: ImageTile[], usage: UsageEntry[]): Promise<ChunkExtract> {
+  try {
+    return await extractOne(chunkIndex, tiles, usage)
+  } catch (err) {
+    if (!(err instanceof ChunkTruncatedError) || tiles.length < 4) throw err
+    console.error(`[source-note] 구간 ${chunkIndex + 1} 잘림 — 반으로 나눠 재추출 (${tiles.length}조각)`)
+    const mid = Math.floor(tiles.length / 2)
+    const [a, b] = await Promise.all([
+      extractOne(chunkIndex, tiles.slice(0, mid + 1), usage),
+      extractOne(chunkIndex, tiles.slice(mid), usage),
+    ])
+    return {
+      chunkIndex,
+      headings: [...a.headings, ...b.headings],
+      body: `${a.body}\n\n${b.body}`,
+      quoteCandidates: [...(a.quoteCandidates ?? []), ...(b.quoteCandidates ?? [])],
+    }
+  }
+}
+
 export async function extractChunks(tiles: ImageTile[], usage: UsageEntry[]): Promise<ChunkExtract[]> {
   const ranges = chunkRanges(tiles.length)
   const results: ChunkExtract[] = new Array(ranges.length)
@@ -151,7 +174,7 @@ export async function extractChunks(tiles: ImageTile[], usage: UsageEntry[]): Pr
       if (i >= ranges.length) return
       const [s, e] = ranges[i]
       try {
-        results[i] = await extractOne(i, tiles.slice(s, e), usage)
+        results[i] = await extractWithSplit(i, tiles.slice(s, e), usage)
       } catch (err) {
         if (err instanceof ChunkTruncatedError) { failure = err; return }
         console.error(`[source-note] 구간 ${i + 1} 추출 실패 — 1회 재시도`, err instanceof Error ? err.message : err)

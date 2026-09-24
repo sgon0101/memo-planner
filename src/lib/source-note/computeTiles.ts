@@ -17,9 +17,9 @@ export const MAX_SET_TILES = 150
 export const CHUNK_THRESHOLD = 40
 /**
  * 분할 추출 청크 크기 — 설계안은 30이었으나 E2E에서 글자가 빽빽한 캡처 30조각의 전사문이
- * 출력 한도를 넘어 잘렸다(→ 부분 요약 금지 에러). 15조각이면 압축 전사가 한도 안에 든다.
+ * 출력 한도를 넘어 잘렸다(→ 부분 요약 금지 에러). 15조각도 실제 63분 분량 기사 캡처에서 잘려 10조각.
  */
-export const CHUNK_SIZE = 15
+export const CHUNK_SIZE = 10
 /** 타일 높이를 이 배율 이내로 넘으면 분할 대신 살짝 축소 */
 const SLIGHT_OVERFLOW = 1.15
 
