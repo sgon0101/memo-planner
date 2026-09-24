@@ -26,7 +26,7 @@ import { CHUNK_THRESHOLD, MAX_SET_TILES, countTiles } from '@/lib/source-note/co
 import { detectCrop, unifyCrops, type CropResult } from '@/lib/source-note/cropMargins'
 import { reencodeIfTooLarge, tileImage, type ImageTile } from '@/lib/source-note/tileImage'
 import { extractPageJpegs, inspectPdfText } from '@/lib/source-note/pdfInput'
-import { chunksToText, extractChunks } from '@/lib/source-note/chunkedExtract'
+import { extractChunks, synthesizeFromChunks } from '@/lib/source-note/chunkedExtract'
 import {
   TruncatedError, callSourceNote, estimateCostUsd, tileBlocks, type UsageEntry,
 } from '@/lib/source-note/claudeCall'
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       // [다시 분석] — 분할 추출문 재사용, 종합만 다시
       extracted = prevStored.extracted
       meta = prevStored.meta
-      raw = await callSourceNote('chunks', [{ type: 'text', text: chunksToText(extracted) }], vocabForPrompt, usage, 'synthesis(reuse)')
+      raw = await synthesizeFromChunks(extracted, vocabForPrompt, usage, 'synthesis(reuse)')
     } else if (isPdf) {
       const file = files[0]
       const buffer = await getObjectBuffer(file.r2_key)
@@ -300,6 +300,6 @@ async function runImageSet(
   }
 
   const extracted = await extractChunks(tiles, usage)
-  const raw = await callSourceNote('chunks', [{ type: 'text', text: chunksToText(extracted) }], vocab, usage, 'synthesis')
+  const raw = await synthesizeFromChunks(extracted, vocab, usage, 'synthesis')
   return { raw, extracted, tileCount: tiles.length }
 }

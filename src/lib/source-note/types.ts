@@ -45,10 +45,22 @@ export interface SourceMeta {
 }
 
 /** 분할 추출 청크 (3-3) — [다시 분석] 시 재사용 */
+export interface QuoteCandidate {
+  /** 원문 그대로 (압축·수정 금지) */
+  text: string
+  loc?: string
+}
+
 export interface ChunkExtract {
   chunkIndex: number
   headings: string[]
+  /** 압축 전사 본문 */
   body: string
+  /**
+   * 인용 후보 — 따옴표·강조·결론 문장을 압축하지 않고 원문 그대로 보존.
+   * 종합 단계의 quotes는 이 목록에서만 번호로 고른다 (압축 본문에서 인용을 뽑으면 원문이 아니게 된다).
+   */
+  quoteCandidates?: QuoteCandidate[]
 }
 
 /** source_analyses.analysis jsonb 형태 */
