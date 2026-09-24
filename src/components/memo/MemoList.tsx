@@ -21,10 +21,12 @@ import TimelineFilter from './TimelineFilter'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { TagDropdown, SortChip, WikiDropdown, MemoSection, TitleSortDropdown, type SortKey, type TitleDir } from './MemoListParts'
 import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
+import { parseSearchQuery, hasTokenFilters, memoMatchesTokenFilters } from '@/lib/memos/searchQuery'
 import SourceNoteModal from './SourceNoteModal'
 import { useSourceNoteStore } from '@/store/sourceNoteStore'
 
 const PAGE_SIZE = 20
+const FILTERS_KEY = 'weave:memo-list-filters'
 
 type ViewMode = 'card' | 'list' | 'timeline'
 
@@ -141,6 +143,23 @@ export default function MemoList() {
   const [titleDir, setTitleDir] = useState<TitleDir>('asc')
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [activeWiki, setActiveWiki] = useState<string | null>(null)
+  // 정렬·위키·태그 칩 상태 스냅샷 — 메모 진입 후 돌아왔을 때 복원용.
+  // (기존 memo-list-state는 scrollY > 0일 때 '스크롤 이벤트'에서만 저장돼,
+  //  칩 선택 후 스크롤 없이 메모를 열면 저장 자체가 안 되어 리셋됐다)
+  // mount 시 1회 읽어 ref에 보관 → 폴더 effect가 folderId 일치 시 적용 후 소진.
+  const savedFiltersRef = useRef<{
+    folderId: string | null; sort: SortKey; titleDir: TitleDir
+    activeTag: string | null; activeWiki: string | null
+  } | null | undefined>(undefined)
+  if (savedFiltersRef.current === undefined) {
+    savedFiltersRef.current = null
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem(FILTERS_KEY)
+        if (raw) savedFiltersRef.current = JSON.parse(raw)
+      } catch { /* ignore */ }
+    }
+  }
   // 폴더 effect — mount는 sessionStorage 복원, 진짜 폴더 변경 시만 reset.
   // hydration/store 동기화로 selectedFolderId가 mount 직후 두 번 갱신되어
   // 두 번째 발화에서 reset 분기를 타며 displayCount가 PAGE_SIZE로 돌아가던
@@ -159,7 +178,21 @@ export default function MemoList() {
     const prev = prevFolderIdRef.current
     prevFolderIdRef.current = selectedFolderId
 
+    // 칩 필터 스냅샷 적용 — folderId가 일치할 때만, 1회 소진.
+    // 첫 마운트뿐 아니라 store 동기화로 folderId가 뒤늦게 확정되는 경우도 커버.
+    const snap = savedFiltersRef.current
+    const applySnapshot = () => {
+      if (!snap || snap.folderId !== selectedFolderId) return false
+      savedFiltersRef.current = null
+      if (snap.sort) setSort(snap.sort)
+      if (snap.titleDir) setTitleDir(snap.titleDir)
+      setActiveTag(snap.activeTag ?? null)
+      setActiveWiki(snap.activeWiki ?? null)
+      return true
+    }
+
     if (prev === undefined) {
+      applySnapshot()
       // 첫 마운트 — sessionStorage 복원 시도
       if (typeof window !== 'undefined') {
         const saved = sessionStorage.getItem('memo-list-state')
@@ -198,12 +231,26 @@ export default function MemoList() {
       restoredCountRef.current = null
       setDisplayCount(PAGE_SIZE)
       setSelectedTrashIds(new Set())
+      if (applySnapshot()) return
+      savedFiltersRef.current = null  // 사용자가 폴더를 바꿨다 — 이전 스냅샷 폐기
       setSort('updated')
       setTitleDir('asc')
       setActiveTag(null)
       setActiveWiki(null)
     }
   }, [selectedFolderId])
+
+  // 칩 필터 변경마다 저장 (스크롤 여부와 무관)
+  // 첫 커밋(복원 setState 반영 전)엔 저장하지 않도록 mount 이후부터.
+  const filtersSaveReadyRef = useRef(false)
+  useEffect(() => {
+    if (!filtersSaveReadyRef.current) { filtersSaveReadyRef.current = true; return }
+    try {
+      sessionStorage.setItem(FILTERS_KEY, JSON.stringify({
+        folderId: selectedFolderId, sort, titleDir, activeTag, activeWiki,
+      }))
+    } catch { /* ignore */ }
+  }, [selectedFolderId, sort, titleDir, activeTag, activeWiki])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // displayCount 보호 — 복원 후 다른 effect가 PAGE_SIZE로 reset하면 다시 복원값으로
@@ -375,19 +422,17 @@ export default function MemoList() {
 
   const showAutocomplete = searchFocused && autocompleteItems.length > 0
 
+  // 자동완성 선택 = 위키/태그 칩 필터 적용.
+  // (이전엔 검색어를 '[[사랑'으로 다시 set만 하고 포커스를 유지해서, 입력값이 그대로라
+  //  드롭다운이 안 닫히고 목록도 안 바뀌어 '클릭이 안 되는' 것처럼 보였다)
+  // 칩으로 옮기면 정확 필터 + 메모 진입 후 복귀 시에도 유지된다.
   function pickAutocomplete(item: { type: 'tag' | 'wiki'; value: string }) {
-    const prefix = item.type === 'tag' ? '#' : '[['
-    setSearch(prefix + item.value)
+    if (item.type === 'wiki') setActiveWiki(item.value)
+    else setActiveTag(item.value)
+    setSearch('')
     setAutocompleteIdx(-1)
-    // 포커스는 유지하여 사용자가 추가 입력/Enter로 검색 시작 가능
-    requestAnimationFrame(() => {
-      const el = searchInputRef.current
-      if (el) {
-        el.focus()
-        const next = prefix.length + item.value.length
-        el.setSelectionRange(next, next)
-      }
-    })
+    setSearchFocused(false)
+    searchInputRef.current?.blur()
   }
 
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -402,10 +447,9 @@ export default function MemoList() {
       e.preventDefault()
       setAutocompleteIdx((i) => Math.max(-1, i - 1))
     } else if (e.key === 'Enter') {
-      if (autocompleteIdx >= 0) {
-        e.preventDefault()
-        pickAutocomplete(autocompleteItems[autocompleteIdx])
-      }
+      // 선택된 항목이 없으면 첫 후보로 적용
+      e.preventDefault()
+      pickAutocomplete(autocompleteItems[Math.max(0, autocompleteIdx)])
     } else if (e.key === 'Escape') {
       e.preventDefault()
       setAutocompleteIdx(-1)
@@ -446,6 +490,15 @@ export default function MemoList() {
       ? folders.find((f) => f.id === selectedFolderId)?.name ?? '폴더'
       : '전체 메모'
 
+  // 검색어 파싱 — `#태그`, `[[위키]]` 토큰 vs 자유 텍스트
+  const parsedSearch = useMemo(() => parseSearchQuery(search), [search])
+  const hasSearchTokens = hasTokenFilters(parsedSearch)
+  // 등록된 태그/위키 키 — 토큰이 정확히 일치하는 게 있으면 정확 일치, 없으면 접두 일치
+  const knownTagKeys = useMemo(
+    () => new Set(memos.flatMap((m) => (m.tags ?? []).map(tagKey))), [memos])
+  const knownWikiKeys = useMemo(
+    () => new Set(memos.flatMap((m) => (m.wikiLinks ?? []).map(wikiKey))), [memos])
+
   // #9 — Postgres FTS 서버 검색 (debounce 300ms)
   const {
     results: searchResults,
@@ -453,7 +506,8 @@ export default function MemoList() {
     isFetching: searchFetching,
     isSemanticResult,
   } = useMemoSearch({
-    query: search,
+    // 태그/위키 토큰은 서버 본문 검색에서 제외 — 아래에서 정규화 키 필터로 처리
+    query: parsedSearch.text,
     folderId: isTrash ? 'trash' : selectedFolderId,
   })
 
@@ -464,12 +518,7 @@ export default function MemoList() {
   // (1) 다중 토큰 AND — 'A B' → A와 B 모두 substring 포함
   // (2) 공백 제거 substring — '일론머스크' 검색이 '일론 머스크' 메모 매칭, 반대도 가능
   const clientFiltered = useMemo(() => {
-    const raw = search.trim()
-    if (!raw) return null
-    // prefix(#태그, [[위키)는 그대로 두고 본문도 같이 매칭되도록 정리
-    let q = raw
-    if (q.startsWith('[[')) q = q.slice(2).replace(/\]\]$/, '')
-    else if (q.startsWith('#')) q = q.slice(1)
+    const q = parsedSearch.text
     if (!q) return null
     const lower = q.toLowerCase()
     const tokens = lower.split(/\s+/).filter(Boolean)
@@ -486,7 +535,7 @@ export default function MemoList() {
       return tokens.every((t) => haystack.includes(t))
         || normalizedHaystack.includes(normalizedQ)
     })
-  }, [memos, search])
+  }, [memos, parsedSearch.text])
 
   const filtered = useMemo(() => {
     // 검색 중일 땐 server FTS + client substring 합집합 (id 중복 제거, server 우선)
@@ -511,6 +560,11 @@ export default function MemoList() {
       list = merged
     } else {
       list = [...memos]
+    }
+
+    // 검색창의 #태그 / [[위키]] 토큰 — 태그·위키 배열에 대한 정확 필터 (AND)
+    if (hasSearchTokens) {
+      list = list.filter((m) => memoMatchesTokenFilters(m, parsedSearch, knownTagKeys, knownWikiKeys))
     }
 
     // 필터는 정규화 키 비교 — 대표 표기 칩 하나로 표기 변형까지 모두 걸린다
@@ -544,7 +598,7 @@ export default function MemoList() {
     const pinned = list.filter((m) => m.isPinned)
     const rest = list.filter((m) => !m.isPinned)
     return { pinned, rest, all: list }
-  }, [memos, searchResults, clientFiltered, isSearching, sort, titleDir, isTrash, activeTag, activeWiki])
+  }, [memos, searchResults, clientFiltered, isSearching, hasSearchTokens, parsedSearch, knownTagKeys, knownWikiKeys, sort, titleDir, isTrash, activeTag, activeWiki])
 
   // 타임라인 전용 필터 적용
   const timelineFiltered = useMemo(() => {
@@ -1311,9 +1365,9 @@ export default function MemoList() {
         ) : !isTrash && filtered.all.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
             <p className="text-sm">검색 결과가 없습니다</p>
-            {(search || activeTag) && (
+            {(search || activeTag || activeWiki) && (
               <button
-                onClick={() => { setSearch(''); setActiveTag(null) }}
+                onClick={() => { setSearch(''); setActiveTag(null); setActiveWiki(null) }}
                 className="text-xs text-violet-500 hover:text-violet-700 underline"
               >
                 필터 초기화

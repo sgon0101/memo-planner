@@ -9,14 +9,13 @@
  */
 
 import React from 'react'
+import { parseSearchQuery } from './searchQuery'
 
-/** 검색어를 # / [[ prefix 제거 후 토큰화 */
+/** 검색어 → 하이라이트 토큰 (자유 텍스트 단어 + #태그 / [[위키]] 라벨) */
 export function getHighlightTokens(query: string | undefined | null): string[] {
   if (!query) return []
-  let cleaned = query.trim()
-  if (cleaned.startsWith('[[')) cleaned = cleaned.slice(2)
-  else if (cleaned.startsWith('#')) cleaned = cleaned.slice(1)
-  return cleaned.split(/\s+/).filter(Boolean)
+  const { tags, wikis, text } = parseSearchQuery(query)
+  return [...text.split(/\s+/).filter(Boolean), ...tags, ...wikis]
 }
 
 /** 본문에서 첫 매칭 주변 ±context 글자 추출 (앞 ellipsis 처리) */
