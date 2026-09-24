@@ -192,6 +192,29 @@ aside {
   margin-top: 1em !important;
 }
 
+/* ===== 제목(h1~h6) 간격 — 문단과 같은 간격 체계로 통일 =====
+   prose-sm 기본값은 제목 font-size 기준 em이라 h1 아래 27px / h3 아래 9px처럼
+   제각각이었다(문단 사이는 16px). 문단과 동일하게 "마진 0 + 인접 규칙"으로 통일.
+   ※ 아래 세 규칙은 `.tiptap p`(0,1,1)와 특이도가 같으므로 반드시 p 규칙 뒤에 온다. */
+.tiptap h1, .tiptap h2, .tiptap h3,
+.tiptap h4, .tiptap h5, .tiptap h6 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* 제목 바로 아래 블록 = 문단 사이와 동일한 16px
+   (이미지 래퍼 .react-renderer는 자체 간격 규칙이 있으므로 제외)
+   ※ em이 아닌 px인 이유: em은 제목 자신의 font-size 기준이라 h1/h2/h3마다
+     간격이 달라진다. 문단 리듬(.tiptap p + p = 1em = 16px)에 맞춰 고정. */
+.tiptap :is(h1, h2, h3, h4, h5, h6) + *:not(.react-renderer) {
+  margin-top: 16px !important;
+}
+
+/* 앞선 내용 뒤에 오는 제목만 위쪽을 조금 더 띄워 섹션 구분 유지 (16 → 24px) */
+.tiptap * + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 24px !important;
+}
+
 /* ===== 이미지 사이 간격 — 진단 결과 fix =====
    DOM 구조: <div.react-renderer.node-image><div data-node-view-wrapper>...</div></div>
    이전 wrapper가 inline-block + align-middle이라 line-height 1.6 * 16px = ~25px의

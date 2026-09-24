@@ -5,6 +5,14 @@
 
 ---
 
+## ⛔ dev 서버 규칙 (최우선)
+- dev 서버는 사용자가 별도 창에서 관리한다. 종료·재시작·새 실행·.next 삭제를 절대 직접 하지 않는다.
+- 재시작이나 .next 삭제가 필요하면 이유와 명령어를 보고하고, 사용자가 실행할 때까지 멈춘다.
+- 코드 변경이 브라우저에 안 보이면 순서대로 의심한다: ① 전체 새로고침 안 함(Tiptap extension은 에디터 인스턴스를 새로 만들어야 반영됨) ② SW 캐시 ③ 서버 재시작 필요.
+- 디버그용 console.log를 넣었다면 작업 종료 전 반드시 제거하고 보고한다.
+
+---
+
 ## 프로젝트 개요
 
 **앱 이름**: 나만의 메모 플래너 (가칭)
@@ -118,7 +126,9 @@ memo-planner/
 │   ├── tiptap/
 │   │   ├── CustomEnterExtension.ts # Enter=hardBreak 규칙
 │   │   ├── isolateSelectedLines.ts # 선택 줄만 독립 문단화 (헤딩 적용용)
-│   │   └── adaptiveTextColor.ts    # 인라인 글자색 테마 자동 대비 (globals.css와 한 쌍)
+│   │   ├── adaptiveTextColor.ts    # 인라인 글자색 테마 자동 대비 (globals.css와 한 쌍)
+│   │   ├── headingBoundary.ts      # 제목↔문단 Delete/Backspace 판정 (순수 함수, 단위 테스트 대상)
+│   │   └── HeadingBoundaryGuard.ts # 위 판정을 쓰는 extension (제목에 문단이 흡수되는 병합 차단)
 │   ├── export/
 │   │   ├── pdf.ts                  # PDF 내보내기
 │   │   └── markdown.ts             # Markdown 내보내기
@@ -508,6 +518,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 ## 개선 후보 (백로그)
 
 - **그래프 허브 500개 제한(HUB_LIMIT) UX**: 현재 위키+태그 허브가 500개 초과 시 연결 수 상위 500개만 남기고 침묵 누락(사용자 알림 없음, 동률 정렬 불안정, 잘린 링크와 노드 색 미세 불일치). 현 데이터(위키 239)로는 미발동이라 보류 — 허브 ~400개 도달 시 착수: 상태바 "허브 상위 500개 표시 중" 배지 + 설정에서 한도 조절 슬라이더. (2026-07-05 논의)
+- **vitest 도입**: `weave-local-tests`의 heading boundary 18케이스 **이관** + isolateSelectedLines는 **재작성 필요(원본 유실 — 당시 세션 스크래치패드에만 있었고 지금은 어디에도 남아 있지 않음)** + `npm test` + CI 연결. 현재 레포엔 테스트 러너가 없어 node로 직접 돌리는 절대경로 스크립트를 레포 밖에 보관 중(프로젝트 폴더 이동 시 경로 수정 필요). 별도 PR. (2026-09-24 논의)
 - **R2 변형 CacheControl 버전 키**: 이미지 변형(full/md/thumb)이 `md_{uuid}` 같은 **가변 키**에 저장되는데 `Cache-Control: max-age=31536000`(1년)이 걸려, 재생성·백필로 같은 키에 덮어써도 브라우저는 강력 새로고침 전까지 옛 저화질 바이트를 서빙(엣지 r2.dev는 cf-cache=none이라 문제없음, 브라우저 디스크 캐시가 원인). 근본 해결: ①변형 키에 콘텐츠 해시/버전 suffix를 넣어 내용 변경=새 URL(immutable 캐시 유지 가능, 단 메모 content src·uploaded_files 동시 갱신 필요) 또는 ②가변 키엔 `max-age`를 짧게+`must-revalidate`(ETag 재검증). 현재는 재생성 후 사용자에게 강력 새로고침 안내로 우회 중. (2026-07-11 논의)
 
 ---
@@ -516,6 +527,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-09-24 | 에디터 제목(H1~H3) 간격 통일 + 제목↔문단 병합 방지 | ①**제목 아래 간격이 문단 간격보다 크던 문제** — 원인은 빈 paragraph가 아니라 `prose-sm` 기본 마진이었다(헤딩 마진을 앱이 한 번도 덮지 않아 typography 기본값 그대로: h1 mb 0.8em=27.4px, h2 18.3px, h3 9.1px vs 문단 사이 16px). globals.css의 `.tiptap p` 규칙 **뒤에** 3규칙 추가 — 헤딩 `margin 0 !important` + `:is(h1~h6) + *:not(.react-renderer)`에 16px + `* + :is(h1~h6)`에 24px. em이 아니라 px인 이유는 em이 제목 자신의 font-size 기준이라 레벨마다 간격이 달라지기 때문(1.6em이면 h1 55px·h2 37px). 이미지 래퍼는 자체 간격 규칙이 있어 제외, 특이도 동률이라 p 규칙 뒤 배치가 필수 ②**제목 끝 Delete / 제목 아래 문단 맨 앞 Backspace가 문단을 제목으로 흡수하던 문제**(ProseMirror joinForward/joinBackward 기본 동작) — `lib/tiptap/HeadingBoundaryGuard.ts`(Extension, priority 1000) 신규 + 판정 로직을 `lib/tiptap/headingBoundary.ts` 순수 함수로 분리(에디터 의존 없음 → 단위 테스트 가능). 빈 줄이면 그 줄만 삭제, 내용이 있으면 병합하지 않고 커서만 제목 끝으로. 목록/인용 안쪽은 `depth !== 1`과 "앞 형제가 heading" 조건으로 자동 제외. 검증: prosemirror-model/state 실제 인스턴스로 **18케이스 단위 테스트 전부 통과** + 로컬 라이브 검증(간격 H1→P 27→16px·P→H2 24px, Delete 차단 `del:block`, 빈 줄 Delete `del:tr`, Backspace 커서 이동 `bs:tr`, 문단끼리 병합·목록 안 Backspace는 `bs:pass`로 기본 동작 유지, 저장→새로고침 후 콘텐츠·간격 동일). **진단 교훈 3건**: ⓐ dev에서 `/_next/static/` 청크는 SW가 **cache-first**(`sw.js:31`)로 잡는데 dev 청크명은 콘텐츠 해시가 아니라 고정이라 수정이 영원히 안 보인다 → 브라우저 밖 curl로 서버 응답을 먼저 대조할 것 ⓑ `next.config.ts`의 `removeConsole`이 **dev에서도** `console.log`를 제거한다(디버그는 `console.error`나 window 변수로) ⓒ 합성 키 입력의 `Home`/`End`는 문서 처음/끝으로 점프해 커서 위치 전제가 깨진다 — 화살표 키로 위치시키고 클릭 후 1초 대기해야 PM 선택이 동기화됨 | 100% |
 | 2026-08-13 | 프로젝트 경로 이동 + dev 리로드 루프 해소 + 홈 hydration mismatch 수정 | 프로젝트 폴더를 `Desktop/memo-planner` → `Desktop/AI/memo-planner`로 이동한 뒤 발생한 문제 2건 처리. ① **로컬 dev 페이지가 4~6초마다 스스로 리로드되던 루프** — `performance.timeOrigin`이 계속 바뀌고 uptime이 리셋(3.8s→1.3s), `[HMR] connected` 무한 반복, 그 부작용으로 `/memo`로 이동해도 `/home`으로 튕김. 배제한 것: 앱·SW 코드에 `location.reload()` 없음 / 소스 파일 변경 0건(30분) / **SW 캐시 삭제해도 지속(이번엔 원인 아님 — CLAUDE.md 2026-08-02의 그 함정을 먼저 의심했으나 기각)** / `next dev` 프로세스 중복 없음. 실제 원인은 **옛 경로에서 만들어진 `.next` dev 빌드 상태를 그대로 들고 온 것**(감시 결과 `.next/dev/server/instrumentation.js`·`middleware-manifest.json`이 반복 재작성 = instrumentation.ts(Sentry)+proxy.ts 재컴파일 루프, Next 16.2.4 Turbopack). 조치: dev 서버 프로세스 트리 종료(5개) → `.next` 삭제 → 재기동. 검증: `navType` reload→navigate, timeOrigin 고정 채로 uptime 11s→32s 증가, 메모장(폴더 트리 549개·R2 썸네일)·플래너(8월 월 뷰·범위 바·기간 패널) 정상, 콘솔 에러 0건, dev 오버레이 이슈 배지 소멸. **교훈: 프로젝트 폴더를 옮기면 `.next`는 반드시 삭제하고 재기동할 것**(서버 HTTP 응답만 보고 "지울 이유 없다"고 판단한 초기 진단이 틀렸음) ② **홈 빠른메모 입력창 hydration mismatch**(폴더 이동과 무관한 기존 버그, 프로덕션에도 존재) — `HomeClient.tsx`가 `autoComplete="new-password"`로 렌더하는데 전역 `AutofillBlocker`가 `data-autofill-preset="1"` 표식 없는 입력을 `autocomplete="off"`로 덮어써 SSR HTML ↔ 클라 속성 불일치(DOM 실측 `ac:"off"`, `preset:null`). 앱 표준(2026-07-05 규칙: 실제 autofill 차단은 `type="search"`가 담당)대로 **`autoComplete="off"`로 통일** + 사유 주석. 같은 `new-password` 패턴이 `FolderPanel.tsx`·`ColorWheelModal.tsx`에도 있으나 SSR 대상이 아니라 hydration 에러는 없음(미수정). 검증: verify-changes.sh(null byte 0·파일 끝 정상·tsc 0에러)+ESLint 클린. **⚠️ 그러나 이 수정만으로는 에러가 사라지지 않았다** — 당시 "hydration 에러 0건" 판정은 콘솔을 `clear` 직후 짧은 창에서 읽어 그 로드가 아예 캡처되지 않은 상태를 "없음"으로 해석한 오판이었다(불일치 항목 하나를 실제로 없앴고 앱 표준과도 맞지만, 근본 원인은 아니었음). **진짜 원인**: `AutofillBlocker`의 `useEffect`가 이 입력이 속한 `<Suspense>` 경계보다 먼저 실행돼, 서버 HTML에 없는 속성(`data-autofill-blocked`·`type`·`name`)을 hydration 전에 DOM에 주입 → React가 "DOM엔 있는데 클라 렌더엔 없는 속성"으로 보고 mismatch. 라이브 대조로 확정 — SSR HTML엔 0개인데 DOM엔 존재, React diff가 `<form>`·`<input>` 두 곳을 정확히 지목. **최종 수정**: 완료 표식을 서버 렌더 단계에 직접 포함(`HomeClient`의 `<form>`·`<input>`에 `data-autofill-blocked="1"`) — `harden()`/`hardenForm()`이 표식을 보면 즉시 return하므로 DOM 변조 자체가 사라지고 서버·클라 트리가 일치(해당 입력은 이미 `type="search"`+차단 속성을 다 갖춰 blocker가 더 할 일이 없음). before/after 대조: 수정 전 4회 로드 전부 에러 ↔ SW 캐시·콘솔 clear 후 4회 독립 로드 전부 **에러 0건**, 각 로드마다 DevTools·HMR·Supabase 로그가 함께 기록돼 캡처가 살아 있는 상태에서의 0건. **교훈: "콘솔에 에러 없음"은 같은 로드의 다른 로그가 함께 잡혔을 때만 유효한 판정이다** | 100% |
 | 2026-08-09 | 메모 에디터 모바일 좌우 여백 확대 | 모바일에서 에디터 화면이 텍스트로 가득 차 보여 가독성이 떨어진다는 피드백(네이버 메모 대비) — 본문(.tiptap editorProps class)·상단 바·폴더 행·제목·태그 행·하단 상태 바 6곳의 모바일 좌우 패딩을 `px-3`(12px) → `px-5`(20px)로 통일 확대(데스크탑 md:px-8 유지, 콘텐츠·크롬 좌측 라인 정렬 유지). 검증: tsc 0·verify-changes.sh 통과 (MemoEditor 420행 exhaustive-deps 경고는 기존 코드의 것 — 이번 변경과 무관, 미수정) | 100% |
 | 2026-08-09 | 플래너 후속 픽스 3건 (backdrop 첫 탭·패널 스크롤·일뷰 라벨) | ① **모바일 바텀시트 backdrop이 헤더 첫 탭을 삼키던 문제** — 주/월 뷰 backdrop이 `fixed inset-0`이라 <768px에서 헤더(뷰 전환·이전/다음·오늘·동기화)까지 덮어 첫 클릭이 패널 닫기로 소비됨(640~767px에선 셀렉터가 보이는데 첫 탭 불가, 일뷰는 chevron 가림 문제로 이미 제외돼 있던 상태). 헤더 높이 하드코딩(top 오프셋) 대신 **그리드 영역 래퍼(relative) 안의 absolute**로 이동 — 헤더가 래퍼 밖이라 구조적으로 제외, 바깥 탭 닫기+딤은 유지 ② **주/월 기간 패널 스크롤 불가** — 데스크탑에서 패널 루트에 높이 기준이 없어(`h-full` 부재, 사이드 래퍼도 동일) 목록이 길면 루트가 내용만큼 늘어나 `flex-1 overflow-y-auto`가 작동할 기준이 없었음(기간 패널 도입으로 표면화) → 사이드 래퍼·패널 루트에 `md:h-full` ③ **일뷰 '종일' 라벨 세로 중앙** — 행마다 라벨 칸을 두던 구조를 주뷰 레인과 동일하게 좌측 라벨 컬럼(flex items-center) + 우측 목록 컬럼으로 재구성. 검증: tsc 0·ESLint 클린·verify-changes.sh 통과·렌더 하니스(플랜 17개+480px 뷰포트로 스크롤 바운드, 일뷰 라벨 중앙) 확인 | 100% |
