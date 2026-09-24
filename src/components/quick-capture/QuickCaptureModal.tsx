@@ -22,6 +22,7 @@ import {
   type RecurrenceSettings,
   defaultRecurrence, buildRRule, parseRRule,
 } from '@/lib/planner/rrulePresets'
+import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { PlanTemplate } from '@/types'
 
 const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
@@ -153,17 +154,18 @@ function QuickCaptureInner({
     let list = activeMemos
     if (q) {
       if (q.startsWith('#')) {
-        const tagQ = q.slice(1)
-        list = activeMemos.filter((m) => m.tags.some((t) => t.toLowerCase().includes(tagQ)))
+        const tagQ = tagKey(q.slice(1))
+        list = activeMemos.filter((m) => m.tags.some((t) => tagKey(t).includes(tagQ)))
       } else if (q.startsWith('[[')) {
-        const wikiQ = q.slice(2)
-        list = activeMemos.filter((m) => m.wikiLinks.some((w) => w.toLowerCase().includes(wikiQ)))
+        // 정규화 키 비교 — 띄어쓴 표기로 검색해도 같은 허브의 메모가 잡힌다
+        const wikiQ = wikiKey(q.slice(2))
+        list = activeMemos.filter((m) => m.wikiLinks.some((w) => wikiKey(w).includes(wikiQ)))
       } else {
         list = activeMemos.filter((m) =>
           m.title.toLowerCase().includes(q) ||
           m.contentText.toLowerCase().includes(q) ||
-          m.tags.some((t) => t.toLowerCase().includes(q)) ||
-          m.wikiLinks.some((w) => w.toLowerCase().includes(q))
+          m.tags.some((t) => tagKey(t).includes(tagKey(q))) ||
+          m.wikiLinks.some((w) => wikiKey(w).includes(wikiKey(q)))
         )
       }
     }

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useGraphStore, type GraphNode, type GraphLink } from '@/store/graphStore'
 import { useFolderStore } from '@/store/folderStore'
 import { lsGraphAnalyzeCache, lsGraphAnalyzeCacheTs } from '@/lib/cache/lsKeys'
+import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { Memo, Folder } from '@/types'
 
 // 유사도 분석 캐시 — localStorage 승격 (2026-07-05)
@@ -128,41 +129,67 @@ export function useGraphData() {
 
     const nodes: GraphNode[] = []
     const links: GraphLink[] = []
+    // 정규화 키 → 허브 노드 id. 키가 같은 표기 변형(행동경제학 / 행동 경제학)은 한 허브로 모인다.
     const wikiMap = new Map<string, string>()
     const tagMap = new Map<string, string>()
+    // 허브 노드 라벨(대표 표기) — 노드 생성 단계에서 사용
+    const wikiLabels = new Map<string, string>()
+    const tagLabels = new Map<string, string>()
 
-    // 1단계: 위키/태그 허브 노드 수집
+    // 1단계: 사용 횟수 집계 → 대표 표기 결정 → 허브 노드 수집
+    const wikiCounts: Array<{ label: string; count: number }> = []
+    const tagCounts: Array<{ label: string; count: number }> = []
+    for (const m of memos) {
+      for (const kw of (m.wiki_links ?? [])) wikiCounts.push({ label: kw, count: 1 })
+      for (const tag of (m.tags ?? [])) tagCounts.push({ label: tag, count: 1 })
+    }
+    const wikiCanonical = buildCanonicalMap(wikiCounts, wikiKey)
+    const tagCanonical = buildCanonicalMap(tagCounts, tagKey)
+
     for (const m of memos) {
       if (s.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
-          if (!wikiMap.has(kw)) wikiMap.set(kw, `wiki:${kw}`)
+          const key = wikiKey(kw)
+          if (!key || wikiMap.has(key)) continue
+          const label = wikiCanonical.get(key) ?? kw.trim()
+          // 노드 id는 기존 호환을 위해 `wiki:${대표표기}` 유지 (허브 클릭 → 목록 필터가 라벨 기반)
+          wikiMap.set(key, `wiki:${label}`)
+          wikiLabels.set(key, label)
         }
       }
       if (s.showTag) {
         for (const tag of (m.tags ?? [])) {
-          if (!tagMap.has(tag)) tagMap.set(tag, `tag:${tag}`)
+          const key = tagKey(tag)
+          if (!key || tagMap.has(key)) continue
+          const label = tagCanonical.get(key) ?? tag.trim()
+          tagMap.set(key, `tag:${label}`)
+          tagLabels.set(key, label)
         }
       }
     }
 
     // 2단계: 링크 생성 (위키 + 태그)
+    // 한 메모가 같은 키의 변형을 둘 다 가진 경우 링크가 중복 생성되지 않도록 메모별 Set으로 dedupe
     const memoLinkCounts = new Map<string, number>()
     for (const m of memos) {
       let count = 0
+      const seen = new Set<string>()
       if (s.showWiki) {
         for (const kw of (m.wiki_links ?? [])) {
-          if (wikiMap.has(kw)) {
-            links.push({ source: m.id, target: wikiMap.get(kw)!, type: 'wiki' })
-            count++
-          }
+          const target = wikiMap.get(wikiKey(kw))
+          if (!target || seen.has(target)) continue
+          seen.add(target)
+          links.push({ source: m.id, target, type: 'wiki' })
+          count++
         }
       }
       if (s.showTag) {
         for (const tag of (m.tags ?? [])) {
-          if (tagMap.has(tag)) {
-            links.push({ source: m.id, target: tagMap.get(tag)!, type: 'tag' })
-            count++
-          }
+          const target = tagMap.get(tagKey(tag))
+          if (!target || seen.has(target)) continue
+          seen.add(target)
+          links.push({ source: m.id, target, type: 'tag' })
+          count++
         }
       }
       memoLinkCounts.set(m.id, count)
@@ -194,13 +221,15 @@ export function useGraphData() {
       targetCounts.set(tgt, (targetCounts.get(tgt) ?? 0) + 1)
     }
     if (s.showWiki) {
-      for (const [kw, nid] of wikiMap) {
-        nodes.push({ id: nid, type: 'wiki', label: kw, linkCount: targetCounts.get(nid) ?? 0 })
+      for (const [key, nid] of wikiMap) {
+        const label = wikiLabels.get(key) ?? key
+        nodes.push({ id: nid, type: 'wiki', label, linkCount: targetCounts.get(nid) ?? 0 })
       }
     }
     if (s.showTag) {
-      for (const [tag, nid] of tagMap) {
-        nodes.push({ id: nid, type: 'tag', label: `#${tag}`, linkCount: targetCounts.get(nid) ?? 0 })
+      for (const [key, nid] of tagMap) {
+        const label = tagLabels.get(key) ?? key
+        nodes.push({ id: nid, type: 'tag', label: `#${label}`, linkCount: targetCounts.get(nid) ?? 0 })
       }
     }
 

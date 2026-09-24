@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useAllMemosMeta } from '@/hooks/useAllMemosMeta'
+import { tagKey } from '@/lib/wiki/normalize'
 
 interface Props {
   query: string
@@ -19,9 +20,11 @@ export default function TagSuggest({ query, position, onSelect, onClose }: Props
   const [flipUp, setFlipUp] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
-  const q = query.toLowerCase()
-  const filtered = allTags.filter((t) => t.toLowerCase().includes(q)).slice(0, 8)
-  const showNew = !!query && !filtered.includes(query)
+  // 정규화 키로 비교 (대소문자 차이로 #AI / #ai가 갈라지지 않게)
+  const qKey = tagKey(query)
+  const filtered = allTags.filter((t) => tagKey(t).includes(qKey)).slice(0, 8)
+  // 같은 키의 태그가 이미 있으면 '새로 만들기' 숨김
+  const showNew = !!query && !allTags.some((t) => tagKey(t) === qKey)
   const totalItems = filtered.length + (showNew ? 1 : 0)
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 검색어 변경 시 선택 인덱스 리셋 (의도된 패턴)

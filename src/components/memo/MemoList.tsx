@@ -20,6 +20,7 @@ import ColorWheelModal from './ColorWheelModal'
 import TimelineFilter from './TimelineFilter'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { TagDropdown, SortChip, WikiDropdown, MemoSection, TitleSortDropdown, type SortKey, type TitleDir } from './MemoListParts'
+import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
 
 const PAGE_SIZE = 20
 
@@ -323,17 +324,20 @@ export default function MemoList() {
   }
 
   // 모든 태그 수집 (autocompleteItems보다 먼저 선언 필요)
+  // 표기 변형(#AI / #ai)은 정규화 키로 묶어 대표 표기 하나만 노출
   const allTags = useMemo(() => {
-    const set = new Set<string>()
-    memos.forEach((m) => m.tags?.forEach((t) => set.add(t)))
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
+    const entries = memos.flatMap((m) => (m.tags ?? []).map((label) => ({ label, count: 1 })))
+    const canonical = buildCanonicalMap(entries, tagKey)
+    return [...new Set(entries.map((e) => canonical.get(tagKey(e.label.trim())) ?? e.label))]
+      .sort((a, b) => a.localeCompare(b, 'ko'))
   }, [memos])
 
-  // 모든 위키링크 수집
+  // 모든 위키링크 수집 (행동경제학 / 행동 경제학 → 대표 표기 하나)
   const allWikis = useMemo(() => {
-    const set = new Set<string>()
-    memos.forEach((m) => m.wikiLinks?.forEach((w) => set.add(w)))
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'))
+    const entries = memos.flatMap((m) => (m.wikiLinks ?? []).map((label) => ({ label, count: 1 })))
+    const canonical = buildCanonicalMap(entries, wikiKey)
+    return [...new Set(entries.map((e) => canonical.get(wikiKey(e.label.trim())) ?? e.label))]
+      .sort((a, b) => a.localeCompare(b, 'ko'))
   }, [memos])
 
   // 검색창 자동완성 — # 입력 후 글자가 있을 때만, [[ 입력 후 글자가 있을 때만 후보 노출
@@ -342,18 +346,18 @@ export default function MemoList() {
   const autocompleteItems = useMemo<{ type: 'tag' | 'wiki'; value: string }[]>(() => {
     const raw = search.trim()
     if (raw.startsWith('[[')) {
-      const q = raw.slice(2).replace(/\]\]$/, '').toLowerCase()
+      const q = wikiKey(raw.slice(2).replace(/\]\]$/, ''))
       if (!q) return []  // 빈 prefix — 칩으로 확인
       return allWikis
-        .filter((w) => w.toLowerCase().includes(q))
+        .filter((w) => wikiKey(w).includes(q))
         .slice(0, 8)
         .map((value) => ({ type: 'wiki' as const, value }))
     }
     if (raw.startsWith('#')) {
-      const q = raw.slice(1).toLowerCase()
+      const q = tagKey(raw.slice(1))
       if (!q) return []
       return allTags
-        .filter((t) => t.toLowerCase().includes(q))
+        .filter((t) => tagKey(t).includes(q))
         .slice(0, 8)
         .map((value) => ({ type: 'tag' as const, value }))
     }
@@ -504,11 +508,14 @@ export default function MemoList() {
       list = [...memos]
     }
 
+    // 필터는 정규화 키 비교 — 대표 표기 칩 하나로 표기 변형까지 모두 걸린다
     if (activeTag) {
-      list = list.filter((m) => m.tags?.includes(activeTag))
+      const key = tagKey(activeTag)
+      list = list.filter((m) => m.tags?.some((t) => tagKey(t) === key))
     }
     if (activeWiki) {
-      list = list.filter((m) => m.wikiLinks?.includes(activeWiki))
+      const key = wikiKey(activeWiki)
+      list = list.filter((m) => m.wikiLinks?.some((w) => wikiKey(w) === key))
     }
 
     if (!isTrash) {
