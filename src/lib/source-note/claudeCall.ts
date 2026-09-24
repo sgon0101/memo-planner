@@ -73,6 +73,28 @@ export function parseJsonObject(text: string): Record<string, unknown> {
 export class TruncatedError extends Error {}
 
 /**
+ * Anthropic API 오류 → 사용자에게 보일 구체적 메시지 + HTTP 상태.
+ * 크레딧 부족은 400(invalid_request_error)으로 오는데, 뭉뚱그려 "AI 분석에 실패했어요"로
+ * 보이면 사용자는 재시도만 반복하게 된다 (실측 중 실제로 겪음) — 원인별로 구분한다.
+ */
+export function describeAnthropicError(e: { status?: number; message: string }): { message: string; status: number } {
+  const text = e.message ?? ''
+  if (/credit balance|purchase credits|billing/i.test(text)) {
+    return { message: 'AI API 크레딧이 부족해요. 크레딧을 충전한 뒤 다시 시도해주세요.', status: 402 }
+  }
+  if (e.status === 401 || e.status === 403) {
+    return { message: 'AI API 키 설정에 문제가 있어요. 관리자에게 알려주세요.', status: 502 }
+  }
+  if (e.status === 429 || e.status === 529 || e.status === 503) {
+    return { message: 'AI 서버가 바빠요. 잠시 후 다시 시도해주세요.', status: 502 }
+  }
+  if (e.status === 413) {
+    return { message: '보낼 자료가 너무 커요. 이미지 수를 줄여 다시 시도해주세요.', status: 413 }
+  }
+  return { message: 'AI 분석에 실패했어요. 잠시 후 다시 시도해주세요.', status: 502 }
+}
+
+/**
  * 요약 JSON 생성 호출 (4-2).
  * system은 kind별 고정 → cache_control ephemeral.
  */

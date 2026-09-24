@@ -22,6 +22,7 @@
  * 이스케이프 오류로 통째 파싱 실패할 위험이 커서. headings는 서버에서 `#` 줄로 뽑는다.
  */
 
+import Anthropic from '@anthropic-ai/sdk'
 import { anthropic, MODEL } from '@/lib/ai/claude'
 import { QUOTE_MARKER, SOURCE_CHUNK_EXTRACT_SYSTEM } from '@/lib/ai/prompts'
 import { chunkRanges } from './computeTiles'
@@ -189,7 +190,11 @@ export async function extractChunks(tiles: ImageTile[], usage: UsageEntry[]): Pr
   }
 
   await Promise.all(Array.from({ length: Math.min(PARALLEL, ranges.length) }, worker))
-  if (failure) throw new Error(`긴 이미지 일부를 읽지 못했어요 (${(failure as Error).message}). 다시 시도해 주세요.`)
+  // API 오류(크레딧 부족·인증 등)는 감싸지 않고 그대로 올려 route가 원인별 메시지를 고르게 한다
+  // (워커 클로저에서 대입되므로 TS 흐름 분석이 null로 좁히지 않도록 다시 선언)
+  const failed = failure as Error | null
+  if (failed instanceof Anthropic.APIError) throw failed
+  if (failed) throw new Error(`긴 이미지 일부를 읽지 못했어요 (${failed.message}). 다시 시도해 주세요.`)
   return results
 }
 

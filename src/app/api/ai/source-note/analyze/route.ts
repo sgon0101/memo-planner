@@ -28,7 +28,7 @@ import { reencodeIfTooLarge, tileImage, type ImageTile } from '@/lib/source-note
 import { extractPageJpegs, inspectPdfText } from '@/lib/source-note/pdfInput'
 import { extractChunks, synthesizeFromChunks } from '@/lib/source-note/chunkedExtract'
 import {
-  TruncatedError, callSourceNote, estimateCostUsd, tileBlocks, type UsageEntry,
+  TruncatedError, callSourceNote, describeAnthropicError, estimateCostUsd, tileBlocks, type UsageEntry,
 } from '@/lib/source-note/claudeCall'
 import { buildVocab, findNeighbors, normalizeAnalysis } from '@/lib/source-note/postprocess'
 import type { AnalyzeResponse, ChunkExtract, SourceMeta, StoredAnalysis } from '@/lib/source-note/types'
@@ -237,10 +237,8 @@ export async function POST(req: NextRequest) {
     if (e instanceof TruncatedError) return NextResponse.json({ error: e.message }, { status: 502 })
     if (e instanceof Anthropic.APIError) {
       console.error('[source-note] anthropic', e.status, e.message)
-      const msg = e.status === 429 || e.status === 529
-        ? 'AI 서버가 바빠요. 잠시 후 다시 시도해주세요.'
-        : 'AI 분석에 실패했어요. 잠시 후 다시 시도해주세요.'
-      return NextResponse.json({ error: msg }, { status: 502 })
+      const { message, status } = describeAnthropicError(e)
+      return NextResponse.json({ error: message }, { status })
     }
     console.error('[source-note] analyze 실패:', e)
     const msg = e instanceof Error && /읽지 못했어요|잘렸어요/.test(e.message) ? e.message : '분석에 실패했어요. 다시 시도해주세요.'
