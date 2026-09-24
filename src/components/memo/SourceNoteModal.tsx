@@ -37,6 +37,7 @@ import { CHUNK_THRESHOLD, MAX_SET_TILES, countTiles } from '@/lib/source-note/co
 import { readImageDims } from '@/lib/source-note/imageHeader'
 import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { AnalyzeResponse, NoteSuggestion } from '@/lib/source-note/types'
+import type { FlowPhase } from '@/lib/source-note/clientFlow'
 
 export const SOURCE_ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
 
@@ -366,7 +367,7 @@ function SourceNoteBody({ onClose }: { onClose: () => void }) {
         )}
 
         {stage === 'analyzing' && (
-          <AnalyzingView long={totalTiles > CHUNK_THRESHOLD} phase={job.status === 'running' ? job.phase : 'read'} />
+          <AnalyzingView long={totalTiles > CHUNK_THRESHOLD} phase={job.status === 'running' ? job.phase : { kind: 'read' }} />
         )}
 
         {stage === 'error' && (
@@ -462,21 +463,36 @@ function ErrorBox({ message }: { message: string }) {
 }
 
 /**
- * phase 'read' = ①(읽기). 분할 경로면 ①이 추출만 하고, 끝나면 'synthesize'(②)로 넘어간다.
- * 단일 호출 경로는 ①에서 바로 끝나므로 ② 문구를 보지 않는다.
+ * 진행 문구: 읽기(/analyze 첫 요청) → 추출 k/n(분할 경로 /extract, 요청 하나 = 1차수) → 종합(/synthesize).
+ * 단일 호출 경로(텍스트형 PDF·40조각 이하)는 읽기에서 바로 끝난다.
  */
-function AnalyzingView({ long, phase }: { long: boolean; phase: 'read' | 'synthesize' }) {
+function AnalyzingView({ long, phase }: { long: boolean; phase: FlowPhase }) {
   const [step, setStep] = useState(0)
   useEffect(() => {
     const t = setInterval(() => setStep((s) => (s + 1) % ANALYZE_STEPS.length), 4000)
     return () => clearInterval(t)
   }, [])
+  const flow = (current: 'extract' | 'synthesize', rounds: number | undefined, round?: number) => (
+    <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400">
+      <span className={current === 'extract' ? '' : 'opacity-60'}>
+        추출 {current === 'extract' ? round : rounds}/{rounds || '?'}
+      </span>
+      {' → '}
+      <span className={current === 'synthesize' ? '' : 'opacity-60'}>종합</span>
+    </p>
+  )
   return (
-    <div data-phase={phase} className="flex flex-col items-center gap-3 py-10 text-center">
+    <div data-phase={phase.kind} data-round={phase.kind === 'extract' ? `${phase.round}/${phase.rounds}` : undefined} className="flex flex-col items-center gap-3 py-10 text-center">
       <Loader2 size={28} className="animate-spin text-violet-500" />
-      {phase === 'synthesize' ? (
+      {phase.kind === 'extract' ? (
         <>
-          <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400">2/2단계 · 1단계(구간별 읽기) 완료</p>
+          {flow('extract', phase.rounds, phase.round)}
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">긴 자료를 구간별로 읽는 중…</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">구간마다 1~2분 걸려요</p>
+        </>
+      ) : phase.kind === 'synthesize' ? (
+        <>
+          {phase.rounds ? flow('synthesize', phase.rounds) : null}
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">읽은 내용을 종합해 노트를 정리하는 중…</p>
           <p className="text-xs text-gray-500 dark:text-gray-400">1~2분 걸려요</p>
         </>
@@ -484,7 +500,7 @@ function AnalyzingView({ long, phase }: { long: boolean; phase: 'read' | 'synthe
         <>
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{ANALYZE_STEPS[step]}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {long ? '긴 이미지라 구간별로 먼저 읽어요 (1/2단계, 1~2분)' : '30~90초 걸려요 · 긴 자료면 구간별로 읽은 뒤 종합해요'}
+            {long ? '긴 이미지라 구간별로 나눠 읽어요 (구간마다 1~2분)' : '30~90초 걸려요 · 긴 자료면 구간별로 읽은 뒤 종합해요'}
           </p>
         </>
       )}

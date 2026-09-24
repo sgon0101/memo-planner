@@ -68,15 +68,20 @@ export interface ChunkExtract {
 /** source_analyses.analysis jsonb 형태 */
 export interface StoredAnalysis {
   /**
-   * 'extracted' = 분할 추출만 끝나고 종합 대기(①→② 사이). 없으면 'done'(이전 행 호환).
-   * 분할 경로는 300초 한도 때문에 추출(①)과 종합(②)을 별도 요청으로 나눈다.
+   * 분할 경로는 300초 한도 때문에 요청을 나눈다:
+   *  'extracting' = 청크 추출 진행 중(요청 하나 = 병렬 1차수, 청크 단위 누적 캐시)
+   *  'extracted'  = 추출 완료, 종합 대기
+   *  'done'(또는 없음, 이전 행 호환) = 종합 완료
    */
-  phase?: 'extracted' | 'done'
-  /** phase 'extracted'에서는 없을 수 있다 (재분석 중이면 이전 결과가 남아 있음) */
+  phase?: 'extracting' | 'extracted' | 'done'
+  /** phase 'extracting'/'extracted'에서는 없을 수 있다 (재분석 중이면 이전 결과가 남아 있음) */
   result?: SourceNoteAnalysis
   related?: RelatedMemoRef[]
   meta: SourceMeta
+  /** 완료된 청크 추출문 (청크 번호 순) */
   extracted?: ChunkExtract[]
+  /** 분할 청크 총수 — extracted.length와 비교해 남은 청크를 안다 */
+  chunkTotal?: number
 }
 
 /** 분석 완료 응답 (analyze 단일 경로 · synthesize) */
@@ -90,10 +95,20 @@ export interface AnalyzeResponse {
   createdAt: string
 }
 
-/** 분할 경로 ① 추출 완료 응답 — 클라이언트는 이어서 /synthesize를 호출한다 */
+/**
+ * 분할 경로 응답 — 'extracting'이면 클라이언트가 /extract를 이어서 호출,
+ * 'extracted'면 /synthesize로 넘어간다.
+ */
 export interface ExtractPhaseResponse {
-  phase: 'extracted'
+  phase: 'extracting' | 'extracted'
   analysisId: string
   meta: SourceMeta
   cached: boolean
+  progress?: {
+    doneChunks: number
+    totalChunks: number
+    /** 다음에 실행할 추출 차수 (1부터) */
+    round: number
+    rounds: number
+  }
 }

@@ -2,9 +2,10 @@
  * 긴 세트 분할 처리 (타일 > 40) — 서버 전용
  *
  * ① 타일을 최대 10개씩 청크로 (경계 타일 1개 공유)
- * ② 청크별 '추출' 호출(병렬 최대 6): 이미지 속 내용을 구조 그대로 **압축 전사**
+ * ② 청크별 '추출' 호출: 이미지 속 내용을 구조 그대로 **압축 전사**
  *    출력 한도에서 잘리면 그 청크만 반으로 나눠(경계 1조각 공유) 다시 추출해 합친다
- * ③ 추출문을 이어 붙여 '종합' 호출 (이미지 없이 텍스트만 → 저렴)
+ *    요청 하나 = 병렬 1차수(최대 5청크) — 차수 관리·누적 캐시는 extractRounds.ts, 이어 받기는 /extract
+ * ③ 추출문을 이어 붙여 '종합' 호출 (이미지 없이 텍스트만 → 저렴, /synthesize)
  *
  * 인용: 압축 본문에서 뽑으면 원문이 아니게 되므로, 추출 단계에서 따옴표·강조·결론 문장을
  * 원문 그대로 인용 후보로 따로 받고(QUOTE_MARKER 아래), 종합은 후보 번호로만 고르게 한 뒤
@@ -30,8 +31,6 @@ import { callSourceNote, messageText, tileBlocks, toUsageEntry, type UsageEntry 
 import { reencodeIfTooLarge, type ImageTile } from './tileImage'
 import type { ChunkExtract, QuoteCandidate } from './types'
 
-/** 최대 150조각 = 17청크 → 3라운드 안에 끝나도록 */
-const PARALLEL = 6
 const EXTRACT_MAX_TOKENS = 8000
 
 class ChunkTruncatedError extends Error {}
@@ -210,40 +209,35 @@ async function extractWithSplit(chunkIndex: number, tiles: ImageTile[], usage: U
   }
 }
 
-export async function extractChunks(tiles: ImageTile[], usage: UsageEntry[]): Promise<ChunkExtract[]> {
-  const ranges = chunkRanges(tiles.length)
-  const results: ChunkExtract[] = new Array(ranges.length)
-  let cursor = 0
-  let failure: Error | null = null
+/** 분할 청크 수 (경계 1조각 공유) */
+export function chunkCount(tileCount: number): number {
+  return chunkRanges(tileCount).length
+}
 
-  async function worker() {
-    for (;;) {
-      if (failure) return
-      const i = cursor++
-      if (i >= ranges.length) return
-      const [s, e] = ranges[i]
-      try {
-        results[i] = await extractWithSplit(i, tiles.slice(s, e), usage)
-      } catch (err) {
-        if (err instanceof ChunkTruncatedError) { failure = err; return }
-        console.error(`[source-note] 구간 ${i + 1} 추출 실패 — 1회 재시도`, err instanceof Error ? err.message : err)
-        try {
-          results[i] = await extractOne(i, tiles.slice(s, e), usage)
-        } catch (err2) {
-          failure = err2 instanceof Error ? err2 : new Error(String(err2))
-          return
-        }
-      }
+/**
+ * 청크 하나 추출 — 잘리면 반분할, 그 외 오류는 1회 재시도.
+ * 여러 청크의 병렬·차수 관리는 extractRounds.advanceExtraction이 한다 (요청당 1차수).
+ * API 오류(크레딧 부족·인증 등)는 감싸지 않고 그대로 올려 route가 원인별 메시지를 고르게 한다.
+ */
+export async function extractChunkAt(chunkIndex: number, tiles: ImageTile[], usage: UsageEntry[]): Promise<ChunkExtract> {
+  const range = chunkRanges(tiles.length)[chunkIndex]
+  if (!range) throw new Error(`구간 ${chunkIndex + 1}이 범위를 벗어났어요`)
+  const slice = tiles.slice(range[0], range[1])
+  try {
+    return await extractWithSplit(chunkIndex, slice, usage)
+  } catch (err) {
+    if (err instanceof Anthropic.APIError && !(err.status === 429 || err.status === 529 || (err.status ?? 0) >= 500)) throw err
+    if (err instanceof ChunkTruncatedError) {
+      throw new Error(`긴 이미지 일부를 읽지 못했어요 (${err.message}). 다시 시도해 주세요.`)
+    }
+    console.error(`[source-note] 구간 ${chunkIndex + 1} 추출 실패 — 1회 재시도`, err instanceof Error ? err.message : err)
+    try {
+      return await extractOne(chunkIndex, slice, usage)
+    } catch (err2) {
+      if (err2 instanceof Anthropic.APIError) throw err2
+      throw new Error(`긴 이미지 일부를 읽지 못했어요 (${err2 instanceof Error ? err2.message : err2}). 다시 시도해 주세요.`)
     }
   }
-
-  await Promise.all(Array.from({ length: Math.min(PARALLEL, ranges.length) }, worker))
-  // API 오류(크레딧 부족·인증 등)는 감싸지 않고 그대로 올려 route가 원인별 메시지를 고르게 한다
-  // (워커 클로저에서 대입되므로 TS 흐름 분석이 null로 좁히지 않도록 다시 선언)
-  const failed = failure as Error | null
-  if (failed instanceof Anthropic.APIError) throw failed
-  if (failed) throw new Error(`긴 이미지 일부를 읽지 못했어요 (${failed.message}). 다시 시도해 주세요.`)
-  return results
 }
 
 /** 종합 호출용 텍스트 — 압축 본문 + 끝에 번호 붙인 원문 인용 후보 */
