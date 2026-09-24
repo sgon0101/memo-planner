@@ -70,7 +70,10 @@ const CANDIDATE_LINE = /^\s*[-*•]\s*["“”](.+)["“”]\s*(?:\(([^()]*)\))?
 /** 추출 응답 → 압축 본문 + 원문 인용 후보 (순수 함수) */
 export function parseChunkOutput(raw: string): { body: string; quoteCandidates: QuoteCandidate[] } {
   const idx = raw.indexOf(QUOTE_MARKER)
-  if (idx < 0) return { body: raw.trim(), quoteCandidates: [] }
+  if (idx < 0) {
+    const body = raw.trim()
+    return { body, quoteCandidates: harvestInlineQuotes(body) }
+  }
   const body = raw.slice(0, idx).trim()
   const quoteCandidates: QuoteCandidate[] = []
   for (const line of raw.slice(idx + QUOTE_MARKER.length).split('\n')) {
@@ -81,7 +84,32 @@ export function parseChunkOutput(raw: string): { body: string; quoteCandidates: 
     quoteCandidates.push(m[2]?.trim() ? { text, loc: m[2].trim() } : { text })
     if (quoteCandidates.length >= MAX_CANDIDATES_PER_CHUNK) break
   }
-  return { body, quoteCandidates }
+  return { body, quoteCandidates: quoteCandidates.length ? quoteCandidates : harvestInlineQuotes(body) }
+}
+
+/** `> "문장"` 인용 블록 (뒤에 — 화자 표기 허용) */
+const INLINE_QUOTE = /^>\s*["“](.+)["”]\s*(?:[—–-].*)?$/
+/** 위치 라벨: (p.4 · 조각 2) / (이미지 2 · 조각 3) / (p.9) */
+const LOC_LABEL = /\(((?:p\.\d+|이미지 \d+)[^()]*)\)/
+
+/**
+ * 폴백: 모델이 인용 후보 구획을 빼먹고 인용할 문장을 본문 안 `> "…"` 블록으로만 넣는 경우가
+ * 실측에서 나왔다(이소정 캡처 PDF 5구간 전부). 따옴표 인용 블록은 원문 발언이므로 후보로 회수하고,
+ * 직전에 나온 위치 라벨을 위치로 붙인다. 저장된 추출문에도 적용된다(재분석 시 재추출 불필요).
+ */
+export function harvestInlineQuotes(body: string): QuoteCandidate[] {
+  const out: QuoteCandidate[] = []
+  let loc: string | undefined
+  for (const line of body.split('\n')) {
+    const label = line.match(LOC_LABEL)
+    if (label) loc = label[1].trim()
+    const m = line.trim().match(INLINE_QUOTE)
+    if (!m) continue
+    const text = m[1].trim()
+    if (text) out.push(loc ? { text, loc } : { text })
+    if (out.length >= MAX_CANDIDATES_PER_CHUNK) break
+  }
+  return out
 }
 
 /** 비교용 정규화 — 공백·따옴표·문장부호 차이만 무시 (글자 자체는 비교, 저장은 항상 후보 원문) */
@@ -95,7 +123,9 @@ export function collectQuoteCandidates(chunks: ChunkExtract[]): (QuoteCandidate 
   const seen = new Set<string>()
   const out: (QuoteCandidate & { id: string })[] = []
   for (const c of chunks.slice().sort((a, b) => a.chunkIndex - b.chunkIndex)) {
-    for (const q of c.quoteCandidates ?? []) {
+    // 후보가 비어 저장된 추출문(구획 누락)은 본문 인용 블록에서 회수
+    const list = c.quoteCandidates?.length ? c.quoteCandidates : harvestInlineQuotes(c.body)
+    for (const q of list) {
       const k = quoteKey(q.text)
       if (!k || seen.has(k)) continue
       seen.add(k)
