@@ -96,17 +96,18 @@ export async function POST(req: NextRequest) {
 
     // 기존 파일이 어떤 노트에 쓰였는지 (memo_sources 기준, 영구 삭제된 메모는 자동 제외)
     const existingIds = (existingRows ?? []).map((r) => r.id as string)
-    const linkedByFile = new Map<string, { id: string; title: string; inTrash: boolean }[]>()
+    const linkedByFile = new Map<string, { id: string; title: string; inTrash: boolean; position: number }[]>()
     if (existingIds.length > 0) {
       const { data: links } = await supabase
         .from('memo_sources')
-        .select('file_id, memos!inner(id, title, is_deleted)')
+        .select('file_id, position, memos!inner(id, title, is_deleted)')
         .in('file_id', existingIds)
       for (const row of links ?? []) {
         const memo = (row as unknown as { memos: { id: string; title: string; is_deleted: boolean } }).memos
-        const fid = (row as unknown as { file_id: string }).file_id
+        const { file_id: fid, position } = row as unknown as { file_id: string; position: number }
         const arr = linkedByFile.get(fid) ?? []
-        arr.push({ id: memo.id, title: memo.title || '제목 없음', inTrash: !!memo.is_deleted })
+        // position: 같은 파일 세트라도 순서가 다르면 다른 노트(중복 판정에 사용)
+        arr.push({ id: memo.id, title: memo.title || '제목 없음', inTrash: !!memo.is_deleted, position: position ?? 0 })
         linkedByFile.set(fid, arr)
       }
     }

@@ -14,6 +14,8 @@ export interface LinkedMemoRef {
   id: string
   title: string
   inTrash: boolean
+  /** 그 노트 안에서 이 파일의 순서 (memo_sources.position) */
+  position?: number
 }
 
 export interface UploadedSource {

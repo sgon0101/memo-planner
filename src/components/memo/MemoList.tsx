@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette, Sparkles } from 'lucide-react'
+import { Plus, LayoutGrid, List, AlignLeft, Search, Trash2, RotateCcw, ChevronDown, ChevronRight, Folder, MoreHorizontal, Pencil, Palette, Sparkles, FileUp } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,8 @@ import TimelineFilter from './TimelineFilter'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { TagDropdown, SortChip, WikiDropdown, MemoSection, TitleSortDropdown, type SortKey, type TitleDir } from './MemoListParts'
 import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
+import SourceNoteModal from './SourceNoteModal'
+import { useSourceNoteStore } from '@/store/sourceNoteStore'
 
 const PAGE_SIZE = 20
 
@@ -28,6 +30,9 @@ type ViewMode = 'card' | 'list' | 'timeline'
 
 export default function MemoList() {
   const router = useRouter()
+  const openSourceNote = useSourceNoteStore((s) => s.openModal)
+  // 데스크톱 파일 드롭 → 파일로 노트 (폴더 패널의 메모 이동 드롭과 구분: dataTransfer에 Files가 있을 때만)
+  const [fileDragOver, setFileDragOver] = useState(false)
   const { selectedFolderId, folders, selectFolder } = useFolderStore()
   // 모바일 폴더 dropdown용 메모 갯수 (FolderPanel과 동일 queryKey로 캐시 공유)
   const { data: folderCountRows } = useQuery({
@@ -762,7 +767,32 @@ export default function MemoList() {
   }), [togglePin, toggleStar, softDelete, lockMemo, unlockMemo, restoreMemo, permanentDelete, moveMemoToFolder, search])
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
+    <div
+      className="relative flex flex-col h-full bg-gray-50 dark:bg-gray-950"
+      onDragOver={(e) => {
+        if (isTrash || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        if (!fileDragOver) setFileDragOver(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileDragOver(false)
+      }}
+      onDrop={(e) => {
+        if (isTrash || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setFileDragOver(false)
+        const files = Array.from(e.dataTransfer.files)
+        if (files.length) openSourceNote({ files, folderId: selectedFolderId ?? null })
+      }}
+    >
+      {fileDragOver && (
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-2xl border-2 border-dashed border-violet-500 bg-violet-50/90 dark:bg-violet-950/80">
+          <p className="flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-300">
+            <FileUp size={18} /> PDF나 이미지를 놓으면 요약 노트를 만들어요
+          </p>
+        </div>
+      )}
       {/* 헤더 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         {/* 데스크톱: 폴더명 텍스트 */}
@@ -1037,12 +1067,21 @@ export default function MemoList() {
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            <Plus size={13} /> 새 메모
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => openSourceNote({ folderId: selectedFolderId ?? null })}
+              title="PDF·이미지로 요약 노트 만들기"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-xs font-medium rounded-lg transition-colors"
+            >
+              <FileUp size={13} /> 파일로 노트
+            </button>
+            <button
+              onClick={() => router.push(selectedFolderId ? `/memo/new?folder=${selectedFolderId}` : '/memo/new')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              <Plus size={13} /> 새 메모
+            </button>
+          </div>
         )}
       </div>
 
@@ -1403,6 +1442,7 @@ export default function MemoList() {
           onClose={() => setShowNewFolderModal(false)}
         />
       )}
+      <SourceNoteModal />
       <confirm.Render />
     </div>
   )

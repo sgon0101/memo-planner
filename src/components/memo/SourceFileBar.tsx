@@ -25,8 +25,15 @@ interface SourceFile {
   size: number
   thumbnailUrl: string | null
   pageCount: number | null
+  imageHeight: number | null
   position: number
 }
+
+/**
+ * 이 세로 길이 이상이면 브라우저 새 탭 보기가 느리거나(모바일은 디코딩 실패·잘림) 사실상 못 본다 —
+ * 원본 보기 대신 다운로드를 권한다.
+ */
+const TALL_IMAGE_PX = 20_000
 
 interface Props {
   memoId: string | null
@@ -46,7 +53,7 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
       if (!memoId) { if (alive) setFiles(null); return }
       const { data } = await supabase
         .from('memo_sources')
-        .select('position, uploaded_files!inner(id, file_name, mime_type, compressed_size, thumbnail_url, page_count)')
+        .select('position, uploaded_files!inner(id, file_name, mime_type, compressed_size, thumbnail_url, page_count, image_height)')
         .eq('memo_id', memoId)
         .order('position', { ascending: true })
       if (!alive) return
@@ -59,6 +66,7 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
           size: (f.compressed_size as number) ?? 0,
           thumbnailUrl: (f.thumbnail_url as string | null) ?? null,
           pageCount: (f.page_count as number | null) ?? null,
+          imageHeight: (f.image_height as number | null) ?? null,
           position: (r as unknown as { position: number }).position ?? 0,
         }
       })
@@ -71,6 +79,8 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
   if (!files || files.length === 0) return null
 
   const isPdf = files.length === 1 && files[0].mimeType === 'application/pdf'
+  const isTall = (f: SourceFile) => (f.imageHeight ?? 0) >= TALL_IMAGE_PX
+  const hasTall = files.some(isTall)
   const totalSize = files.reduce((s, f) => s + f.size, 0)
 
   function openFile(id: string) {
@@ -177,9 +187,11 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
                 <div key={f.id} className="group relative shrink-0">
                   <button
                     type="button"
-                    onClick={() => openFile(f.id)}
+                    onClick={() => (isTall(f) ? downloadFile(f.id) : openFile(f.id))}
                     disabled={!online}
-                    title={`${f.fileName} — 원본 보기`}
+                    title={isTall(f)
+                      ? `${f.fileName} — 세로 ${f.imageHeight?.toLocaleString()}px 긴 이미지라 다운로드해서 보는 걸 권해요`
+                      : `${f.fileName} — 원본 보기`}
                     className="block h-20 w-20 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 cursor-pointer disabled:cursor-not-allowed"
                   >
                     {f.thumbnailUrl ? (
@@ -192,6 +204,9 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
                       </span>
                     )}
                   </button>
+                  {isTall(f) && (
+                    <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-medium text-white">긴 이미지</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => downloadFile(f.id)}
@@ -204,6 +219,11 @@ export default function SourceFileBar({ memoId, memoTitle }: Props) {
                 </div>
               ))}
             </div>
+            {hasTall && (
+              <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                세로 2만px 이상인 긴 이미지는 브라우저에서 열면 느리거나 잘릴 수 있어요 — 탭하면 다운로드돼요. 기기의 사진 앱에서 보세요.
+              </p>
+            )}
           </>
         )}
       </div>

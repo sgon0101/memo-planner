@@ -84,7 +84,9 @@ memo-planner/
 │   │   ├── MemoEditor.tsx          # Tiptap 에디터 래퍼
 │   │   ├── EditorToolbar.tsx       # 서식 툴바
 │   │   ├── LockModal.tsx           # 잠금 비밀번호 모달
-│   │   └── VersionHistory.tsx      # 버전 이력
+│   │   ├── VersionHistory.tsx      # 버전 이력
+│   │   ├── SourceFileBar.tsx       # 노트에 묶인 원본(PDF/이미지) 카드 — 열기·다운로드·전체 받기 (세로 2만px↑는 다운로드 권장)
+│   │   └── SourceNoteModal.tsx     # 파일로 노트: select→precheck→arrange→upload→analyze→review→create (모바일 vaul 시트)
 │   ├── planner/
 │   │   ├── CalendarView.tsx        # 월/주/일 캘린더
 │   │   ├── PlanPanel.tsx           # 날짜별 플랜 패널
@@ -119,6 +121,20 @@ memo-planner/
 │   │   └── colors.ts               # 그래프 노드 색상 단일 출처
 │   ├── wiki/
 │   │   └── normalize.ts            # 위키·태그 정규화 키 단일 출처 (읽는 쪽 허브 병합용)
+│   ├── source-note/                # 소스(PDF·이미지 묶음) → 요약 노트 (가공물은 분석 순간 메모리에서만, 저장 X)
+│   │   ├── types.ts                # SourceNoteAnalysis 등 공용 타입
+│   │   ├── computeTiles.ts         # 타일 좌표·청크 범위 (순수 — 서버/클라 한도 판정 공용, 150/40/30)
+│   │   ├── cropMargins.ts          # 좌우 여백 자동 크롭 (sharp, 세트 ±10% 합집합 통일)
+│   │   ├── tileImage.ts            # 크롭→축소→세로 타일 JPEG q85 (25MB 초과 시 q70)
+│   │   ├── pdfInput.ts             # unpdf 텍스트 판정(30자/쪽) + pdf-lib DCT 페이지 JPEG 추출
+│   │   ├── chunkedExtract.ts       # 타일 40개 초과: 30개씩 병렬 3 전사 → 종합
+│   │   ├── claudeCall.ts           # Sonnet 호출·usage 기록·JSON 파싱
+│   │   ├── postprocess.ts          # 어휘 목록(wiki 300/tag 150)·위키/태그 교정·이웃(neighbor) 추천
+│   │   ├── buildNoteDoc.ts         # Tiptap JSON 직접 생성 + 에디터와 동일 정규식으로 wiki/tags 추출
+│   │   └── imageHeader.ts          # PNG/JPEG/WebP 헤더만 읽어 치수 (디코딩 금지 — 긴 캡처 모바일 대응)
+│   ├── files/
+│   │   ├── sourceLimits.ts         # 소스 파일 한도·형식 단일 출처
+│   │   └── uploadSources.ts        # 브라우저→R2 presigned 직접 업로드
 │   ├── planner/
 │   │   ├── expandRecurringPlans.ts # rrule 기반 인스턴스 전개 (+legacy fallback)
 │   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
@@ -139,6 +155,7 @@ memo-planner/
 │   ├── memoStore.ts                # 메모 UI 신호만 (서버 상태는 RQ — 이중화 정리 1단계)
 │   ├── plannerStore.ts             # 캘린더 UI 상태만 (서버 상태는 RQ — 이중화 정리 2단계)
 │   ├── folderStore.ts              # 폴더 상태
+│   ├── sourceNoteStore.ts          # 파일로 노트 모달 + 분석 요청 (모달을 닫아도 요청 유지)
 │   └── uiStore.ts                  # UI 상태 (다크모드 등)
 ├── types/
 │   └── index.ts                    # 전체 타입 정의
@@ -522,6 +539,10 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 - **그래프 허브 500개 제한(HUB_LIMIT) UX**: 현재 위키+태그 허브가 500개 초과 시 연결 수 상위 500개만 남기고 침묵 누락(사용자 알림 없음, 동률 정렬 불안정, 잘린 링크와 노드 색 미세 불일치). 현 데이터(위키 239)로는 미발동이라 보류 — 허브 ~400개 도달 시 착수: 상태바 "허브 상위 500개 표시 중" 배지 + 설정에서 한도 조절 슬라이더. (2026-07-05 논의)
 - **vitest 도입**: `weave-local-tests`의 heading boundary 18케이스 **이관** + isolateSelectedLines는 **재작성 필요(원본 유실 — 당시 세션 스크래치패드에만 있었고 지금은 어디에도 남아 있지 않음)** + `npm test` + CI 연결. 현재 레포엔 테스트 러너가 없어 node로 직접 돌리는 절대경로 스크립트를 레포 밖에 보관 중(프로젝트 폴더 이동 시 경로 수정 필요). 별도 PR. (2026-09-24 논의)
 - **R2 변형 CacheControl 버전 키**: 이미지 변형(full/md/thumb)이 `md_{uuid}` 같은 **가변 키**에 저장되는데 `Cache-Control: max-age=31536000`(1년)이 걸려, 재생성·백필로 같은 키에 덮어써도 브라우저는 강력 새로고침 전까지 옛 저화질 바이트를 서빙(엣지 r2.dev는 cf-cache=none이라 문제없음, 브라우저 디스크 캐시가 원인). 근본 해결: ①변형 키에 콘텐츠 해시/버전 suffix를 넣어 내용 변경=새 URL(immutable 캐시 유지 가능, 단 메모 content src·uploaded_files 동시 갱신 필요) 또는 ②가변 키엔 `max-age`를 짧게+`must-revalidate`(ETag 재검증). 현재는 재생성 후 사용자에게 강력 새로고침 안내로 우회 중. (2026-07-11 논의)
+- **100쪽 초과 PDF 분할 요약**: 현재 1차 한도 100쪽(Claude PDF 한도와 동일)에서 업로드 전 차단. 쪽 범위로 나눠 추출→종합(이미지 세트의 chunkedExtract와 같은 2단계)으로 확장. (2026-09-24)
+- **위키 동의어(alias) 병합 제안**: 정규화 키는 표기 차이만 합친다(`행동경제학`↔`행동 경제학`). `UX`↔`사용자경험` 같은 동의어는 별개 허브 — 임베딩 유사도로 병합 후보를 제안하고 사용자가 승인하는 흐름. (2026-09-24)
+- **메모 목록 '소스 노트' 필터**: memo_sources가 있는 메모만 보기 (칩 또는 정렬 옆 토글). (2026-09-24)
+- **PDF+이미지 혼합 세트**: 현재 presign·analyze 모두 혼합 금지. PDF 페이지를 이미지 어댑터로 보내는 경로가 이미 있으므로 "PDF 페이지 + 추가 캡처"를 한 세트로 묶는 확장이 가능. (2026-09-24)
 
 ---
 
@@ -529,6 +550,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-09-24 | [PDF 노트 3/3] 소스 → 요약 노트 자동 생성 | **소스 1세트(PDF 1개 또는 이미지 1~20장) → 요약 노트 1개**. 개념 노트는 만들지 않는다(`[[개념]]` 허브가 곧 개념 노드). 파이프라인 하나 + 입력 어댑터 2개: ①텍스트형 PDF(unpdf 평균 30자/쪽 이상) → Claude document URL(실패 시 1회 base64 ≤31MB) ②이미지형 PDF(jsPDF 웹 캡처·스캔) → pdf-lib로 페이지마다 가장 큰 이미지 XObject가 DCTDecode면 스트림 바이트 = JPEG 원본 추출 → 이미지 경로, 실패(Flate/JBIG2/다중 이미지/Form 중첩)면 URL 폴백 + `image-pdf-fallback` 로그 ③이미지 → **여백 자동 크롭**(행 4px 샘플·양끝 16px 중앙값 배경·차이>20·열 비율>1.5%·패딩 24·85%↓/320px↑일 때만, 세트 안 ±10%면 합집합 통일, 세로 크롭 없음) → 가로>1568 축소 → 타일 높이 min(1568, 1.15MP/가로)·겹침 80px → JPEG q85(요청 25MB 초과 시 q70). 크롭·축소한 결과를 raw로 1회 디코딩 후 잘라 O(n²) 회피. **가공물은 저장하지 않는다**(R2 원본·uploaded_files 무변경). 한도: PDF 100쪽 / 세트 타일 150(서버·클라 같은 `computeTiles`·같은 원본 치수로 판정) / **타일 40 초과 → 30개씩(경계 1타일 공유) 병렬 3 전사 → 텍스트 종합**, 청크 1회 재시도 후 실패면 전체 에러(부분 요약 금지), 전사문은 `analysis.extracted`에 저장해 [다시 분석] 시 종합만 재호출. `source_analyses`(0018) 캐시 — 히트는 AI·한도 차감 없음, `ai-source-note` 20회/일. 컨텍스트: 전체 메모(삭제·**잠금 제외**) 위키 300/태그 150을 대표 표기+횟수로. **서버 후처리**: 문법 기호 제거→`resolveToCanonical`→있으면 existing 교정, 새 위키 공백 제거·3개 상한, 태그 `[\w가-힣]`만, 키 중복 제거, 요약 임베딩→`match_memos`(0.4) 상위 5개(잠금 제외)의 위키가 2개↑ 메모에 있거나 개념과 겹치면 `neighbor`(기본 해제). 생성(`/create`)은 AI 재호출 없음 — `buildNoteDoc`이 Tiptap JSON 직접 생성(원본 정보 인용·한 줄 요약·핵심 요약·내용 정리·핵심 개념(확정 위키만 `[[ ]]`)·기억할 문장·연결된 메모·`연결: [[..]]`·`#태그`), **wiki_links/tags는 에디터와 같은 정규식으로 본문에서 추출해 저장**(첫 편집 후 불변) + AI 문장 속 우발적 `#단어`/`[[`는 `＃`/`[ [`로 무력화(원치 않는 태그·허브 방지) → memo_sources(position) → uploaded_files.memo_id 호환 채움 → 임베딩 즉시. UI: MemoList `파일로 노트` 버튼 + 파일 드롭 오버레이(`Files` 타입일 때만 — 메모 이동 드롭과 분리), `SourceNoteModal`(헤더만 읽는 치수 파싱·파일명 자연 정렬·드래그 재정렬·중복(같은 노트·같은 순서)·분석 중 닫아도 유지→토스트 [확인하기]·칩 기존/새로/비슷한 메모·길게/우클릭 이름 수정·자동완성 재사용·폴더·연결된 메모 토글·[다시 분석] 한도 안내), 모바일 vaul 시트. presign `linkedMemos`에 position 추가(순서만 바꾼 세트는 새 분석). SourceFileBar: 세로 2만px↑ 이미지는 탭=다운로드 + 안내 문구. 로그는 `removeConsole` 때문에 `console.error` 채널. 검증: computeTiles 7케이스 기대값 일치(20/34/62/74), 크롭(데스크톱 597–1214·배너 페이지 배너 무시·모바일/사진/카드 미크롭), PDF 분기(합성 jsPDF→이미지형 6쪽 12타일 / Flate 스캔→폴백 / 세제개편안→텍스트형), buildNoteDoc·정규화·헤더 파싱 18케이스 통과, verify-changes.sh·ESLint 클린·`next build` 통과. E2E는 후속 커밋 | 진행 중 |
 | 2026-09-24 | [PDF 노트 1/3] 위키·태그 어휘 정규화 | 그래프에서 `[[키워드]]`는 메모→메모 링크가 아니라 **키워드 허브 노드**(`wiki:키워드`)라, `[[행동경제학]]`과 `[[행동 경제학]]`이 서로 다른 허브가 되어 연결이 끊긴다(`#AI`/`#ai`도 동일). 현재 DB는 깨끗하지만(실측: wiki 252 라벨 = 252 키, tag 103 = 103, **병합 후보 0건**) AI가 띄어쓴 표기를 넣기 시작하면 깨지는 구조라 **예방 작업**. `lib/wiki/normalize.ts` 신규(단일 출처) — `wikiKey`(NFC→소문자→공백·_·-·가운뎃점 제거) / `tagKey`(NFC→소문자) / `buildCanonicalMap`(대표 선정: ①사용 횟수 ②공백 없는 표기 ③localeCompare('ko') — 입력 순서 무관 결정적) / `resolveToCanonical`. **정규화는 읽는 쪽에서만** — ①`useGraphData` 허브를 키 기준으로 병합(노드 id는 `wiki:${대표표기}` 유지해 허브 클릭→목록 필터 호환, 한 메모가 변형을 둘 다 가져도 메모별 Set으로 링크 중복 차단) ②`useAllMemosMeta` 대표 표기 dedupe + **사용 횟수 내림차순**(자주 쓰는 허브가 자동완성 위로) + `wikiCanonical`/`tagCanonical` Map 반환(3단계 재사용) ③`WikiSuggest`/`TagSuggest` 키 비교 필터("행동 경" → `행동경제학` 제안) + **같은 키가 이미 있으면 '새로 만들기' 숨김**(변형이 새 허브로 갈라지는 경로 차단) ④`MemoList` 칩 목록 dedupe·`activeWiki`/`activeTag` 필터·검색창 `[[`/`#` 자동완성 키 비교 ⑤`QuickCaptureModal`·`PlanFormModal` 위키/태그 검색과 매칭 힌트 키 비교. **`MemoEditor`의 추출·저장 로직과 DB 원본 표기는 무변경**(본문에서 재추출되므로 건드리면 되돌릴 수 없음), 데이터 마이그레이션 없음. 포함 관계(`마케팅`↔`마케팅전략`, `성장`↔`성장형사고방식`)는 상하위 개념이라 **키가 완전히 같을 때만** 병합. 검증: 정규화 단위 테스트 15케이스 통과(포함관계 비병합·NFC·결정성 50회 셔플 포함), Supabase 병합 후보 리포트 0건, verify-changes.sh(null 0·파일끝 정상·tsc 0)·`next build` 통과·ESLint 신규 경고 0(기존 5건만). 미검증: 그래프 허브 1개 병합 수동 시나리오(dev 서버 필요 — 사용자 확인 대기) | 100% |
 | 2026-09-24 | 에디터 제목(H1~H3) 간격 통일 + 제목↔문단 병합 방지 | ①**제목 아래 간격이 문단 간격보다 크던 문제** — 원인은 빈 paragraph가 아니라 `prose-sm` 기본 마진이었다(헤딩 마진을 앱이 한 번도 덮지 않아 typography 기본값 그대로: h1 mb 0.8em=27.4px, h2 18.3px, h3 9.1px vs 문단 사이 16px). globals.css의 `.tiptap p` 규칙 **뒤에** 3규칙 추가 — 헤딩 `margin 0 !important` + `:is(h1~h6) + *:not(.react-renderer)`에 16px + `* + :is(h1~h6)`에 24px. em이 아니라 px인 이유는 em이 제목 자신의 font-size 기준이라 레벨마다 간격이 달라지기 때문(1.6em이면 h1 55px·h2 37px). 이미지 래퍼는 자체 간격 규칙이 있어 제외, 특이도 동률이라 p 규칙 뒤 배치가 필수 ②**제목 끝 Delete / 제목 아래 문단 맨 앞 Backspace가 문단을 제목으로 흡수하던 문제**(ProseMirror joinForward/joinBackward 기본 동작) — `lib/tiptap/HeadingBoundaryGuard.ts`(Extension, priority 1000) 신규 + 판정 로직을 `lib/tiptap/headingBoundary.ts` 순수 함수로 분리(에디터 의존 없음 → 단위 테스트 가능). 빈 줄이면 그 줄만 삭제, 내용이 있으면 병합하지 않고 커서만 제목 끝으로. 목록/인용 안쪽은 `depth !== 1`과 "앞 형제가 heading" 조건으로 자동 제외. 검증: prosemirror-model/state 실제 인스턴스로 **18케이스 단위 테스트 전부 통과** + 로컬 라이브 검증(간격 H1→P 27→16px·P→H2 24px, Delete 차단 `del:block`, 빈 줄 Delete `del:tr`, Backspace 커서 이동 `bs:tr`, 문단끼리 병합·목록 안 Backspace는 `bs:pass`로 기본 동작 유지, 저장→새로고침 후 콘텐츠·간격 동일). **진단 교훈 3건**: ⓐ dev에서 `/_next/static/` 청크는 SW가 **cache-first**(`sw.js:31`)로 잡는데 dev 청크명은 콘텐츠 해시가 아니라 고정이라 수정이 영원히 안 보인다 → 브라우저 밖 curl로 서버 응답을 먼저 대조할 것 ⓑ `next.config.ts`의 `removeConsole`이 **dev에서도** `console.log`를 제거한다(디버그는 `console.error`나 window 변수로) ⓒ 합성 키 입력의 `Home`/`End`는 문서 처음/끝으로 점프해 커서 위치 전제가 깨진다 — 화살표 키로 위치시키고 클릭 후 1초 대기해야 PM 선택이 동기화됨 | 100% |
 | 2026-08-13 | 프로젝트 경로 이동 + dev 리로드 루프 해소 + 홈 hydration mismatch 수정 | 프로젝트 폴더를 `Desktop/memo-planner` → `Desktop/AI/memo-planner`로 이동한 뒤 발생한 문제 2건 처리. ① **로컬 dev 페이지가 4~6초마다 스스로 리로드되던 루프** — `performance.timeOrigin`이 계속 바뀌고 uptime이 리셋(3.8s→1.3s), `[HMR] connected` 무한 반복, 그 부작용으로 `/memo`로 이동해도 `/home`으로 튕김. 배제한 것: 앱·SW 코드에 `location.reload()` 없음 / 소스 파일 변경 0건(30분) / **SW 캐시 삭제해도 지속(이번엔 원인 아님 — CLAUDE.md 2026-08-02의 그 함정을 먼저 의심했으나 기각)** / `next dev` 프로세스 중복 없음. 실제 원인은 **옛 경로에서 만들어진 `.next` dev 빌드 상태를 그대로 들고 온 것**(감시 결과 `.next/dev/server/instrumentation.js`·`middleware-manifest.json`이 반복 재작성 = instrumentation.ts(Sentry)+proxy.ts 재컴파일 루프, Next 16.2.4 Turbopack). 조치: dev 서버 프로세스 트리 종료(5개) → `.next` 삭제 → 재기동. 검증: `navType` reload→navigate, timeOrigin 고정 채로 uptime 11s→32s 증가, 메모장(폴더 트리 549개·R2 썸네일)·플래너(8월 월 뷰·범위 바·기간 패널) 정상, 콘솔 에러 0건, dev 오버레이 이슈 배지 소멸. **교훈: 프로젝트 폴더를 옮기면 `.next`는 반드시 삭제하고 재기동할 것**(서버 HTTP 응답만 보고 "지울 이유 없다"고 판단한 초기 진단이 틀렸음) ② **홈 빠른메모 입력창 hydration mismatch**(폴더 이동과 무관한 기존 버그, 프로덕션에도 존재) — `HomeClient.tsx`가 `autoComplete="new-password"`로 렌더하는데 전역 `AutofillBlocker`가 `data-autofill-preset="1"` 표식 없는 입력을 `autocomplete="off"`로 덮어써 SSR HTML ↔ 클라 속성 불일치(DOM 실측 `ac:"off"`, `preset:null`). 앱 표준(2026-07-05 규칙: 실제 autofill 차단은 `type="search"`가 담당)대로 **`autoComplete="off"`로 통일** + 사유 주석. 같은 `new-password` 패턴이 `FolderPanel.tsx`·`ColorWheelModal.tsx`에도 있으나 SSR 대상이 아니라 hydration 에러는 없음(미수정). 검증: verify-changes.sh(null byte 0·파일 끝 정상·tsc 0에러)+ESLint 클린. **⚠️ 그러나 이 수정만으로는 에러가 사라지지 않았다** — 당시 "hydration 에러 0건" 판정은 콘솔을 `clear` 직후 짧은 창에서 읽어 그 로드가 아예 캡처되지 않은 상태를 "없음"으로 해석한 오판이었다(불일치 항목 하나를 실제로 없앴고 앱 표준과도 맞지만, 근본 원인은 아니었음). **진짜 원인**: `AutofillBlocker`의 `useEffect`가 이 입력이 속한 `<Suspense>` 경계보다 먼저 실행돼, 서버 HTML에 없는 속성(`data-autofill-blocked`·`type`·`name`)을 hydration 전에 DOM에 주입 → React가 "DOM엔 있는데 클라 렌더엔 없는 속성"으로 보고 mismatch. 라이브 대조로 확정 — SSR HTML엔 0개인데 DOM엔 존재, React diff가 `<form>`·`<input>` 두 곳을 정확히 지목. **최종 수정**: 완료 표식을 서버 렌더 단계에 직접 포함(`HomeClient`의 `<form>`·`<input>`에 `data-autofill-blocked="1"`) — `harden()`/`hardenForm()`이 표식을 보면 즉시 return하므로 DOM 변조 자체가 사라지고 서버·클라 트리가 일치(해당 입력은 이미 `type="search"`+차단 속성을 다 갖춰 blocker가 더 할 일이 없음). before/after 대조: 수정 전 4회 로드 전부 에러 ↔ SW 캐시·콘솔 clear 후 4회 독립 로드 전부 **에러 0건**, 각 로드마다 DevTools·HMR·Supabase 로그가 함께 기록돼 캡처가 살아 있는 상태에서의 0건. **교훈: "콘솔에 에러 없음"은 같은 로드의 다른 로그가 함께 잡혔을 때만 유효한 판정이다** | 100% |
@@ -746,6 +768,25 @@ CREATE INDEX IF NOT EXISTS idx_notif_sent_lookup ON plan_notifications_sent(user
 -- AI rate limiting (supabase/migrations/0016_api_rate_limit.sql 전체 실행 필요)
 -- api_usage 테이블 + increment_api_usage(p_bucket, p_limit) SECURITY DEFINER RPC
 -- 미실행 시 rate limit은 fail-open (허용 + 콘솔 로그)으로 동작
+-- RATE_LIMITS(lib/security/rateLimit.ts): ai-chat 300 / ai-insights 40 / ai-report 40 /
+--   ai-analyze-profile 30 / ai-profile-insight 60 / ai-source-note 20 (버킷명은 자유 텍스트)
+
+-- 소스 파일 (supabase/migrations/0017_source_files.sql — 적용 완료)
+-- uploaded_files.is_source/image_width/image_height/page_count + memo_sources(memo_id, file_id, user_id, position, RLS)
+
+-- 소스 세트 분석 캐시 (supabase/migrations/0018_source_analyses.sql — 2026-09-24 프로덕션 적용 완료)
+CREATE TABLE IF NOT EXISTS source_analyses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  source_key text NOT NULL,          -- sha256(kind + ':' + 순서대로 이어붙인 content_hash들) — 순서가 바뀌면 다른 세트
+  kind text NOT NULL CHECK (kind IN ('pdf', 'images')),
+  file_ids uuid[] NOT NULL,          -- 순서 보존
+  analysis jsonb NOT NULL,           -- { result, related, meta, extracted? }
+  usage jsonb,                       -- { calls: [토큰], costUsd, crops }
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (user_id, source_key)
+);
+-- RLS: "source_analyses: 본인만" (auth.uid() = user_id)
 
 -- Postgres FTS (#9 — 메모 서버 검색)
 ALTER TABLE memos ADD COLUMN IF NOT EXISTS search_vec tsvector;
