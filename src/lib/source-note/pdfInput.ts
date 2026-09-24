@@ -15,7 +15,7 @@
  * ⚠️ 원본 PDF는 변경하지 않는다 — 추출한 페이지 JPEG도 메모리에서만 쓴다.
  */
 
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFStream, decodePDFRawStream } from 'pdf-lib'
 
 /** 이 평균 글자 수 이상이면 텍스트형 */
 export const TEXT_PDF_MIN_CHARS_PER_PAGE = 30
@@ -60,9 +60,20 @@ export async function extractPageJpegs(buffer: Buffer): Promise<PageJpegResult> 
     const xobjects = resources?.lookupMaybe(PDFName.of('XObject'), PDFDict)
     if (!xobjects) return { ok: false, reason: `p.${p + 1}: 이미지 없음` }
 
+    // 이 쪽이 실제로 그리는 XObject만 본다. jsPDF 캡처 PDF는 모든 쪽이 리소스 사전 하나를
+    // 공유하고(이미지 20장이 전부 들어 있음) 쪽마다 그중 1장만 `/Ik Do`로 그린다 —
+    // 리소스 전체를 보면 모든 쪽이 "여러 이미지 조합"으로 오판된다 (실제 파일 실측).
+    const drawn = drawnXObjectNames(pages[p].node.Contents(), doc)
+    if (drawn === null) return { ok: false, reason: `p.${p + 1}: 콘텐츠 스트림을 읽지 못함` }
+
     const images: { stream: PDFRawStream; area: number; filter: string }[] = []
-    for (const [, ref] of xobjects.entries()) {
+    for (const [name, ref] of xobjects.entries()) {
+      if (!drawn.has(name.decodeText().replace(/^\//, ''))) continue
       const obj = doc.context.lookup(ref)
+      // 그리는 것이 Form XObject(중첩)면 안쪽 구성을 알 수 없다 → 폴백
+      if (obj instanceof PDFRawStream && obj.dict.get(PDFName.of('Subtype')) === PDFName.of('Form')) {
+        return { ok: false, reason: `p.${p + 1}: Form XObject 중첩` }
+      }
       if (!(obj instanceof PDFRawStream)) continue
       const dict = obj.dict
       if (dict.get(PDFName.of('Subtype')) !== PDFName.of('Image')) continue
@@ -88,6 +99,32 @@ export async function extractPageJpegs(buffer: Buffer): Promise<PageJpegResult> 
     jpegs.push(bytes)
   }
   return { ok: true, jpegs }
+}
+
+/**
+ * 쪽 콘텐츠 스트림(들)을 풀어 `/이름 Do` 연산자로 그리는 XObject 이름 집합을 얻는다.
+ * 풀 수 없는 필터 등으로 실패하면 null (호출부가 폴백).
+ */
+function drawnXObjectNames(contents: PDFStream | PDFArray | undefined, doc: PDFDocument): Set<string> | null {
+  if (!contents) return new Set()
+  const streams: PDFRawStream[] = []
+  const push = (o: unknown) => { if (o instanceof PDFRawStream) streams.push(o) }
+  if (contents instanceof PDFArray) {
+    for (const ref of contents.asArray()) push(doc.context.lookup(ref))
+  } else {
+    push(contents)
+  }
+  const names = new Set<string>()
+  try {
+    for (const s of streams) {
+      const bytes = decodePDFRawStream(s).decode()
+      const text = Buffer.from(bytes).toString('latin1')
+      for (const m of text.matchAll(/\/([^\s/[\]()<>{}%]+)\s+Do\b/g)) names.add(m[1])
+    }
+  } catch {
+    return null
+  }
+  return names
 }
 
 function filterName(dict: PDFDict): string {
