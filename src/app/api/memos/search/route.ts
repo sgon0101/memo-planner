@@ -16,6 +16,9 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { toMemo } from '@/lib/memos/shared'
+import type { Memo } from '@/types'
+import { parseSearchQuery } from '@/lib/memos/searchQuery'
+import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,11 +35,11 @@ export async function GET(req: NextRequest) {
 
     if (!rawQ) return Response.json({ results: [], total: 0 })
 
-    // prefix 정리 — #태그, [[위키 모두 본문 검색으로
-    let q = rawQ
-    if (q.startsWith('[[')) q = q.slice(2).replace(/\]\]$/, '')
-    else if (q.startsWith('#')) q = q.slice(1)
-    if (!q.trim()) return Response.json({ results: [], total: 0 })
+    // #태그 / [[위키]] 토큰은 본문 검색어에서 제외 (클라이언트가 tags/wiki_links 정규화 필터로 처리).
+    // 직접 호출돼 토큰이 섞여 들어와도 결과는 정확 키 일치로 한 번 더 거른다.
+    const parsed = parseSearchQuery(rawQ)
+    const q = parsed.text
+    if (!q) return Response.json({ results: [], total: 0 })
 
     const trashFilter = folder === 'trash'
     const folderFilter = (!trashFilter && folder && folder !== 'all') ? folder : null
@@ -54,7 +57,14 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
-    const results = (data ?? []).map(toMemo)
+    let results: Memo[] = (data ?? []).map(toMemo)
+    if (parsed.tags.length || parsed.wikis.length) {
+      const tagKeys = parsed.tags.map(tagKey)
+      const wikiKeys = parsed.wikis.map(wikiKey)
+      results = results.filter((m) =>
+        tagKeys.every((k) => m.tags.some((t) => tagKey(t) === k)) &&
+        wikiKeys.every((k) => m.wikiLinks.some((w) => wikiKey(w) === k)))
+    }
     return Response.json({ results, total: results.length })
   } catch (err) {
     console.error('[memos/search] unexpected', err)
