@@ -146,20 +146,18 @@ export default function MemoList() {
   // 정렬·위키·태그 칩 상태 스냅샷 — 메모 진입 후 돌아왔을 때 복원용.
   // (기존 memo-list-state는 scrollY > 0일 때 '스크롤 이벤트'에서만 저장돼,
   //  칩 선택 후 스크롤 없이 메모를 열면 저장 자체가 안 되어 리셋됐다)
-  // mount 시 1회 읽어 ref에 보관 → 폴더 effect가 folderId 일치 시 적용 후 소진.
-  const savedFiltersRef = useRef<{
+  // mount 시 1회 읽어 state에 보관 → 폴더 effect가 folderId 일치 시 적용 후 소진.
+  const [savedFilters] = useState<{
     folderId: string | null; sort: SortKey; titleDir: TitleDir
     activeTag: string | null; activeWiki: string | null
-  } | null | undefined>(undefined)
-  if (savedFiltersRef.current === undefined) {
-    savedFiltersRef.current = null
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = sessionStorage.getItem(FILTERS_KEY)
-        if (raw) savedFiltersRef.current = JSON.parse(raw)
-      } catch { /* ignore */ }
-    }
-  }
+  } | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const raw = sessionStorage.getItem(FILTERS_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })
+  const savedFiltersUsedRef = useRef(false)
   // 폴더 effect — mount는 sessionStorage 복원, 진짜 폴더 변경 시만 reset.
   // hydration/store 동기화로 selectedFolderId가 mount 직후 두 번 갱신되어
   // 두 번째 발화에서 reset 분기를 타며 displayCount가 PAGE_SIZE로 돌아가던
@@ -180,10 +178,10 @@ export default function MemoList() {
 
     // 칩 필터 스냅샷 적용 — folderId가 일치할 때만, 1회 소진.
     // 첫 마운트뿐 아니라 store 동기화로 folderId가 뒤늦게 확정되는 경우도 커버.
-    const snap = savedFiltersRef.current
+    const snap = savedFiltersUsedRef.current ? null : savedFilters
     const applySnapshot = () => {
       if (!snap || snap.folderId !== selectedFolderId) return false
-      savedFiltersRef.current = null
+      savedFiltersUsedRef.current = true
       if (snap.sort) setSort(snap.sort)
       if (snap.titleDir) setTitleDir(snap.titleDir)
       setActiveTag(snap.activeTag ?? null)
@@ -232,13 +230,13 @@ export default function MemoList() {
       setDisplayCount(PAGE_SIZE)
       setSelectedTrashIds(new Set())
       if (applySnapshot()) return
-      savedFiltersRef.current = null  // 사용자가 폴더를 바꿨다 — 이전 스냅샷 폐기
+      savedFiltersUsedRef.current = true  // 사용자가 폴더를 바꿨다 — 이전 스냅샷 폐기
       setSort('updated')
       setTitleDir('asc')
       setActiveTag(null)
       setActiveWiki(null)
     }
-  }, [selectedFolderId])
+  }, [selectedFolderId, savedFilters])
 
   // 칩 필터 변경마다 저장 (스크롤 여부와 무관)
   // 첫 커밋(복원 setState 반영 전)엔 저장하지 않도록 mount 이후부터.

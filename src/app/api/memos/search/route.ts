@@ -16,6 +16,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { toMemo } from '@/lib/memos/shared'
+import type { Memo } from '@/types'
 import { parseSearchQuery } from '@/lib/memos/searchQuery'
 import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
-    let results = (data ?? []).map(toMemo)
+    let results: Memo[] = (data ?? []).map(toMemo)
     if (parsed.tags.length || parsed.wikis.length) {
       const tagKeys = parsed.tags.map(tagKey)
       const wikiKeys = parsed.wikis.map(wikiKey)
