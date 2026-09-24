@@ -37,6 +37,7 @@ import Modal from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
 import { CustomEnterExtension } from '@/lib/tiptap/CustomEnterExtension'
+import { HeadingBoundaryGuard } from '@/lib/tiptap/HeadingBoundaryGuard'
 import { AdaptiveTextColor } from '@/lib/tiptap/adaptiveTextColor'
 import type { Memo, MemoVersion } from '@/types'
 import { lsHomeMemosCache, lsHomeMemosCacheTs } from '@/lib/cache/lsKeys'
@@ -432,6 +433,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       // (둘 다 등록되면 "Duplicate extension names" 경고 + 중복 플러그인이 붙음)
       StarterKit.configure({ codeBlock: false, link: false, underline: false }),
       CustomEnterExtension,
+      // 제목↔문단 경계에서 Delete/Backspace 병합(문단이 제목 서식으로 변함) 차단
+      HeadingBoundaryGuard,
       Underline,
       TextStyle,
       AdaptiveTextColor.configure({ types: ['textStyle'] }),
