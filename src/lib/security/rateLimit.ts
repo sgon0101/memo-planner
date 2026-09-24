@@ -13,6 +13,7 @@ export const RATE_LIMITS = {
   'ai-report': 40,           // 회고 리포트
   'ai-analyze-profile': 30,  // 프로필 전체 분석 — 가장 무거움
   'ai-profile-insight': 60,  // 프로필 제안 카드
+  'ai-source-note': 20,      // 소스(PDF·이미지 묶음) 요약 — 이미지 타일 다수, 가장 비쌈
 } as const
 
 export type RateBucket = keyof typeof RATE_LIMITS

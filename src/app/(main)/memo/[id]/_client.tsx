@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useFolders } from '@/hooks/useFolders'
 import { memoKeys, toMemo } from '@/hooks/useMemos'
 import MemoEditor from '@/components/memo/MemoEditor'
+import SourceFileBar from '@/components/memo/SourceFileBar'
 import type { Memo } from '@/types'
 
 export default function MemoEditorClient() {
@@ -71,6 +72,7 @@ export default function MemoEditorClient() {
       initialIsPinned={memo.isPinned}
       initialFolderId={memo.folderId}
       initialFolderName={folderName}
+      headerSlot={<SourceFileBar memoId={memo.id} memoTitle={memo.title} />}
     />
   )
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect } from 'react'
 import { useAllMemosMeta } from '@/hooks/useAllMemosMeta'
+import { wikiKey } from '@/lib/wiki/normalize'
 
 interface Props {
   query: string
@@ -18,9 +19,12 @@ export default function WikiSuggest({ query, position, onSelect, onClose }: Prop
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [flipUp, setFlipUp] = useState(false)
 
-  const q = query.toLowerCase()
-  const filtered = allWikiLinks.filter((kw) => kw.toLowerCase().includes(q)).slice(0, 8)
-  const showNew = !!query && !filtered.includes(query)
+  // 정규화 키로 비교 — "행동 경" 입력에도 `행동경제학`이 제안된다
+  const qKey = wikiKey(query)
+  const filtered = allWikiLinks.filter((kw) => wikiKey(kw).includes(qKey)).slice(0, 8)
+  // 같은 키의 허브가 이미 있으면 '새로 만들기'를 숨긴다 — 띄어쓴 변형이 새 허브로 갈라지는 경로 차단
+  const hasSameKey = !!qKey && allWikiLinks.some((kw) => wikiKey(kw) === qKey)
+  const showNew = !!query && !hasSameKey
   const totalItems = filtered.length + (showNew ? 1 : 0)
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 검색어 변경 시 선택 인덱스 리셋 (의도된 패턴)

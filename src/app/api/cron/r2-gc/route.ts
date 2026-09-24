@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
   let totalKept = 0
   // 보존 사유 분해 — 어떤 가드가 실제로 일하고 있는지 운영 중에 확인할 수 있어야 한다
   // (가드가 조용히 무효화돼 있던 게 2026-08-02에 발견된 문제였다)
-  const keptBy = { memoLink: 0, lockFailsafe: 0, referenced: 0 }
+  const keptBy = { memoLink: 0, trashLink: 0, sourceLink: 0, lockFailsafe: 0, referenced: 0 }
   const errors: string[] = []
 
   for (const [userId, userFiles] of byUser.entries()) {
@@ -172,15 +172,79 @@ export async function GET(req: NextRequest) {
       continue
     }
 
+    // 가드 ⑦(신규): 휴지통 메모에 연결된 파일 보존.
+    // 기존 로직은 활성 메모만 activeMemoIds에 담아, 휴지통 메모의 원본이
+    // 7일 안전창을 지나면 삭제될 수 있었다(복원해도 파일이 없는 상태).
+    // 헤더 주석의 "휴지통 제외"는 메모 스캔 대상 얘기였을 뿐 파일 보존은 아니었음 — 실제 버그 수정.
+    const trashedMemoIds = new Set<string>()
+    {
+      let tFrom = 0
+      let tFailed = false
+      for (;;) {
+        const { data: tBatch, error: tErr } = await supabase
+          .from('memos')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_deleted', true)
+          .range(tFrom, tFrom + 499)
+        if (tErr) { tFailed = true; break }
+        if (!tBatch || tBatch.length === 0) break
+        for (const m of tBatch as Array<{ id: string }>) trashedMemoIds.add(m.id)
+        if (tBatch.length < 500) break
+        tFrom += 500
+      }
+      if (tFailed) {
+        errors.push(`user ${userId}: 휴지통 메모 조회 실패 — GC 스킵 (fail-safe)`)
+        continue
+      }
+    }
+
+    // 가드 ⑧(신규): memo_sources에 연결된 소스 파일 보존.
+    // 소스 파일(PDF·원본 이미지)은 본문에 URL이 없을 수 있어(SourceFileBar가 따로 렌더)
+    // URL 스캔으로는 참조를 증명할 수 없다. 메모가 활성이든 휴지통이든 보존한다
+    // (영구 삭제되면 memo_sources가 CASCADE로 사라져 기존 orphan 로직이 처리).
+    const sourceLinkedFileIds = new Set<string>()
+    {
+      let sFrom = 0
+      let sFailed = false
+      for (;;) {
+        const { data: sBatch, error: sErr } = await supabase
+          .from('memo_sources')
+          .select('file_id')
+          .eq('user_id', userId)
+          .range(sFrom, sFrom + 499)
+        if (sErr) { sFailed = true; break }
+        if (!sBatch || sBatch.length === 0) break
+        for (const r of sBatch as Array<{ file_id: string }>) sourceLinkedFileIds.add(r.file_id)
+        if (sBatch.length < 500) break
+        sFrom += 500
+      }
+      if (sFailed) {
+        errors.push(`user ${userId}: memo_sources 조회 실패 — GC 스킵 (fail-safe)`)
+        continue
+      }
+    }
+
     const activeMemoIds = new Set(memoIds)
 
     for (const f of userFiles) {
       totalChecked++
+      // 가드 ⑧: 노트에 묶인 소스 파일 (활성·휴지통 모두)
+      if (sourceLinkedFileIds.has(f.id as string)) {
+        totalKept++; keptBy.sourceLink++
+        continue
+      }
       // 가드 ③: 활성 메모에 연결된 파일은 본문 스캔 없이 보존
       // (잠금 메모는 content가 암호화돼 URL 스캔이 불가능 — memo_id 연결로만 판정 가능)
       const linkedMemoId = (f as Record<string, unknown>).memo_id as string | null
       if (linkedMemoId && activeMemoIds.has(linkedMemoId)) {
         totalKept++; keptBy.memoLink++
+        continue
+      }
+
+      // 가드 ⑦: 휴지통 메모에 연결된 파일 — 복원 가능하므로 보존
+      if (linkedMemoId && trashedMemoIds.has(linkedMemoId)) {
+        totalKept++; keptBy.trashLink++
         continue
       }
 

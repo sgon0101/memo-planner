@@ -13,6 +13,7 @@ import {
   type RecurrenceSettings,
   defaultRecurrence, buildRRule, parseRRule, ALL_BYDAY,
 } from '@/lib/planner/rrulePresets'
+import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { Plan, PlanTemplate } from '@/types'
 
 const PRESET_COLORS = [
@@ -122,17 +123,18 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
 
     if (q) {
       if (q.startsWith('#')) {
-        const tagQ = q.slice(1)
-        list = activeMemos.filter((m) => m.tags.some((t) => t.toLowerCase().includes(tagQ)))
+        const tagQ = tagKey(q.slice(1))
+        list = activeMemos.filter((m) => m.tags.some((t) => tagKey(t).includes(tagQ)))
       } else if (q.startsWith('[[')) {
-        const wikiQ = q.slice(2)
-        list = activeMemos.filter((m) => m.wikiLinks.some((w) => w.toLowerCase().includes(wikiQ)))
+        // 정규화 키 비교 — 띄어쓴 표기로 검색해도 같은 허브의 메모가 잡힌다
+        const wikiQ = wikiKey(q.slice(2))
+        list = activeMemos.filter((m) => m.wikiLinks.some((w) => wikiKey(w).includes(wikiQ)))
       } else {
         list = activeMemos.filter((m) =>
           m.title.toLowerCase().includes(q) ||
           m.contentText.toLowerCase().includes(q) ||
-          m.tags.some((t) => t.toLowerCase().includes(q)) ||
-          m.wikiLinks.some((w) => w.toLowerCase().includes(q))
+          m.tags.some((t) => tagKey(t).includes(tagKey(q))) ||
+          m.wikiLinks.some((w) => wikiKey(w).includes(wikiKey(q)))
         )
       }
     }
@@ -153,11 +155,11 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     const wikiQ = isWikiMode ? q.slice(2)  : q
 
     if (!isWikiMode) {
-      const tag = m.tags.find((t) => t.toLowerCase().includes(tagQ))
+      const tag = m.tags.find((t) => tagKey(t).includes(tagKey(tagQ)))
       if (tag) return { type: 'tag' as const, value: tag }
     }
     if (!isTagMode) {
-      const wiki = m.wikiLinks.find((w) => w.toLowerCase().includes(wikiQ))
+      const wiki = m.wikiLinks.find((w) => wikiKey(w).includes(wikiKey(wikiQ)))
       if (wiki) return { type: 'wiki' as const, value: wiki }
     }
     return null

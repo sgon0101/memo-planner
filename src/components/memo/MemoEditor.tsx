@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useState, useLayoutEffect } from 'react'
+import { useEffect, useRef, useCallback, useState, useLayoutEffect, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { memoKeys, useMemos } from '@/hooks/useMemos'
@@ -62,6 +62,8 @@ interface MemoEditorProps {
   initialFolderId?: string | null
   initialFolderName?: string | null
   isNew?: boolean
+  /** 헤더 아래에 꽂을 요소 (소스 파일 카드 등) */
+  headerSlot?: ReactNode
 }
 
 function toMemo(row: Record<string, unknown>): Memo {
@@ -119,7 +121,7 @@ function extractTags(text: string): string[] {
   return [...new Set(matches.map((m) => m[1]))]
 }
 
-export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, initialFolderName = null, isNew = false }: MemoEditorProps) {
+export default function MemoEditor({ memoId, initialTitle, initialContent, initialIsStarred = false, initialIsPinned = false, initialFolderId = null, initialFolderName = null, isNew = false, headerSlot }: MemoEditorProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromGraph = searchParams.get('from') === 'graph'
@@ -1298,6 +1300,9 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           data-no-focus-ring="true"
           className="w-full px-5 md:px-8 pt-3 md:pt-4 pb-1.5 md:pb-2 text-2xl font-bold text-gray-900 dark:text-white bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600"
         />
+
+        {/* 헤더 아래 슬롯 — 소스 파일 카드(SourceFileBar) 등 외부 주입용 */}
+        {headerSlot}
 
         {/* 툴바 — onImageUpload: 붙여넣기/드롭/슬래시와 동일한 단일 업로드 경로 */}
         {editor && <EditorToolbar editor={editor} onImageUpload={handleImageUpload} />}
