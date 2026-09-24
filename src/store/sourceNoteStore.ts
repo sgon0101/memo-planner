@@ -43,8 +43,9 @@ export const useSourceNoteStore = create<SourceNoteState>((set, get) => ({
     open: true,
     initialFiles: opts?.files ?? null,
     folderId: opts?.folderId !== undefined ? opts.folderId : s.folderId,
-    // 진행 중인 분석이 없으면 새로 시작
-    job: s.job.status === 'running' ? s.job : { status: 'idle' },
+    // 새 파일을 들고 오면 새로 시작. 버튼으로만 열면 진행 중·완료·실패 결과를 그대로 보여준다
+    // (완료 토스트가 사라진 뒤 다시 열어도 결과·오류 메시지를 잃지 않도록 — E2E에서 발견)
+    job: opts?.files?.length && s.job.status !== 'running' ? { status: 'idle' } : s.job,
   })),
   reopen: () => set({ open: true, initialFiles: null }),
   closeModal: () => set({ open: false, initialFiles: null }),

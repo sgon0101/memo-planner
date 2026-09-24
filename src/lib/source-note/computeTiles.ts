@@ -15,8 +15,13 @@ export const TILE_OVERLAP = 80
 export const MAX_SET_TILES = 150
 /** 이 개수를 넘으면 분할 추출 → 종합 2단계 */
 export const CHUNK_THRESHOLD = 40
-/** 분할 추출 청크 크기 */
-export const CHUNK_SIZE = 30
+/**
+ * 분할 추출 청크 크기 — 설계안은 30이었으나 E2E에서 글자가 빽빽한 캡처 30조각의 전사문이
+ * 출력 한도를 넘어 잘렸다(→ 부분 요약 금지 에러). 15조각이면 압축 전사가 한도 안에 든다.
+ */
+export const CHUNK_SIZE = 15
+/** 타일 높이를 이 배율 이내로 넘으면 분할 대신 살짝 축소 */
+const SLIGHT_OVERFLOW = 1.15
 
 export interface TilePlan {
   /** 축소 후 가로 */
@@ -38,6 +43,15 @@ export function computeTiles(width: number, height: number): TilePlan {
   const tileH = Math.max(TILE_OVERLAP + 1, Math.min(TILE_MAX_WIDTH, Math.floor(TILE_MAX_PIXELS / w)))
 
   if (h <= tileH) return { width: w, height: h, scale, tiles: [{ top: 0, height: h }] }
+
+  // 타일 높이를 조금(15% 이내)만 넘는 이미지 — 예: 1080×1080 카드뉴스는 1.17MP라 그대로면
+  // 80px 겹침 2조각이 되어 비용이 2배. 쪼개지 않고 1.15MP 이하로 살짝 축소해 1장으로 보낸다.
+  if (h <= tileH * SLIGHT_OVERFLOW) {
+    const s = Math.min(Math.sqrt(TILE_MAX_PIXELS / (w * h)), TILE_MAX_WIDTH / h, 1)
+    const w2 = Math.max(1, Math.floor(w * s))
+    const h2 = Math.max(1, Math.floor(h * s))
+    return { width: w2, height: h2, scale: scale * s, tiles: [{ top: 0, height: h2 }] }
+  }
 
   const step = tileH - TILE_OVERLAP
   const count = Math.ceil((h - TILE_OVERLAP) / step)

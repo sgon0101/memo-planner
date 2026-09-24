@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '같은 파일이 중복으로 들어 있어요.' }, { status: 400 })
   }
 
+  // 실패해도 이미 쓴 토큰은 기록한다 (실패 분석의 비용이 보이지 않게 되지 않도록)
+  const usage: UsageEntry[] = []
   try {
     // ── 파일 조회 + 검증 (본인 소스 파일만, 입력 순서 유지) ──
     const { data: rowsData, error: rowsErr } = await supabase
@@ -132,7 +134,6 @@ export async function POST(req: NextRequest) {
 
     const vocab = await buildVocab(supabase, user.id)
     const vocabForPrompt = { wikis: vocab.wikiList, tags: vocab.tagList }
-    const usage: UsageEntry[] = []
     const crops: (CropResult & { index: number })[] = []
 
     let raw: Record<string, unknown>
@@ -231,6 +232,7 @@ export async function POST(req: NextRequest) {
       createdAt: saved.created_at,
     } satisfies AnalyzeResponse)
   } catch (e) {
+    if (usage.length) console.error('[source-note] failed usage', JSON.stringify({ costUsd: estimateCostUsd(usage), calls: usage }))
     if (e instanceof UserError) return NextResponse.json({ error: e.message }, { status: e.status })
     if (e instanceof TruncatedError) return NextResponse.json({ error: e.message }, { status: 502 })
     if (e instanceof Anthropic.APIError) {

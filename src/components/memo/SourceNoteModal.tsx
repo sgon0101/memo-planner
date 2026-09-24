@@ -381,6 +381,7 @@ function SourceNoteBody({ onClose }: { onClose: () => void }) {
             defaultFolderId={defaultFolderId}
             creating={stage === 'creating'}
             onReanalyze={() => runAnalysis(job.uploaded, { force: true, onBackgroundDone })}
+            onStartOver={startOver}
             onCreate={async (payload) => {
               setStage('creating')
               setError(null)
@@ -556,7 +557,7 @@ function ArrangeGrid({
 interface FolderLite { id: string; name: string; parentId: string | null; orderIndex: number }
 
 function ReviewView({
-  response, uploaded, folders, defaultFolderId, creating, onReanalyze, onCreate,
+  response, uploaded, folders, defaultFolderId, creating, onReanalyze, onStartOver, onCreate,
 }: {
   response: AnalyzeResponse
   uploaded: UploadedSource[]
@@ -564,6 +565,7 @@ function ReviewView({
   defaultFolderId: string | null
   creating: boolean
   onReanalyze: () => void
+  onStartOver: () => void
   onCreate: (payload: { title: string; folderId: string | null; wikis: string[]; tags: string[]; includeRelated: boolean }) => void
 }) {
   const a = response.analysis
@@ -677,6 +679,9 @@ function ReviewView({
             <RefreshCw size={12} /> 다시 분석
           </button>
         )}
+        <button type="button" onClick={onStartOver} disabled={creating} className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer">
+          다른 파일로
+        </button>
         <button
           type="button"
           disabled={creating || !title.trim()}

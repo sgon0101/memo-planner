@@ -176,11 +176,13 @@ export async function findNeighbors(
   userId: string,
   analysis: SourceNoteAnalysis,
   vocab: Vocab,
+  /** 임베딩 함수 — 기본 OpenAI. 저장된 임베딩으로 검증할 때 주입 */
+  embed: (text: string) => Promise<number[]> = embedText,
 ): Promise<{ related: RelatedMemoRef[]; neighbors: NoteSuggestion[] }> {
   try {
     const input = [analysis.oneLiner, ...analysis.keyPoints].filter(Boolean).join('\n')
     if (!input.trim()) return { related: [], neighbors: [] }
-    const queryEmbedding = await embedText(input)
+    const queryEmbedding = await embed(input)
     const { data: matches, error } = await supabase.rpc('match_memos', {
       query_embedding: queryEmbedding,
       match_threshold: NEIGHBOR_THRESHOLD,
