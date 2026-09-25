@@ -409,7 +409,17 @@ export default function CalendarView() {
                           di === 6 && 'border-r-0'
                         )}
                         style={{ paddingTop: `${barAreaHeight}px` }}
-                        onClick={() => selectDate(isSelected ? '' : dayStr)}
+                        // 데스크탑(md↑, 칩 레이아웃): 날짜 클릭 = 바로 새 플랜 폼. 날짜도 선택해 두어
+                        // 폼을 닫으면 그 날 플랜 패널이 남는다(기존 플랜 확인은 칩·범위 바·더보기).
+                        // 모바일(dot 레이아웃): 플랜을 따로 누를 수 없어 기존대로 날짜 선택 토글(패널).
+                        onClick={() => {
+                          if (window.matchMedia('(min-width: 768px)').matches) {
+                            selectDate(dayStr)
+                            setFormState({ open: true, date: dayStr })
+                          } else {
+                            selectDate(isSelected ? '' : dayStr)
+                          }
+                        }}
                       >
                         {/* 날짜 숫자 */}
                         <div className="px-1.5 pt-1.5 pb-1">
@@ -448,7 +458,12 @@ export default function CalendarView() {
                             </div>
                           ))}
                           {dayPlans.length > 3 && (
-                            <div className="text-xs text-gray-400 px-1">+{dayPlans.length - 3} 더보기</div>
+                            <div
+                              className="text-xs text-gray-400 px-1 hover:text-gray-600 dark:hover:text-gray-300"
+                              onClick={(e) => { e.stopPropagation(); selectDate(dayStr) }}
+                            >
+                              +{dayPlans.length - 3} 더보기
+                            </div>
                           )}
                         </div>
                         {/* 모바일 dot 패턴 — 최대 4개 + 오버플로 +N (네이티브 캘린더 스타일) */}
