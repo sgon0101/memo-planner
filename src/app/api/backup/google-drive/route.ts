@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, createDriveFolder, uploadDriveFile } from '@/lib/google/drive'
+import { getIntegrationTokens } from '@/lib/google/integrationTokens'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 
 // Next.js route segment config — import 뒤에 위치해야 인식됨
@@ -245,19 +246,14 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
 
-    const { data: integration } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token, metadata')
-      .eq('user_id', user.id)
-      .eq('provider', 'google_drive')
-      .single()
+    const integration = await getIntegrationTokens(user.id, 'google_drive')
 
-    if (!integration?.access_token) {
+    if (!integration?.accessToken) {
       return NextResponse.json({ error: 'Google Drive가 연결되지 않았습니다.' }, { status: 403 })
     }
 
     // PR-2: 잠금 메모 백업 정책 (default: skip)
-    const meta = (integration.metadata as Record<string, unknown> | null) ?? {}
+    const meta = integration.metadata
     const lockedPolicyRaw = (meta.backupLockedMemos as string) ?? 'skip'
     const lockedPolicy: 'skip' | 'placeholder' | 'ciphertext' =
       lockedPolicyRaw === 'placeholder' || lockedPolicyRaw === 'ciphertext' ? lockedPolicyRaw : 'skip'
@@ -276,7 +272,7 @@ export async function POST(req: NextRequest) {
     }
 
     const folderMap = new Map((folders ?? []).map((f) => [f.id, f.name as string]))
-    const drive = await getDriveClient(integration.access_token, integration.refresh_token ?? '')
+    const drive = await getDriveClient(integration.accessToken, integration.refreshToken ?? '')
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-')

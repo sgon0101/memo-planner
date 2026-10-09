@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, createDriveFolder, listBackupFolders, listDriveFiles } from '@/lib/google/drive'
+import { getIntegrationTokens } from '@/lib/google/integrationTokens'
 import {
   convertImageForBackup,
   backupImageKey,
@@ -56,25 +57,20 @@ export async function POST() {
   if (!publicUrl) return NextResponse.json({ error: 'R2 설정이 없습니다.' }, { status: 500 })
 
   // Drive 연동 확인
-  const { data: integration } = await supabase
-    .from('user_integrations')
-    .select('access_token, refresh_token, metadata')
-    .eq('user_id', user.id)
-    .eq('provider', 'google_drive')
-    .maybeSingle()
+  const integration = await getIntegrationTokens(user.id, 'google_drive')
 
-  if (!integration?.access_token) {
+  if (!integration?.accessToken) {
     return NextResponse.json({ error: 'Google Drive가 연결되어 있지 않습니다.' }, { status: 400 })
   }
 
-  const meta = (integration.metadata as Record<string, unknown>) ?? {}
+  const meta = integration.metadata
   const imageFormat = normalizeBackupImageFormat(meta.backupImageFormat)
 
   const startedAt = Date.now()
   const deadlineAt = startedAt + TIME_BUDGET_MS
 
   try {
-    const drive = await getDriveClient(integration.access_token, integration.refresh_token ?? '')
+    const drive = await getDriveClient(integration.accessToken, integration.refreshToken ?? '')
 
     // ── 대상 URL 수집: 메모 content + uploaded_files ──
     const urlSet = new Set<string>()

@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const stored = row.analysis as StoredAnalysis
     const fileIds = (row.file_ids as string[]) ?? []
     // 분할 경로에서 종합(②)이 아직 안 끝난 분석으로는 노트를 만들 수 없다
-    if (stored.phase === 'extracted' || !stored.result) {
+    if (stored.phase === 'extracted' || stored.phase === 'synthesizing' || !stored.result) {
       return NextResponse.json({ error: '분석이 아직 끝나지 않았어요. 잠시 후 다시 시도해주세요.' }, { status: 409 })
     }
     const result = stored.result

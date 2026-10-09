@@ -1,25 +1,21 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCalendarClient, planToGoogleEvent } from '@/lib/google/calendar'
+import { getIntegrationTokens } from '@/lib/google/integrationTokens'
 
 export async function POST() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // 저장된 토큰 조회
-  const { data: integration } = await supabase
-    .from('user_integrations')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('provider', 'google_calendar')
-    .single()
+  // 저장된 토큰 조회 (서버 전용·복호화)
+  const integration = await getIntegrationTokens(user.id, 'google_calendar')
 
-  if (!integration) {
+  if (!integration?.accessToken) {
     return NextResponse.json({ error: 'Google Calendar not connected' }, { status: 400 })
   }
 
-  const calendar = await getCalendarClient(integration.access_token, integration.refresh_token)
+  const calendar = await getCalendarClient(integration.accessToken, integration.refreshToken ?? '')
 
   // 아직 동기화되지 않은 플랜 조회 (google_event_id가 없는 것)
   const { data: plans } = await supabase
