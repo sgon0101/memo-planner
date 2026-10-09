@@ -108,13 +108,17 @@ memo-planner/
 │   ├── supabase/
 │   │   ├── client.ts               # 브라우저 클라이언트
 │   │   ├── server.ts               # 서버 클라이언트
+│   │   ├── admin.ts                # 서비스 롤 클라이언트 (server-only — 쓰는 쪽이 user_id 조건 필수)
 │   │   └── schema.sql              # 테이블 스키마 전체
 │   ├── ai/
 │   │   ├── claude.ts               # Claude API 래퍼
 │   │   ├── prompts.ts              # 프롬프트 모음
 │   │   └── analyzer.ts             # 메모·플랜 분석 로직
 │   ├── crypto/
-│   │   └── lock.ts                 # AES-256 암호화/복호화
+│   │   ├── lock.ts                 # AES-256 암호화/복호화
+│   │   └── tokenCipher.ts          # OAuth 토큰 AES-256-GCM (v1:iv:tag:ct, 평문은 통과 — 마이그레이션 호환)
+│   ├── google/
+│   │   └── integrationTokens.ts    # user_integrations 토큰 읽기·쓰기 단일 출처 (서비스 롤 + 암복호화)
 │   ├── notifications/
 │   │   └── scheduler.ts            # 브라우저 Notification + setTimeout 스케줄러
 │   ├── graph/
@@ -315,6 +319,7 @@ NEXTAUTH_URL=http://localhost:3000
 
 # 암호화
 ENCRYPTION_SECRET=           # AES-256 키 (32자 이상 랜덤 문자열)
+TOKEN_ENCRYPTION_KEY=        # Google OAuth 토큰 암호화 (32바이트 base64) — 운영·로컬이 같은 DB를 쓰면 같은 키여야 함
 
 # Cloudflare R2
 CLOUDFLARE_R2_ACCOUNT_ID=
@@ -554,6 +559,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-10-09 | 보안 2단계 — Drive 토큰 암호화 + source_analyses 쓰기 서버 전용화 (코드만, DB 정책 무변경) | 감사(2026-09-25) 🔴 2건. **A. 토큰**: `lib/crypto/tokenCipher.ts`(AES-256-GCM, `TOKEN_ENCRYPTION_KEY` 호출 시점 검사, `v1:` 없으면 평문 통과) + `lib/supabase/admin.ts` + `lib/google/integrationTokens.ts`(get/save — 서비스 롤·암복호화 단일 출처). 교체: drive/calendar callback(서명 state의 userId로 암호화 저장), backup/google-drive·backup/images·restore(GET·POST)·calendar/sync(`select('*')` 제거)·cron/backup(목록은 `user_id, metadata`만 select, 대상 사용자만 복호화). 설정 페이지는 `select('provider')` 행 존재로 연결 판단(브라우저가 토큰 컬럼을 읽지 않음). backup/settings·google-drive GET·disconnect는 토큰 컬럼 미사용이라 유지. 참고: 감사 문서의 'cron 토큰 갱신 update 2곳'은 실제로는 metadata(lastBackupAt/nextBackupAt) update라 토큰 쓰기가 아님 — 갱신된 access_token을 저장하는 코드는 원래 없음(googleapis가 refresh_token으로 매번 메모리 갱신). `scripts/encrypt-existing-tokens.cjs`(멱등, 기본 dry-run, `--apply`로 실행, 토큰 값 미출력, 읽은 평문 그대로일 때만 update). **B. source_analyses**: analyze(reset update·upsert)·extract(update)·synthesize 쓰기를 admin + `.eq('user_id', user.id)`, 읽기는 세션 클라이언트(RLS) 유지. synthesize는 AI 호출 전 `analysis->>phase` 조건부 update로 `synthesizing` 선점(+`synthStartedAt`, 6분 지나면 재선점 가능), 저장도 내 선점일 때만, 실패 시 `extracted`로 복원. analyze/create는 `synthesizing`을 종합 대기와 동일 취급. 검증: tsc 0·next build 통과·변경 파일 ESLint 클린·`grep access_token src/app/(main)` 0건·cipher 왕복/변조 감지/키 누락·길이 오류 단위 확인. **로컬 라이브**: 설정 Drive 연결됨(요청이 `select=provider`만), 복원 목록 200(10개), 폴더별 백업 성공(메모 589/589, 이미지 279/289 — 실패 10장은 07월 R2 사고 영구 소실분), 이소정 PDF analyze(phase extracted 5/5청크, admin upsert) → extract(이미 끝남, 쓰기 없음) → **synthesize 동시 2건: 1건만 AI(113초), 다른 1건은 3초 만에 409** → 재호출 2.8초 캐시 → create 200. DB 행 calls 6(추출 5+종합 1 = 중복 종합 0), synthStartedAt 잔존 없음, 비용 $0.772. 미검증: 캘린더 sync(Calendar 미연결 — 연동 행 없음), extract의 update 경로(5청크 PDF라 1차수에 끝남), '단일 파일 백업'(combined)은 500 '통합 백업 파일 업로드 실패' — Drive에 `전체백업` 파일이 한 번도 없어 이번 변경과 무관한 기존 결함으로 판단(토큰 값은 평문 통과라 이전과 동일), 후속 조사 필요. dry-run: 대상 1행(google_drive). 테스트 노트 `796ff015` 생성됨(사용자 정리) | 100% |
 | 2026-09-25 | 플래너 월뷰 날짜 클릭 → 바로 새 플랜 폼 (웹만, 배포 완료 PR #340) | 기존엔 날짜 셀 클릭이 날짜 선택(패널 열기)·재클릭 시 해제만 해서 새 플랜은 패널의 버튼을 한 번 더 눌러야 했음 → **데스크탑(md↑, `matchMedia('(min-width: 768px)')` — 칩/dot 레이아웃 분기와 같은 기준)**에서만 셀 클릭 시 `selectDate(dayStr)` + `setFormState({ open, date })`로 폼 즉시 오픈(주뷰 종일 레인과 동일 동작). **모바일은 기존 선택 토글 유지**(dot은 개별 탭 불가라 폼을 띄우면 목록 확인 경로가 사라짐 — 사용자 요청으로 앱은 그대로). 날짜도 선택해 두어 폼을 닫으면 그 날 플랜 패널이 남음. 기존 플랜 확인 경로는 유지: 데스크탑 플랜 칩·범위 바 클릭(stopPropagation) + '+N 더보기'도 stopPropagation으로 패널만 열기. 스와이프 직후 click 차단(onClickCapture)은 그대로라 월 넘김 스와이프가 폼을 열지 않음. 데스크탑은 재클릭 해제 토글 대신 폼이 열림(패널 닫기는 ✕). 검증: verify-changes.sh(tsc 0)·ESLint 클린 + 로컬 라이브(SW·캐시 삭제 후) — 1920px: 빈 날짜 클릭 시 해당 날짜로 폼 오픈·닫으면 선택 유지, 플랜 칩 클릭은 폼 없음 / 416px(iframe): 첫 탭 패널만(폼 없음)·재탭 선택 해제로 기존 동작 유지 | 100% |
 | 2026-09-24 | 메모 검색 — #태그·[[위키]] 정확 필터 + 칩 필터 복귀 유지 | ①**태그/위키 검색이 본문 텍스트 검색이던 문제** — 서버·클라이언트 모두 prefix(#, [[)만 떼고 본문 검색 → `[[사랑` 79건(실제 위키 21건), `#일상` 90건(실제 34건). `lib/memos/searchQuery.ts` 신규(`parseSearchQuery`: #태그/[[위키]] 토큰 vs 자유 텍스트 분리, 미완성 `[[x` 허용, `C#` 등 단어 중간 # 무시) → 토큰은 tags/wiki_links에 대한 정규화 키(wikiKey/tagKey) 필터(AND, 등록 라벨과 정확 일치 시 정확 일치·아니면 접두 일치), 서버 FTS·시맨틱 폴백엔 텍스트만 전달. search 라우트도 토큰 정확 후필터, highlight 토큰에 태그/위키 라벨 포함 ②**자동완성 클릭 무반응** — pick이 검색어를 동일 값(`[[사랑`)으로 재set+포커스 유지라 변화 없음 → 선택 시 위키/태그 칩(activeWiki/activeTag) 적용+검색어 비움+드롭다운 닫기, Enter는 미선택 시 첫 후보 ③**칩 필터 복귀 리셋** — 칩 상태가 memo-list-state(스크롤 이벤트·scrollY>0일 때만 저장)에만 실려 스크롤 없이 메모 진입 시 유실 → `weave:memo-list-filters`에 변경마다 저장, mount 시 스냅샷 ref로 읽어 folderId 일치 시 1회 적용(store 동기화로 folderId가 늦게 확정돼도 커버), 사용자 폴더 변경 시 폐기. 검증: tsc 0·변경 파일 ESLint 클린·파서 단위 케이스 node 확인 | 100% |
 | 2026-09-24 | [PDF 노트 1~3단계] 프로덕션 배포 | PR #338(dev → main, 병합 커밋 `0744593`) — CI(lint·tsc·null byte) 2건·Vercel 미리보기 빌드 통과 후 병합, Vercel 운영 배포 success. 배포 전 점검: main 전용 커밋은 PR 병합 커밋뿐(내용 차이 없음), DB 0017·0018 적용 완료, 신규 환경변수 없음, R2 CORS 운영 출처 preflight(PUT·content-type) 204 허용. 배포 후 확인: 운영 /memo에 `파일로 노트` 버튼 반영, `/api/ai/source-note/{analyze,extract,synthesize}` 로그인 상태에서 입력 검증 400 응답(라우트 존재, AI 미호출). 남은 확인: 운영에서 실제 PDF 1건 E2E, 모바일 바텀시트, 테스트 노트 `7cf4d5a2` 정리(사용자) | 100% |

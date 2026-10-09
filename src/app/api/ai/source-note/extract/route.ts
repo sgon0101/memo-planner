@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { chunkCount, extractChunkAt } from '@/lib/source-note/chunkedExtract'
 import { estimateCostUsd, type UsageEntry } from '@/lib/source-note/claudeCall'
 import { advanceExtraction, toPhaseResponse } from '@/lib/source-note/extractRounds'
@@ -88,10 +89,12 @@ export async function POST(req: NextRequest) {
     const prev = (row.usage ?? {}) as { calls?: UsageEntry[] }
     const calls = [...(prev.calls ?? []), ...usage]
     const next: StoredAnalysis = { ...stored, phase: round.phase, extracted: round.extracted }
-    const { error: saveErr } = await supabase
+    // 쓰기는 서버 전용(서비스 롤) — user_id 조건이 유일한 격리 장치
+    const { error: saveErr } = await createAdminClient()
       .from('source_analyses')
       .update({ analysis: next, usage: { ...prev, calls, costUsd: estimateCostUsd(calls) } })
       .eq('id', row.id)
+      .eq('user_id', user.id)
     if (saveErr) throw new Error(`추출 결과 저장 실패: ${saveErr.message}`)
     console.error('[source-note] extract', JSON.stringify({
       analysisId, ran: round.ran, chunks: `${round.extracted.length}/${stored.chunkTotal}`, costUsd: estimateCostUsd(usage),
