@@ -71,9 +71,12 @@ export interface StoredAnalysis {
    * 분할 경로는 300초 한도 때문에 요청을 나눈다:
    *  'extracting' = 청크 추출 진행 중(요청 하나 = 병렬 1차수, 청크 단위 누적 캐시)
    *  'extracted'  = 추출 완료, 종합 대기
+   *  'synthesizing' = /synthesize가 종합을 선점함 (동시 요청의 중복 AI 호출 방지, synthStartedAt 참고)
    *  'done'(또는 없음, 이전 행 호환) = 종합 완료
    */
-  phase?: 'extracting' | 'extracted' | 'done'
+  phase?: 'extracting' | 'extracted' | 'synthesizing' | 'done'
+  /** 'synthesizing' 선점 시각 — 함수가 시간 초과로 죽어 선점이 남아도 일정 시간 후 다시 가져갈 수 있게 */
+  synthStartedAt?: string
   /** phase 'extracting'/'extracted'에서는 없을 수 있다 (재분석 중이면 이전 결과가 남아 있음) */
   result?: SourceNoteAnalysis
   related?: RelatedMemoRef[]

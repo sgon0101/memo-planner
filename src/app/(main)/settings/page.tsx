@@ -438,7 +438,7 @@ export default function SettingsPage() {
     }
   }
 
-  // 연결 상태를 user_integrations에서 직접 조회 (access_token 유무로 판단)
+  // 연결 상태 = user_integrations 행 존재 여부 (토큰 컬럼은 브라우저에서 읽지 않는다 — 서버 전용)
   async function fetchIntegrationStatus() {
     setIntegrationsLoading(true)
     try {
@@ -447,11 +447,11 @@ export default function SettingsPage() {
       if (!user) return
       const { data: integrations } = await supabase
         .from('user_integrations')
-        .select('provider, access_token')
+        .select('provider')
         .eq('user_id', user.id)
         .in('provider', ['google_drive', 'google_calendar'])
-      setDriveConnected(!!(integrations?.some((i) => i.provider === 'google_drive' && i.access_token)))
-      setCalendarConnected(!!(integrations?.some((i) => i.provider === 'google_calendar' && i.access_token)))
+      setDriveConnected(!!integrations?.some((i) => i.provider === 'google_drive'))
+      setCalendarConnected(!!integrations?.some((i) => i.provider === 'google_calendar'))
     } finally {
       setIntegrationsLoading(false)
     }

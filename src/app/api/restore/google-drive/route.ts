@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getDriveClient, listDriveFiles, downloadDriveFile, listBackupFolders } from '@/lib/google/drive'
+import { getIntegrationTokens } from '@/lib/google/integrationTokens'
 import { parseMarkdownMemo } from '@/lib/import/fromMarkdown'
 
 export const dynamic = 'force-dynamic'
@@ -31,18 +32,13 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-    const { data: integration } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token')
-      .eq('user_id', user.id)
-      .eq('provider', 'google_drive')
-      .single()
+    const integration = await getIntegrationTokens(user.id, 'google_drive')
 
-    if (!integration?.access_token) {
+    if (!integration?.accessToken) {
       return NextResponse.json({ error: 'Google Drive가 연결되지 않았습니다.' }, { status: 403 })
     }
 
-    const drive = await getDriveClient(integration.access_token, integration.refresh_token ?? '')
+    const drive = await getDriveClient(integration.accessToken, integration.refreshToken ?? '')
     const rootFolderId = process.env.GOOGLE_DRIVE_BACKUP_FOLDER_ID || undefined
     const folders = await listBackupFolders(drive, rootFolderId, '메모플래너_')
 
@@ -85,17 +81,12 @@ export async function POST(req: NextRequest) {
     }
     const mode: Mode = body.mode ?? 'skip'
 
-    const { data: integration } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token')
-      .eq('user_id', user.id)
-      .eq('provider', 'google_drive')
-      .single()
-    if (!integration?.access_token) {
+    const integration = await getIntegrationTokens(user.id, 'google_drive')
+    if (!integration?.accessToken) {
       return NextResponse.json({ error: 'Google Drive가 연결되지 않았습니다.' }, { status: 403 })
     }
 
-    const drive = await getDriveClient(integration.access_token, integration.refresh_token ?? '')
+    const drive = await getDriveClient(integration.accessToken, integration.refreshToken ?? '')
 
     // ─── 폴더 구조 탐색 ──────────────────────────────────────────
     // 백업 루트 폴더 안: [.md 파일들] + [하위 폴더(메모 폴더명)]

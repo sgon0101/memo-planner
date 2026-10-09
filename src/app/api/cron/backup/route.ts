@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyCronAuth } from '@/lib/security/cronAuth'
 import { getDriveClient, createDriveFolder, uploadDriveFile, listBackupFolders, deleteDriveFile, listDriveFiles } from '@/lib/google/drive'
+import { getIntegrationTokens } from '@/lib/google/integrationTokens'
 import { buildMemoMarkdown, safeFilenameUnique } from '@/lib/export/toMarkdown'
 import {
   convertImageForBackup,
@@ -288,14 +289,12 @@ export async function GET(req: Request) {
   // 이미지 증분 백업의 deadline 가드용 (maxDuration 300s — 60s 안전 마진)
   const startedAt = Date.now()
 
-  const supabase = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  const supabase = createAdminClient()
 
+  // 토큰 컬럼은 여기서 읽지 않는다 — 백업 대상 사용자만 getIntegrationTokens로 복호화
   const { data: integrations } = await supabase
     .from('user_integrations')
-    .select('user_id, access_token, refresh_token, metadata')
+    .select('user_id, metadata')
     .eq('provider', 'google_drive')
 
   if (!integrations?.length) return NextResponse.json({ processed: 0 })
@@ -310,9 +309,11 @@ export async function GET(req: Request) {
     const lockedPolicy: 'skip' | 'placeholder' | 'ciphertext' =
       lockedPolicyRaw === 'placeholder' || lockedPolicyRaw === 'ciphertext' ? lockedPolicyRaw : 'skip'
     if (!isDue(meta.nextBackupAt as string | null)) continue
-    if (!integration.access_token) continue
 
     try {
+      const tokens = await getIntegrationTokens(integration.user_id, 'google_drive')
+      if (!tokens?.accessToken) continue
+
       const [memos, { data: folders }] = await Promise.all([
         fetchAllMemos(supabase, integration.user_id),
         supabase.from('folders').select('id, name').eq('user_id', integration.user_id),
@@ -331,7 +332,7 @@ export async function GET(req: Request) {
       }
 
       const folderMap = new Map((folders ?? []).map((f) => [f.id, f.name as string]))
-      const drive = await getDriveClient(integration.access_token, integration.refresh_token ?? '')
+      const drive = await getDriveClient(tokens.accessToken, tokens.refreshToken ?? '')
 
       const now = new Date()
       const dateStr = now.toISOString().slice(0, 10)

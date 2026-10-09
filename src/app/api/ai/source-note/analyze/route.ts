@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getObjectBuffer } from '@/lib/r2/presign'
 import { checkRateLimit, rateLimitResponse } from '@/lib/security/rateLimit'
 import { MAX_IMAGE_COUNT, MAX_PDF_PAGES, SOURCE_IMAGE_TYPES, SOURCE_PDF_TYPE } from '@/lib/files/sourceLimits'
@@ -111,12 +112,13 @@ export async function POST(req: NextRequest) {
     const prevStored = cached?.analysis as StoredAnalysis | undefined
 
     // 추출이 진행 중이던 분할 분석 — force여도 새로 시작하지 않고 남은 청크만 이어서 (AI·한도 차감 없음)
-    if (cached && prevStored?.phase === 'extracting') {
+    // 종합 선점 중('synthesizing')이면 force여도 선점을 뺏지 않고 /synthesize로 넘긴다 (중복 AI 호출 방지)
+    if (cached && (prevStored?.phase === 'extracting' || prevStored?.phase === 'synthesizing')) {
       return NextResponse.json(toPhaseResponse(cached.id, prevStored, true))
     }
     if (cached && prevStored && !force) {
       // 추출만 끝나고 종합이 안 된(또는 실패한) 캐시 → 종합만 이어서
-      if (prevStored.phase === 'extracted' || !prevStored.result) {
+      if (prevStored.phase === 'extracted' || prevStored.phase === 'synthesizing' || !prevStored.result) {
         return NextResponse.json(toPhaseResponse(cached.id, prevStored, true))
       }
       return NextResponse.json({
@@ -137,7 +139,9 @@ export async function POST(req: NextRequest) {
       // [다시 분석] — 끝난 분할 추출문 재사용. 종합 대기 상태로 되돌리고 /synthesize로 넘긴다
       // (이전 결과는 종합이 끝날 때까지 남겨 둔다 — 실패해도 잃지 않게)
       const reset: StoredAnalysis = { ...prevStored, phase: 'extracted' }
-      const { error: updErr } = await supabase.from('source_analyses').update({ analysis: reset }).eq('id', cached.id)
+      // source_analyses 쓰기는 서버 전용(서비스 롤) — user_id 조건이 유일한 격리 장치
+      const { error: updErr } = await createAdminClient().from('source_analyses').update({ analysis: reset })
+        .eq('id', cached.id).eq('user_id', user.id)
       if (updErr) throw new Error(`재분석 준비 실패: ${updErr.message}`)
       return NextResponse.json(toPhaseResponse(cached.id, reset, true))
     }
@@ -209,7 +213,8 @@ export async function POST(req: NextRequest) {
       costUsd, crops: crops.map((c) => [c.index, c.x0, c.x1, c.width, c.cropped]),
     }))
 
-    const save = (stored: StoredAnalysis) => supabase
+    // 쓰기는 서버 전용(서비스 롤). user_id는 검증된 세션 값만 — onConflict(user_id, source_key)로 본인 행에만 닿는다
+    const save = (stored: StoredAnalysis) => createAdminClient()
       .from('source_analyses')
       .upsert({
         user_id: user.id,
