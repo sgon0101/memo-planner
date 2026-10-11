@@ -12,6 +12,7 @@ import { usePlanner, usePlansQuery, useRecurringCompletionsQuery } from '@/hooks
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import type { Plan } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 interface PlanDetailPanelProps {
   plan: Plan
@@ -105,10 +106,11 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
 
   function handleToggleComplete() {
     // isCompleted (fresh) 기준으로 토글 — props plan.isCompleted는 stale 가능
-    if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
-      toggleRecurringComplete(plan.originalPlanId, plan.date, isCompleted).catch(console.error)
+    const { originalPlanId, date } = plan
+    if (plan.isRecurringInstance && originalPlanId && date) {
+      toggleRecurringComplete(originalPlanId, date, isCompleted).catch(reportSaveError('완료 상태를 저장하지 못했어요.', () => toggleRecurringComplete(originalPlanId, date, isCompleted)))
     } else {
-      toggleComplete(plan.id, isCompleted).catch(console.error)
+      toggleComplete(plan.id, isCompleted).catch(reportSaveError('완료 상태를 저장하지 못했어요.', () => toggleComplete(plan.id, isCompleted)))
     }
   }
 
@@ -295,15 +297,15 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
             <div className="w-full bg-white dark:bg-gray-900 rounded-t-xl p-4 space-y-2 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <p className="text-xs font-medium text-gray-500 mb-3">반복 일정 삭제</p>
               <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                onClick={() => { skipRecurringInstance(plan.originalPlanId!, plan.date!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                onClick={() => { skipRecurringInstance(plan.originalPlanId!, plan.date!).catch(reportSaveError('이 일정을 건너뛰지 못했어요.', () => skipRecurringInstance(plan.originalPlanId!, plan.date!))); setShowDeleteMenu(false); onClose() }}>
                 이 일정만 삭제
               </button>
               <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                onClick={() => { stopRecurringFromDate(plan.originalPlanId!, plan.date!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                onClick={() => { stopRecurringFromDate(plan.originalPlanId!, plan.date!).catch(reportSaveError('반복을 종료하지 못했어요.', () => stopRecurringFromDate(plan.originalPlanId!, plan.date!))); setShowDeleteMenu(false); onClose() }}>
                 이 일정부터 반복 종료
               </button>
               <button className="w-full text-left px-3 py-2.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500"
-                onClick={() => { removePlan(plan.originalPlanId!).catch(console.error); setShowDeleteMenu(false); onClose() }}>
+                onClick={() => { removePlan(plan.originalPlanId!).catch(reportSaveError('플랜을 삭제하지 못했어요.', () => removePlan(plan.originalPlanId!))); setShowDeleteMenu(false); onClose() }}>
                 모든 반복 일정 삭제
               </button>
               <button className="w-full py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 mt-1" onClick={() => setShowDeleteMenu(false)}>

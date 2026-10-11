@@ -15,13 +15,23 @@ function ConfirmInner() {
 
     const supabase = createClient()
     const code = searchParams.get('code')
+    // callback에서 검증된 내부 경로만 넘어오지만 한 번 더 방어
+    const nextRaw = searchParams.get('next')
+    const next = nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : null
+    const isRecovery = next === '/reset-password'
+    const successPath = next ?? '/memo'
 
     async function handle() {
       // 1) code PKCE exchange
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          router.replace('/memo')
+          router.replace(successPath)
+          return
+        }
+        // 재설정 링크 만료/다른 브라우저에서 열림(PKCE verifier 없음) → 재요청 화면으로
+        if (isRecovery) {
+          router.replace('/forgot-password?error=link')
           return
         }
         // 실제 에러 메시지를 URL에 담아 전달
@@ -33,20 +43,26 @@ function ConfirmInner() {
       // 2) hash fragment 방식 — 기존 세션 확인
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        router.replace('/memo')
+        router.replace(successPath)
         return
       }
 
       // 3) onAuthStateChange 대기 (최대 5초)
       const timeout = setTimeout(() => {
-        router.replace('/login?error=timeout')
+        router.replace(isRecovery ? '/forgot-password?error=link' : '/login?error=timeout')
       }, 5000)
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY' && session) {
+          clearTimeout(timeout)
+          subscription.unsubscribe()
+          router.replace('/reset-password')
+          return
+        }
         if (event === 'SIGNED_IN' && session) {
           clearTimeout(timeout)
           subscription.unsubscribe()
-          router.replace('/memo')
+          router.replace(successPath)
         }
       })
     }

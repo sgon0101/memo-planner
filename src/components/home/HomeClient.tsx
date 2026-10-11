@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { memoKeys } from '@/hooks/useMemos'
 import type { Memo } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 interface RecentMemo {
   id: string
@@ -94,6 +95,7 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
           }
         },
       )
+      reportSaveError('완료 상태를 저장하지 못했어요.', () => toggleComplete(id, current))(error)
       return
     }
     // 3) 플래너 페이지 캐시도 무효화 → 다음 방문 시 최신 상태 반영
@@ -152,8 +154,9 @@ export default function HomeClient({ userName, totalMemos, completedPlans, recen
       }
       queryClient.setQueryData<Memo[]>(memoKeys.all(), (old) => old ? [newMemo, ...old] : [newMemo])
       router.push(`/memo/${data.id}`)
-    } catch {
-      // fallback
+    } catch (err) {
+      // 입력한 제목은 그대로 두어 다시 시도할 수 있게 한다
+      reportSaveError('메모를 만들지 못했어요. 다시 시도해주세요.')(err)
     } finally {
       setCreating(false)
     }

@@ -112,11 +112,16 @@ export function useFolders() {
       return old.map((f) => orderMap.has(f.id) ? { ...f, orderIndex: orderMap.get(f.id)! } : f)
     })
 
-    await Promise.all(
+    const results = await Promise.all(
       reordered.map((f, i) =>
         supabase.from('folders').update({ order_index: i }).eq('id', f.id)
       )
     )
+    const failed = results.find((r) => r.error)
+    if (failed?.error) {
+      queryClient.invalidateQueries({ queryKey: folderKeys.all() }) // 낙관적 순서 → 서버 상태로 되돌림
+      throw failed.error
+    }
   }, [folders, queryClient, supabase, updateFolder])
 
   const nestFolder = useCallback(async (dragId: string, targetId: string) => {
@@ -138,19 +143,25 @@ export function useFolders() {
       old?.map((f) => f.id === dragId ? { ...f, parentId: targetId, orderIndex: childCount } : f)
     )
 
-    await supabase
+    const { error } = await supabase
       .from('folders')
       .update({ parent_id: targetId, order_index: childCount })
       .eq('id', dragId)
+    if (error) {
+      queryClient.invalidateQueries({ queryKey: folderKeys.all() })
+      throw error
+    }
   }, [folders, queryClient, supabase, updateFolder])
 
   const removeFolder = useCallback(async (id: string) => {
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
-    await supabase
+    // 하위 메모를 휴지통으로 먼저 옮기고, 실패하면 폴더 삭제도 하지 않는다
+    const { error: memoErr } = await supabase
       .from('memos')
       .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder_id: null })
       .eq('folder_id', id)
       .eq('user_id', user?.id)
+    if (memoErr) throw memoErr
     const { error } = await supabase.from('folders').delete().eq('id', id)
     if (error) throw error
     deleteFolder(id)

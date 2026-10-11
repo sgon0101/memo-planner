@@ -11,6 +11,7 @@ import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 interface PlanPanelProps {
   date: string
@@ -147,10 +148,11 @@ export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, o
             key={plan.id}
             plan={plan}
             onToggle={() => {
-              if (plan.isRecurringInstance && plan.originalPlanId && plan.date) {
-                toggleRecurringComplete(plan.originalPlanId, plan.date, plan.isCompleted).catch(console.error)
+              const { originalPlanId, date } = plan
+              if (plan.isRecurringInstance && originalPlanId && date) {
+                toggleRecurringComplete(originalPlanId, date, plan.isCompleted).catch(reportSaveError('완료 상태를 저장하지 못했어요.', () => toggleRecurringComplete(originalPlanId, date, plan.isCompleted)))
               } else {
-                toggleComplete(plan.id, plan.isCompleted).catch(console.error)
+                toggleComplete(plan.id, plan.isCompleted).catch(reportSaveError('완료 상태를 저장하지 못했어요.', () => toggleComplete(plan.id, plan.isCompleted)))
               }
             }}
             onEdit={() => onEditPlan(plan)}
@@ -214,15 +216,16 @@ export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, o
           onEdit={() => { setDetailPlan(null); onEditPlan(detailPlan) }}
           onDelete={(mode) => {
             const p = detailPlan
+            const { originalPlanId, date } = p
             setDetailPlan(null)
-            if (!p.isRecurringInstance || !p.originalPlanId || !p.date) {
-              removePlan(p.id).catch(console.error)
+            if (!p.isRecurringInstance || !originalPlanId || !date) {
+              removePlan(p.id).catch(reportSaveError('플랜을 삭제하지 못했어요.', () => removePlan(p.id)))
             } else if (mode === 'this') {
-              skipRecurringInstance(p.originalPlanId, p.date).catch(console.error)
+              skipRecurringInstance(originalPlanId, date).catch(reportSaveError('이 일정을 건너뛰지 못했어요.', () => skipRecurringInstance(originalPlanId, date)))
             } else if (mode === 'after') {
-              stopRecurringFromDate(p.originalPlanId, p.date).catch(console.error)
+              stopRecurringFromDate(originalPlanId, date).catch(reportSaveError('반복을 종료하지 못했어요.', () => stopRecurringFromDate(originalPlanId, date)))
             } else {
-              removePlan(p.originalPlanId).catch(console.error)
+              removePlan(originalPlanId).catch(reportSaveError('플랜을 삭제하지 못했어요.', () => removePlan(originalPlanId)))
             }
           }}
           onClose={() => setDetailPlan(null)}
@@ -239,15 +242,15 @@ export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, o
                 <p className="text-xs text-gray-500 mb-4">반복 일정입니다. 어떻게 삭제할까요?</p>
                 <div className="space-y-2">
                   <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    onClick={() => { skipRecurringInstance(deletingPlan.originalPlanId!, deletingPlan.date!).catch(console.error); setDeletingPlan(null) }}>
+                    onClick={() => { skipRecurringInstance(deletingPlan.originalPlanId!, deletingPlan.date!).catch(reportSaveError('이 일정을 건너뛰지 못했어요.', () => skipRecurringInstance(deletingPlan.originalPlanId!, deletingPlan.date!))); setDeletingPlan(null) }}>
                     이 일정만 삭제
                   </button>
                   <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    onClick={() => { stopRecurringFromDate(deletingPlan.originalPlanId!, deletingPlan.date!).catch(console.error); setDeletingPlan(null) }}>
+                    onClick={() => { stopRecurringFromDate(deletingPlan.originalPlanId!, deletingPlan.date!).catch(reportSaveError('반복을 종료하지 못했어요.', () => stopRecurringFromDate(deletingPlan.originalPlanId!, deletingPlan.date!))); setDeletingPlan(null) }}>
                     이 일정부터 반복 종료
                   </button>
                   <button className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500"
-                    onClick={() => { removePlan(deletingPlan.originalPlanId!).catch(console.error); setDeletingPlan(null) }}>
+                    onClick={() => { removePlan(deletingPlan.originalPlanId!).catch(reportSaveError('플랜을 삭제하지 못했어요.', () => removePlan(deletingPlan.originalPlanId!))); setDeletingPlan(null) }}>
                     모든 반복 일정 삭제
                   </button>
                 </div>
@@ -257,7 +260,7 @@ export default function PlanPanel({ date, periodStart, periodEnd, periodLabel, o
                 <p className="text-xs text-gray-500 mb-4">이 플랜을 삭제할까요?</p>
                 <div className="flex gap-2">
                   <button className="flex-1 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300" onClick={() => setDeletingPlan(null)}>취소</button>
-                  <button className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white" onClick={() => { removePlan(deletingPlan.id).catch(console.error); setDeletingPlan(null) }}>삭제</button>
+                  <button className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white" onClick={() => { removePlan(deletingPlan.id).catch(reportSaveError('플랜을 삭제하지 못했어요.', () => removePlan(deletingPlan.id))); setDeletingPlan(null) }}>삭제</button>
                 </div>
               </>
             )}
