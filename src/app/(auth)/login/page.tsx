@@ -22,14 +22,22 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const urlError = searchParams.get('error')
   const urlMsg = searchParams.get('msg')
+  const urlErrorCode = searchParams.get('error_code')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState(() => {
     if (!urlError) return ''
-    if (urlMsg) return `Google 로그인 실패: ${decodeURIComponent(urlMsg)}`
+    // 메일 링크(가입 인증 등)가 만료됐거나 이미 사용됨 — Google 로그인과 무관
+    if (urlErrorCode === 'otp_expired') {
+      return '인증 링크가 만료되었거나 이미 사용됐어요. 이미 인증하셨다면 바로 로그인해 주세요.'
+    }
+    // 코드 교환 실패 — 이메일 링크와 Google 로그인 모두 이 경로를 지난다
+    if (urlMsg) return `로그인을 마치지 못했어요: ${decodeURIComponent(urlMsg)}`
     if (urlError === 'timeout') return '로그인 처리 시간이 초과됐습니다. 다시 시도해주세요.'
-    return 'Google 로그인에 실패했습니다. 다시 시도해주세요.'
+    // Google 동의 화면에서 취소한 경우
+    if (urlError === 'access_denied') return '로그인이 취소됐어요. 다시 시도해주세요.'
+    return '로그인에 실패했습니다. 다시 시도해주세요.'
   })
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)

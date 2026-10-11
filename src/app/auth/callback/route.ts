@@ -13,7 +13,10 @@ export async function GET(request: Request) {
 
   if (error) {
     if (next === '/reset-password') return NextResponse.redirect(`${origin}/forgot-password?error=link`)
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}`)
+    // error_code(예: otp_expired)도 넘겨 로그인 화면이 원인에 맞는 문구를 보여주게 한다
+    const errorCode = searchParams.get('error_code')
+    const codeQs = errorCode ? `&error_code=${encodeURIComponent(errorCode)}` : ''
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}${codeQs}`)
   }
 
   if (code) {
