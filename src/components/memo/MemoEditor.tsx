@@ -919,10 +919,11 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
       variant: 'danger',
       confirmLabel: '휴지통으로',
       onConfirm: async () => {
-        await supabase
+        const { error } = await supabase
           .from('memos')
           .update({ is_deleted: true, deleted_at: new Date().toISOString() })
           .eq('id', id)
+        if (error) throw error // ConfirmModal이 알림 + 모달 유지
 
         // 단일 전체 캐시에서 즉시 제거
         queryClient.setQueryData<import('@/types').Memo[]>(

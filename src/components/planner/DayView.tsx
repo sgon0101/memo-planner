@@ -9,6 +9,7 @@ import {
 } from '@/lib/planner/dragHelpers'
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
@@ -159,7 +160,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime })
       } catch (err) {
-        console.error('drag editPlan 실패:', err)
+        reportSaveError('일정 시간을 바꾸지 못했어요.')(err)
       }
     }
     setDrag(null)

@@ -45,7 +45,9 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
+  // 로그아웃 상태 전용 화면. /reset-password는 재설정 링크로 만든 세션이 필요하므로 여기 넣지 않는다.
+  const isAuthRoute =
+    pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password')
 
   if (!user && !isAuthRoute) {
     return NextResponse.redirect(new URL('/login', request.url))

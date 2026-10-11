@@ -122,7 +122,8 @@ export default function AIChatLayout() {
       variant: 'danger',
       confirmLabel: '삭제',
       onConfirm: async () => {
-        await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
+        const res = await fetch(`/api/ai/chat-rooms/${id}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error(`chat-room delete failed: ${res.status}`)
         setRooms((prev) => prev.filter((r) => r.id !== id))
         if (selectedId === id) { setSelectedId(null); selectedIdRef.current = null; setMessages([]); setMobileView('list') }
       },
