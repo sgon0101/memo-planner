@@ -12,6 +12,8 @@
 import * as Sentry from '@sentry/nextjs'
 import { toast } from '@/components/ui/Toast'
 
+const RETRY_TOAST_MS = 10_000
+
 export function reportSaveError(message: string, retry?: () => Promise<unknown>) {
   return (err: unknown): void => {
     console.error(`[weave:save] ${message}`, err)
@@ -23,7 +25,12 @@ export function reportSaveError(message: string, retry?: () => Promise<unknown>)
     toast.error(
       text,
       retry
-        ? { action: { label: '다시 시도', onClick: () => { void retry().catch(reportSaveError(message)) } } }
+        ? {
+            // 재시도도 실패하면 같은 retry를 다시 넘겨 버튼이 계속 남게 한다
+            action: { label: '다시 시도', onClick: () => { void retry().catch(reportSaveError(message, retry)) } },
+            // 오류 + 행동 버튼은 읽고 누를 시간이 더 필요 (기본 6.5초 → 10초)
+            duration: RETRY_TOAST_MS,
+          }
         : undefined,
     )
   }
