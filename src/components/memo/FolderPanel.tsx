@@ -14,6 +14,7 @@ import ColorWheelModal from './ColorWheelModal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import { toast } from '@/components/ui/Toast'
 import type { Folder as FolderType } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 interface MenuState { folderId: string; x: number; y: number }
 
@@ -321,7 +322,7 @@ export default function FolderPanel() {
   async function commitEdit(id: string) {
     const original = folders.find((f) => f.id === id)?.name ?? ''
     if (editValue.trim() && editValue.trim() !== original) {
-      await renameFolder(id, editValue.trim()).catch(console.error)
+      await renameFolder(id, editValue.trim()).catch(reportSaveError('폴더 이름을 바꾸지 못했어요.', () => renameFolder(id, editValue.trim())))
     }
     setEditingId(null)
   }
@@ -346,7 +347,7 @@ export default function FolderPanel() {
     try {
       const folder = await createFolder(name.trim(), newFolderParentId)
       if (h !== 260 || s !== 60 || l !== 80) {
-        await updateColor(folder.id, h, s, l).catch(console.error)
+        await updateColor(folder.id, h, s, l).catch(reportSaveError('폴더 색상을 바꾸지 못했어요.', () => updateColor(folder.id, h, s, l)))
       }
       if (newFolderParentId) {
         setExpanded((prev) => new Set([...prev, newFolderParentId as string]))
@@ -372,7 +373,7 @@ export default function FolderPanel() {
       variant: 'danger',
       confirmLabel: '삭제',
       onConfirm: async () => {
-        await removeFolder(id).catch(console.error)
+        await removeFolder(id)
         if (selectedFolderId === id) selectFolder(null)
       },
     })
@@ -395,10 +396,10 @@ export default function FolderPanel() {
     setDraggingFolderId(null)
     setFolderDropTarget(null)
     if (position === 'inside') {
-      await nestFolder(dragId, targetId).catch(console.error)
+      await nestFolder(dragId, targetId).catch(reportSaveError('폴더를 옮기지 못했어요.'))
       setExpanded((prev) => new Set([...prev, targetId]))
     } else {
-      await reorderFolder(dragId, targetId, position).catch(console.error)
+      await reorderFolder(dragId, targetId, position).catch(reportSaveError('폴더 순서를 바꾸지 못했어요.'))
     }
   }
 
@@ -583,7 +584,7 @@ export default function FolderPanel() {
           initialS={colorTarget.colorS}
           initialL={colorTarget.colorL}
           onConfirm={(h, s, l) => {
-            updateColor(colorTarget.id, h, s, l).catch(console.error)
+            updateColor(colorTarget.id, h, s, l).catch(reportSaveError('폴더 색상을 바꾸지 못했어요.', () => updateColor(colorTarget.id, h, s, l)))
             setColorTarget(null)
           }}
           onClose={() => setColorTarget(null)}

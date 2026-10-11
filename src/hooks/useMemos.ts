@@ -387,7 +387,8 @@ export function useMemos(folderId: string | null | undefined) {
   }, [patchCache, queryClient, queryKey, supabase])
 
   const restoreMemo = useCallback(async (id: string) => {
-    await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).eq('id', id)
+    const { error } = await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).eq('id', id)
+    if (error) throw error
     patchCache((old) => old.filter((m) => m.id !== id))
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
@@ -398,7 +399,8 @@ export function useMemos(folderId: string | null | undefined) {
 
   const bulkRestore = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
-    await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).in('id', ids)
+    const { error } = await supabase.from('memos').update({ is_deleted: false, deleted_at: null }).in('id', ids)
+    if (error) throw error
     patchCache((old) => old.filter((m) => !ids.includes(m.id)))
     queryClient.invalidateQueries({ queryKey: memoKeys.all() })
     queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
@@ -407,7 +409,8 @@ export function useMemos(folderId: string | null | undefined) {
   }, [patchCache, queryClient, supabase])
 
   const permanentDelete = useCallback(async (id: string) => {
-    await supabase.from('memos').delete().eq('id', id)
+    const { error } = await supabase.from('memos').delete().eq('id', id)
+    if (error) throw error
     patchCache((old) => old.filter((m) => m.id !== id))
     broadcast({ type: 'memo-delete', id })
   }, [patchCache, supabase])
@@ -422,7 +425,8 @@ export function useMemos(folderId: string | null | undefined) {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user ?? null
     if (!user) return
-    await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
+    const { error } = await supabase.from('memos').delete().eq('user_id', user.id).eq('is_deleted', true)
+    if (error) throw error
     patchCache(() => [])
     broadcast({ type: 'invalidate', queryKey: ['memos', 'trash'] })
   }, [patchCache, supabase])

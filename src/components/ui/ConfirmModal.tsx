@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import Modal from './Modal'
 import { cn } from '@/lib/utils'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 /**
  * ConfirmModal — `window.confirm` 대체용 공통 확인 다이얼로그
@@ -57,6 +58,9 @@ export default function ConfirmModal({
       setBusy(true)
       await onConfirm()
       onClose()
+    } catch (err) {
+      // 실패하면 모달을 열어둔 채 알림 → 사용자가 확인 버튼으로 바로 재시도 가능
+      reportSaveError('요청을 처리하지 못했어요. 다시 시도해주세요.')(err)
     } finally {
       setBusy(false)
     }

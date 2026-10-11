@@ -10,6 +10,7 @@ import {
 } from '@/lib/planner/dragHelpers'
 import { computeRangeBars } from '@/lib/planner/rangeBars'
 import type { Plan } from '@/types'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const WEEKDAYS_SHORT = ['일', '월', '화', '수', '목', '금', '토']
@@ -204,7 +205,7 @@ export default function WeekView({
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
       } catch (err) {
-        console.error('drag editPlan 실패:', err)
+        reportSaveError('일정을 옮기지 못했어요.')(err)
       }
     }
     setDrag(null)

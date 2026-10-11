@@ -274,7 +274,8 @@ export function usePlanner() {
 
   const removePlan = useCallback(async (id: string) => {
     const original = findPlanInCaches(queryClient, id) // 삭제 전 완료 여부 확보
-    await supabase.from('plans').delete().eq('id', id)
+    const { error } = await supabase.from('plans').delete().eq('id', id)
+    if (error) throw error // 실패 시 캐시에서 지우지 않음 — 화면에서만 사라지는 착시 방지
     removePlanFromCaches(queryClient, id)
     patchHomeStatsOnPlanDelete(queryClient, id, original?.isCompleted) // 홈 즉시 반영
     invalidateHomeQueries()
@@ -311,25 +312,23 @@ export function usePlanner() {
     const key = `${originalPlanId}_${planDate}`
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
-    try {
-      if (currentlyCompleted) {
-        await supabase.from('recurring_plan_completions')
-          .delete()
-          .eq('original_plan_id', originalPlanId)
-          .eq('plan_date', planDate)
-        deleteRecurringCompletionInCaches(queryClient, key)
-      } else {
-        await supabase.from('recurring_plan_completions').upsert({
-          user_id: user.id,
-          original_plan_id: originalPlanId,
-          plan_date: planDate,
-          is_completed: true,
-        }, { onConflict: 'original_plan_id,plan_date' })
-        setRecurringCompletionInCaches(queryClient, key, true)
-      }
-    } catch {
-      if (currentlyCompleted) deleteRecurringCompletionInCaches(queryClient, key)
-      else setRecurringCompletionInCaches(queryClient, key, true)
+    // supabase-js는 throw하지 않고 { error }를 돌려주므로 직접 확인 — 실패 시 캐시를 바꾸지 않고 throw
+    if (currentlyCompleted) {
+      const { error } = await supabase.from('recurring_plan_completions')
+        .delete()
+        .eq('original_plan_id', originalPlanId)
+        .eq('plan_date', planDate)
+      if (error) throw error
+      deleteRecurringCompletionInCaches(queryClient, key)
+    } else {
+      const { error } = await supabase.from('recurring_plan_completions').upsert({
+        user_id: user.id,
+        original_plan_id: originalPlanId,
+        plan_date: planDate,
+        is_completed: true,
+      }, { onConflict: 'original_plan_id,plan_date' })
+      if (error) throw error
+      setRecurringCompletionInCaches(queryClient, key, true)
     }
     invalidateHomeQueries()
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
@@ -342,14 +341,13 @@ export function usePlanner() {
     const key = `${originalPlanId}_${planDate}`
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
     if (!user) return
-    try {
-      await supabase.from('recurring_plan_completions').upsert({
-        user_id: user.id,
-        original_plan_id: originalPlanId,
-        plan_date: planDate,
-        is_completed: false,
-      }, { onConflict: 'original_plan_id,plan_date' })
-    } catch { /* table missing — ignore */ }
+    const { error } = await supabase.from('recurring_plan_completions').upsert({
+      user_id: user.id,
+      original_plan_id: originalPlanId,
+      plan_date: planDate,
+      is_completed: false,
+    }, { onConflict: 'original_plan_id,plan_date' })
+    if (error) throw error
     setRecurringCompletionInCaches(queryClient, key, false)
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
   }, [queryClient])

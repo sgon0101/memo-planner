@@ -45,7 +45,9 @@ memo-planner/
 ├── app/
 │   ├── (auth)/
 │   │   ├── login/
-│   │   └── signup/
+│   │   ├── signup/
+│   │   ├── forgot-password/        # 재설정 메일 요청 (?error=link면 만료 안내)
+│   │   └── reset-password/         # 새 비밀번호 설정 (세션 필요 — proxy 인증 라우트 아님)
 │   ├── (main)/
 │   │   ├── layout.tsx          # 사이드바 + 헤더 공통 레이아웃
 │   │   ├── memo/
@@ -92,7 +94,10 @@ memo-planner/
 │   │   ├── PlanPanel.tsx           # 날짜별 플랜 패널
 │   │   ├── PlanForm.tsx            # 플랜 작성 폼
 │   │   ├── RangeBar.tsx            # 범위 플랜 바
+│   │   ├── TemplateChip.tsx        # 즐겨찾기 칩 (선택·삭제 버튼 분리, 32px 클릭 영역)
 │   │   └── TimePicker.tsx          # 시간 설정
+│   ├── auth/
+│   │   └── AuthControls.tsx        # 인증 폼 공용 — label 연결 입력·비밀번호 표시 토글·role="alert" 오류
 │   ├── insights/
 │   │   ├── GapAnalysis.tsx         # 생각-행동 갭 분석
 │   │   ├── BubbleChart.tsx         # 관심사 버블 차트
@@ -148,7 +153,10 @@ memo-planner/
 │   │   ├── rrulePresets.ts         # RRULE preset/parser/한국어 라벨러
 │   │   ├── planCache.ts            # 플랜 RQ+LS 캐시 헬퍼 (planKeys, patch/add/remove/swap/find)
 │   │   ├── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
-│   │   └── rangeBars.ts            # 범위 플랜 바 슬롯 레이아웃 (월뷰 그리드·주뷰 종일 레인 공용)
+│   │   ├── rangeBars.ts            # 범위 플랜 바 슬롯 레이아웃 (월뷰 그리드·주뷰 종일 레인 공용)
+│   │   └── templateUndo.ts         # 즐겨찾기 삭제 되돌리기 (즉시 숨김 → 6.5초 후 서버 삭제, 실패 시 복원)
+│   ├── ui/
+│   │   └── reportSaveError.ts      # 저장 실패 공용 catch 핸들러 (Sentry + 오프라인 문구 + '다시 시도' 토스트 10초)
 │   ├── tiptap/
 │   │   ├── CustomEnterExtension.ts # Enter=hardBreak 규칙
 │   │   ├── isolateSelectedLines.ts # 선택 줄만 독립 문단화 (헤딩 적용용)
@@ -172,6 +180,7 @@ memo-planner/
 │   ├── usePlanner.ts               # 플랜 RQ 쿼리(usePlansQuery/useRecurringCompletionsQuery) + 뮤테이션
 │   ├── useExpandedPlans.ts         # 반복 플랜 전개 파생 훅 (RQ plans+completions → expandRecurringPlans)
 │   ├── useSwipeGesture.ts          # swipe 제스처 통합 훅 (pointer+touch)
+│   ├── useMediaQuery.ts            # 미디어쿼리 구독 (useSyncExternalStore — hydration 안전, useIsDesktop=768px↑)
 │   ├── useAI.ts
 │   └── useOfflineSync.ts
 ├── public/
@@ -559,6 +568,9 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-10-11 | UX 2차 — 모바일 터치 영역·즐겨찾기 되돌리기·사이드바 접근성 (PR #344 → dev, 병합 `49ff24d`) | 커밋 `2825336`, 7파일. ①**터치 영역 44px**(모바일만, 데스크톱 밀도 유지) — 헤더 햄버거·다크모드·로그아웃 `w-11 h-11 md:w-9 md:h-9`, 사이드바 닫기 버튼·메뉴 항목 `py-3 md:py-2`, PlanFormModal·QuickCaptureModal 색상·요일 버튼 확대 + `aria-label`/`aria-pressed` 라벨 ②**즐겨찾기 삭제 되돌리기** — `TemplateChip.tsx` 신규(선택 버튼과 삭제 버튼 분리, 삭제는 시각 24px 유지·`before:` 의사요소로 클릭 영역 32px), `lib/planner/templateUndo.ts` 신규: 즉시 화면에서 숨기고 6.5초 '되돌리기' 토스트 → 시간 경과 시 서버 delete, 되돌리기는 서버 무접촉 복원, delete 실패 시 복원 + `reportSaveError` ③**사이드바 접근성** — `hooks/useMediaQuery.ts` 신규(`useSyncExternalStore`, SSR 기본값 false라 hydration 불일치 없음) + `useIsDesktop`. `role="dialog"`/`aria-modal`은 **모바일에서 열렸을 때만**(기존엔 데스크톱 상시 사이드바도 dialog로 노출), 모바일 닫힘 상태는 `inert`(화면 밖 링크로 Tab 이동·스크린리더 노출 차단), 열리면 닫기 버튼으로 포커스·닫히면 햄버거로 복귀(링크 이동으로 버튼이 사라진 경우는 생략), Tab 순환 가두기, ESC 닫기도 모바일 드로어일 때만, 햄버거에 `aria-controls="app-sidebar"`. 1차 브랜치 위에 쌓은 PR이라 #343 머지 후 base를 dev로 변경. 검증: tsc 0·`npm run build` 통과·ESLint 에러 0(PlanFormModal 기존 경고 2건: 미사용 `ALL_BYDAY`, effect `supabase` 의존성), CI(lint·tsc·null byte)·Vercel 미리보기 통과. 375px/1280px 확인은 사용자 수행. 미배포(dev만) | 100% |
+| 2026-10-11 | UX 1차 — 비밀번호 재설정·인증 폼 접근성·저장 실패 피드백 (PR #343 → dev, 병합 `37cfd0e`) | 커밋 `6999b5e`·`1aeacf2`·`c4a3c29`·`f4b1a53`, 22파일. ①**비밀번호 재설정 플로우 신규** — `/forgot-password`(`resetPasswordForEmail`, redirectTo `/auth/callback?next=/reset-password`) → callback이 `/auth/confirm?code&next`로 넘김(`next`는 `/`로 시작·`//` 아님만 허용) → confirm이 `exchangeCodeForSession` 후 이동, 실패 시 `/forgot-password?error=link`(만료 안내) → `/reset-password`에서 `updateUser({password})` 후 1.2초 뒤 `/memo`. `proxy.ts` 인증 라우트에 `/forgot-password` 추가(`/reset-password`는 세션이 필요해 제외), `PASSWORD_RECOVERY` 이벤트 처리. **경쟁 조건 수정**(`c4a3c29`): Supabase 클라이언트의 `detectSessionInUrl` 자동 교환이 먼저 코드를 써버리면 confirm의 교환이 실패해 재설정 링크가 `/memo`로 새던 문제 → 교환 실패 시 `getSession()`으로 세션이 이미 있으면 successPath로 진행 ②**인증 폼 접근성** — `components/auth/AuthControls.tsx` 신규(label↔input `htmlFor`/`id` 연결·비밀번호 표시 토글 44px `aria-pressed`·오류 `role="alert"`+입력 `aria-invalid`/`aria-describedby`), login·signup 적용, 재설정 완료 화면은 `role="status"` ③**이메일 링크 오류 문구**(`f4b1a53`) — 만료 링크에도 "Google 로그인 실패"가 뜨던 것을 URL 파라미터별로 분기: `error_code=otp_expired` → "인증 링크가 만료되었거나 이미 사용됐어요…", `access_denied` → 취소 안내, 재설정 흐름 오류는 `/forgot-password?error=link` ④**저장 실패 피드백** — `lib/ui/reportSaveError.ts` 신규: `reportSaveError(message, retry?)`가 catch 핸들러를 반환(`[weave:save]` 로그 + Sentry + 오프라인이면 "인터넷 연결을 확인해주세요." 덧붙임 + `toast.error` '다시 시도'). 재시도 실패 시 같은 핸들러를 다시 걸어 **반복 재시도 가능**, 재시도 토스트 10초(`1aeacf2`). usePlanner·useMemos·useFolders·PlanPanel·PlanDetailPanel·MemoList·FolderPanel·HomeClient·ConfirmModal(실패 시 모달 유지) 등에 연결. 반복 인스턴스 경로는 `originalPlanId`/`date`를 지역 const로 구조분해해 클로저 안 타입 좁히기 문제(빌드 에러) 해결. 검증: tsc 0·`npm run build` 통과·CI·Vercel 미리보기 통과. **로컬 라이브**(SW 해제+캐시 삭제 후): 오프라인 플랜 삭제 → 오류 토스트·'다시 시도' 표시, 오프라인 재시도 → 다시 실패 토스트(재시도 버튼 유지), 온라인 복귀 후 재시도 → 삭제·새로고침 후에도 서버에서 사라짐 확인. 재설정 링크는 서버 로그(callback 307 → confirm 200)로 확인, 가입 인증·Google 로그인은 사용자 확인. **운영 배포 전 필수**: Supabase Auth Redirect URLs에 `/auth/callback**` 추가(없으면 운영에서 재설정 링크 실패). 남은 이슈: 이미 로그인된 브라우저에서 만료 링크를 열면 만료 안내 대신 `/reset-password`로 감, `otp_expired` 문구는 Supabase가 `error_code`를 hash가 아닌 query로 줄 때만 동작(미확인). 미배포(dev만) | 100% |
+| 2026-10-09 | 보안 2단계 프로덕션 배포 (PR #341 → dev, #342 → main) | 병합 커밋 `1e6bafd`, Vercel Production 배포 success(10:55 UTC). 배포 전 확인: CI(lint·tsc)·미리보기 빌드 통과, Vercel Production·로컬 `.env.local`에 같은 `TOKEN_ENCRYPTION_KEY`(사용자 확인, 로컬 32바이트 검증). 배포 직후 스모크: /login 200, 미인증 source-note 라우트 307(프록시 정상). **기존 행 암호화 완료(같은 날 사용자 요청으로 실행)**: dry-run 대상 1행(google_drive) → `--apply` 성공 1·실패 0 → 재실행 dry-run 대상 0(멱등, 키 불일치 경고 없음), DB 확인 access/refresh 모두 `v1:` 4파트. 운영에서 복호화 확인: 설정 Drive 연결됨 + 복원 목록 200(11개). 백업 1회 재확인은 미실행(복원 목록이 같은 복호화·Drive 인증 경로). 이후 DB 단계(토큰 컬럼 SELECT 회수·source_analyses SELECT 전용) 대기 | 100% |
 | 2026-10-09 | 보안 2단계 — Drive 토큰 암호화 + source_analyses 쓰기 서버 전용화 (코드만, DB 정책 무변경) | 감사(2026-09-25) 🔴 2건. **A. 토큰**: `lib/crypto/tokenCipher.ts`(AES-256-GCM, `TOKEN_ENCRYPTION_KEY` 호출 시점 검사, `v1:` 없으면 평문 통과) + `lib/supabase/admin.ts` + `lib/google/integrationTokens.ts`(get/save — 서비스 롤·암복호화 단일 출처). 교체: drive/calendar callback(서명 state의 userId로 암호화 저장), backup/google-drive·backup/images·restore(GET·POST)·calendar/sync(`select('*')` 제거)·cron/backup(목록은 `user_id, metadata`만 select, 대상 사용자만 복호화). 설정 페이지는 `select('provider')` 행 존재로 연결 판단(브라우저가 토큰 컬럼을 읽지 않음). backup/settings·google-drive GET·disconnect는 토큰 컬럼 미사용이라 유지. 참고: 감사 문서의 'cron 토큰 갱신 update 2곳'은 실제로는 metadata(lastBackupAt/nextBackupAt) update라 토큰 쓰기가 아님 — 갱신된 access_token을 저장하는 코드는 원래 없음(googleapis가 refresh_token으로 매번 메모리 갱신). `scripts/encrypt-existing-tokens.cjs`(멱등, 기본 dry-run, `--apply`로 실행, 토큰 값 미출력, 읽은 평문 그대로일 때만 update). **B. source_analyses**: analyze(reset update·upsert)·extract(update)·synthesize 쓰기를 admin + `.eq('user_id', user.id)`, 읽기는 세션 클라이언트(RLS) 유지. synthesize는 AI 호출 전 `analysis->>phase` 조건부 update로 `synthesizing` 선점(+`synthStartedAt`, 6분 지나면 재선점 가능), 저장도 내 선점일 때만, 실패 시 `extracted`로 복원. analyze/create는 `synthesizing`을 종합 대기와 동일 취급. 검증: tsc 0·next build 통과·변경 파일 ESLint 클린·`grep access_token src/app/(main)` 0건·cipher 왕복/변조 감지/키 누락·길이 오류 단위 확인. **로컬 라이브**: 설정 Drive 연결됨(요청이 `select=provider`만), 복원 목록 200(10개), 폴더별 백업 성공(메모 589/589, 이미지 279/289 — 실패 10장은 07월 R2 사고 영구 소실분), 이소정 PDF analyze(phase extracted 5/5청크, admin upsert) → extract(이미 끝남, 쓰기 없음) → **synthesize 동시 2건: 1건만 AI(113초), 다른 1건은 3초 만에 409** → 재호출 2.8초 캐시 → create 200. DB 행 calls 6(추출 5+종합 1 = 중복 종합 0), synthStartedAt 잔존 없음, 비용 $0.772. 미검증: 캘린더 sync(Calendar 미연결 — 연동 행 없음), extract의 update 경로(5청크 PDF라 1차수에 끝남), '단일 파일 백업'(combined)은 500 '통합 백업 파일 업로드 실패' — Drive에 `전체백업` 파일이 한 번도 없어 이번 변경과 무관한 기존 결함으로 판단(토큰 값은 평문 통과라 이전과 동일), 후속 조사 필요. dry-run: 대상 1행(google_drive). 테스트 노트 `796ff015` 생성됨(사용자 정리) | 100% |
 | 2026-09-25 | 플래너 월뷰 날짜 클릭 → 바로 새 플랜 폼 (웹만, 배포 완료 PR #340) | 기존엔 날짜 셀 클릭이 날짜 선택(패널 열기)·재클릭 시 해제만 해서 새 플랜은 패널의 버튼을 한 번 더 눌러야 했음 → **데스크탑(md↑, `matchMedia('(min-width: 768px)')` — 칩/dot 레이아웃 분기와 같은 기준)**에서만 셀 클릭 시 `selectDate(dayStr)` + `setFormState({ open, date })`로 폼 즉시 오픈(주뷰 종일 레인과 동일 동작). **모바일은 기존 선택 토글 유지**(dot은 개별 탭 불가라 폼을 띄우면 목록 확인 경로가 사라짐 — 사용자 요청으로 앱은 그대로). 날짜도 선택해 두어 폼을 닫으면 그 날 플랜 패널이 남음. 기존 플랜 확인 경로는 유지: 데스크탑 플랜 칩·범위 바 클릭(stopPropagation) + '+N 더보기'도 stopPropagation으로 패널만 열기. 스와이프 직후 click 차단(onClickCapture)은 그대로라 월 넘김 스와이프가 폼을 열지 않음. 데스크탑은 재클릭 해제 토글 대신 폼이 열림(패널 닫기는 ✕). 검증: verify-changes.sh(tsc 0)·ESLint 클린 + 로컬 라이브(SW·캐시 삭제 후) — 1920px: 빈 날짜 클릭 시 해당 날짜로 폼 오픈·닫으면 선택 유지, 플랜 칩 클릭은 폼 없음 / 416px(iframe): 첫 탭 패널만(폼 없음)·재탭 선택 해제로 기존 동작 유지 | 100% |
 | 2026-09-24 | 메모 검색 — #태그·[[위키]] 정확 필터 + 칩 필터 복귀 유지 | ①**태그/위키 검색이 본문 텍스트 검색이던 문제** — 서버·클라이언트 모두 prefix(#, [[)만 떼고 본문 검색 → `[[사랑` 79건(실제 위키 21건), `#일상` 90건(실제 34건). `lib/memos/searchQuery.ts` 신규(`parseSearchQuery`: #태그/[[위키]] 토큰 vs 자유 텍스트 분리, 미완성 `[[x` 허용, `C#` 등 단어 중간 # 무시) → 토큰은 tags/wiki_links에 대한 정규화 키(wikiKey/tagKey) 필터(AND, 등록 라벨과 정확 일치 시 정확 일치·아니면 접두 일치), 서버 FTS·시맨틱 폴백엔 텍스트만 전달. search 라우트도 토큰 정확 후필터, highlight 토큰에 태그/위키 라벨 포함 ②**자동완성 클릭 무반응** — pick이 검색어를 동일 값(`[[사랑`)으로 재set+포커스 유지라 변화 없음 → 선택 시 위키/태그 칩(activeWiki/activeTag) 적용+검색어 비움+드롭다운 닫기, Enter는 미선택 시 첫 후보 ③**칩 필터 복귀 리셋** — 칩 상태가 memo-list-state(스크롤 이벤트·scrollY>0일 때만 저장)에만 실려 스크롤 없이 메모 진입 시 유실 → `weave:memo-list-filters`에 변경마다 저장, mount 시 스냅샷 ref로 읽어 folderId 일치 시 1회 적용(store 동기화로 folderId가 늦게 확정돼도 커버), 사용자 폴더 변경 시 폐기. 검증: tsc 0·변경 파일 ESLint 클린·파서 단위 케이스 node 확인 | 100% |

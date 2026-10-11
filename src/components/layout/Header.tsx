@@ -33,10 +33,11 @@ export default function Header() {
       <div className="flex items-center gap-3">
         {/* 모바일 햄버거 */}
         <button
-          className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors duration-150 cursor-pointer"
+          className="md:hidden -ml-1.5 w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors duration-150 cursor-pointer"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-label="메뉴"
           aria-expanded={sidebarOpen}
+          aria-controls="app-sidebar"
         >
           <Menu size={18} />
         </button>
@@ -61,7 +62,7 @@ export default function Header() {
 
         <button
           onClick={toggleDarkMode}
-          className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer"
+          className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer"
           aria-label="다크모드 전환"
         >
           {/* #418 방지: darkMode 조건 렌더 대신 CSS로 전환 — SSR/클라 첫 렌더 트리 동일 */}
@@ -71,7 +72,7 @@ export default function Header() {
 
         <button
           onClick={handleLogout}
-          className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150 cursor-pointer"
+          className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150 cursor-pointer"
           aria-label="로그아웃"
         >
           <LogOut size={16} />

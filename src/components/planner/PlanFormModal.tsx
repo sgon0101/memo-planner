@@ -15,6 +15,9 @@ import {
 } from '@/lib/planner/rrulePresets'
 import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { Plan, PlanTemplate } from '@/types'
+import { TemplateChip } from './TemplateChip'
+import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
@@ -31,6 +34,11 @@ const PRESET_CHIPS: { value: RepeatPreset; label: string }[] = [
   { value: 'yearly',        label: '매년' },
   { value: 'custom',        label: '맞춤' },
 ]
+
+/** 색상 버튼 스크린리더 라벨 */
+const COLOR_NAMES: Record<string, string> = {
+  '#7C3AED': '보라', '#3B82F6': '파랑', '#10B981': '초록', '#F59E0B': '주황', '#EF4444': '빨강', '#EC4899': '분홍',
+}
 
 const WEEKDAY_LABELS: { code: string; label: string }[] = [
   { code: 'MO', label: '월' }, { code: 'TU', label: '화' }, { code: 'WE', label: '수' },
@@ -200,7 +208,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     // 현재 폼의 모든 옵션을 템플릿에 함께 저장 (반복/알림/설명 포함)
     const baseDate = isRange ? startDate : singleDate
     const tplRrule = buildRRule(recurrence, baseDate)
-    const { data } = await supabase
+    const { data, error: tplErr } = await supabase
       .from('plan_templates')
       .insert({
         user_id: user?.id,
@@ -216,6 +224,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         notify_lead_min: notifyLeadMin,
       })
       .select().single()
+    if (tplErr) { reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(tplErr); return }
     if (data) setTemplates((prev) => [{
       id: data.id,
       userId: data.user_id,
@@ -235,9 +244,17 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     }, ...prev])
   }
 
-  async function handleDeleteTemplate(id: string) {
-    await supabase.from('plan_templates').delete().eq('id', id)
-    setTemplates((prev) => prev.filter((t) => t.id !== id))
+  function handleDeleteTemplate(t: PlanTemplate) {
+    const index = templates.findIndex((x) => x.id === t.id)
+    deleteTemplateWithUndo(t, {
+      hide: () => setTemplates((prev) => prev.filter((x) => x.id !== t.id)),
+      restore: () => setTemplates((prev) => {
+        if (prev.some((x) => x.id === t.id)) return prev
+        const next = [...prev]
+        next.splice(Math.max(0, index), 0, t)
+        return next
+      }),
+    })
   }
 
   function applyTemplate(t: PlanTemplate) {
@@ -372,24 +389,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">즐겨찾기</p>
               <div className="flex gap-1.5 flex-wrap items-center">
                 {templates.slice(0, 3).map((t) => (
-                  <div key={t.id} className="group relative flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => applyTemplate(t)}
-                      className="flex items-center gap-1 pl-2 pr-1 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-400 text-gray-600 dark:text-gray-300 transition-colors"
-                      style={{ borderLeftColor: t.color, borderLeftWidth: 3 }}
-                    >
-                      <span>{t.title}</span>
-                      {!t.isAllDay && t.startTime && (
-                        <span className="text-gray-400 ml-0.5">{t.startTime.slice(0,5)}</span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteTemplate(t.id)}
-                      className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-4 h-4 bg-gray-500 text-white rounded-full text-[10px] leading-none"
-                    >×</button>
-                  </div>
+                  <TemplateChip key={t.id} template={t} onApply={applyTemplate} onDelete={handleDeleteTemplate} />
                 ))}
                 {templates.length > 3 && (
                   <span className="text-[11px] text-gray-400 dark:text-gray-500">
@@ -475,7 +475,9 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={cn('w-6 h-6 rounded-full transition-transform hover:scale-110', color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}
+                  aria-label={`${COLOR_NAMES[c] ?? c} 색상`}
+                  aria-pressed={color === c}
+                  className={cn("relative w-6 h-6 rounded-full transition-transform hover:scale-110 before:absolute before:-inset-1 before:content-['']", color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}
                   style={{ backgroundColor: c }}
                 />
               ))}
@@ -728,8 +730,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                                       : [...r.custom.byday, wd.code],
                                   },
                                 }))}
+                                aria-label={`${wd.label}요일`}
+                                aria-pressed={selected}
                                 className={cn(
-                                  'w-6 h-6 text-[10px] rounded-full transition-colors',
+                                  'w-8 h-8 text-xs sm:w-7 sm:h-7 sm:text-[11px] rounded-full transition-colors',
                                   selected
                                     ? 'bg-violet-600 text-white'
                                     : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700',

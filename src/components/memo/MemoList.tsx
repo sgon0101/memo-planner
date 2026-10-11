@@ -24,6 +24,7 @@ import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
 import { parseSearchQuery, hasTokenFilters, memoMatchesTokenFilters } from '@/lib/memos/searchQuery'
 import SourceNoteModal from './SourceNoteModal'
 import { useSourceNoteStore } from '@/store/sourceNoteStore'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
 
 const PAGE_SIZE = 20
 const FILTERS_KEY = 'weave:memo-list-filters'
@@ -666,7 +667,7 @@ export default function MemoList() {
     try {
       const folder = await createFolder(name.trim(), newFolderParentId)
       if (h !== 260 || s !== 60 || l !== 80) {
-        await updateColor(folder.id, h, s, l).catch(console.error)
+        await updateColor(folder.id, h, s, l).catch(reportSaveError('폴더 색상을 바꾸지 못했어요.', () => updateColor(folder.id, h, s, l)))
       }
       if (newFolderParentId) {
         setExpandedFolders((prev) => new Set([...prev, newFolderParentId as string]))
@@ -688,7 +689,7 @@ export default function MemoList() {
   async function commitEdit(id: string) {
     const original = folders.find((f) => f.id === id)?.name ?? ''
     if (editValue.trim() && editValue.trim() !== original) {
-      await renameFolder(id, editValue.trim()).catch(console.error)
+      await renameFolder(id, editValue.trim()).catch(reportSaveError('폴더 이름을 바꾸지 못했어요.', () => renameFolder(id, editValue.trim())))
     }
     setEditingId(null)
   }
@@ -753,10 +754,10 @@ export default function MemoList() {
     if (!dragId || !dropId || !pos || dragId === dropId) return
 
     if (pos === 'inside') {
-      await nestFolder(dragId, dropId).catch(console.error)
+      await nestFolder(dragId, dropId).catch(reportSaveError('폴더를 옮기지 못했어요.'))
       setExpandedFolders((prev) => new Set([...prev, dropId]))
     } else {
-      await reorderFolder(dragId, dropId, pos).catch(console.error)
+      await reorderFolder(dragId, dropId, pos).catch(reportSaveError('폴더 순서를 바꾸지 못했어요.'))
     }
   }
 
@@ -778,7 +779,7 @@ export default function MemoList() {
       variant: 'danger',
       confirmLabel: '삭제',
       onConfirm: async () => {
-        await removeFolder(id).catch(console.error)
+        await removeFolder(id)
         if (selectedFolderId === id) selectFolder(null)
       },
     })
@@ -787,7 +788,7 @@ export default function MemoList() {
   async function handleBulkRestore() {
     const ids = [...selectedTrashIds]
     if (ids.length === 0) return
-    await bulkRestore(ids).catch(console.error)
+    await bulkRestore(ids).catch(reportSaveError('메모를 복원하지 못했어요.', () => bulkRestore(ids)))
     setSelectedTrashIds(new Set())
   }
 
@@ -798,7 +799,7 @@ export default function MemoList() {
       description: '휴지통에 있던 모든 메모가 원래 폴더로 돌아갑니다.',
       confirmLabel: '전체 복원',
       onConfirm: async () => {
-        await bulkRestore(memos.map((m) => m.id)).catch(console.error)
+        await bulkRestore(memos.map((m) => m.id))
         setSelectedTrashIds(new Set())
       },
     })
@@ -807,14 +808,14 @@ export default function MemoList() {
   // useMemo — 참조 안정화로 MemoCard의 React.memo가 실제로 동작하게 함
   // (deps의 훅 함수들은 useMemos 내부 useCallback으로 안정)
   const cardActions = useMemo(() => ({
-    onPin: (id: string, cur: boolean) => togglePin(id, cur).catch(console.error),
-    onStar: (id: string, cur: boolean) => toggleStar(id, cur).catch(console.error),
-    onDelete: (id: string) => softDelete(id).catch(console.error),
+    onPin: (id: string, cur: boolean) => togglePin(id, cur).catch(reportSaveError('메모 고정을 바꾸지 못했어요.', () => togglePin(id, cur))),
+    onStar: (id: string, cur: boolean) => toggleStar(id, cur).catch(reportSaveError('즐겨찾기를 바꾸지 못했어요.', () => toggleStar(id, cur))),
+    onDelete: (id: string) => softDelete(id).catch(reportSaveError('메모를 휴지통으로 옮기지 못했어요.', () => softDelete(id))),
     onLock: (id: string, content: Record<string, unknown>, pw: string) => lockMemo(id, content, pw),
     onUnlock: (id: string, pw: string) => unlockMemo(id, pw),
-    onRestore: (id: string) => restoreMemo(id).catch(console.error),
-    onPermanentDelete: (id: string) => permanentDelete(id).catch(console.error),
-    onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(console.error),
+    onRestore: (id: string) => restoreMemo(id).catch(reportSaveError('메모를 복원하지 못했어요.', () => restoreMemo(id))),
+    onPermanentDelete: (id: string) => permanentDelete(id).catch(reportSaveError('메모를 영구 삭제하지 못했어요.', () => permanentDelete(id))),
+    onMoveToFolder: (id: string, folderId: string | null) => moveMemoToFolder(id, folderId).catch(reportSaveError('메모를 폴더로 옮기지 못했어요.', () => moveMemoToFolder(id, folderId))),
     searchQuery: search,
   }), [togglePin, toggleStar, softDelete, lockMemo, unlockMemo, restoreMemo, permanentDelete, moveMemoToFolder, search])
 
@@ -1109,7 +1110,7 @@ export default function MemoList() {
                   description: `${memos.length}개의 메모가 영구 삭제돼요. 복구할 수 없어요.`,
                   variant: 'danger',
                   confirmLabel: '휴지통 비우기',
-                  onConfirm: async () => { await emptyTrash().catch(console.error) },
+                  onConfirm: async () => { await emptyTrash() },
                 })
               }}
               disabled={memos.length === 0}
@@ -1480,7 +1481,7 @@ export default function MemoList() {
           initialH={colorTarget.colorH}
           initialS={colorTarget.colorS}
           initialL={colorTarget.colorL}
-          onConfirm={(h, s, l) => { updateColor(colorTarget.id, h, s, l).catch(console.error); setColorTarget(null) }}
+          onConfirm={(h, s, l) => { updateColor(colorTarget.id, h, s, l).catch(reportSaveError('폴더 색상을 바꾸지 못했어요.', () => updateColor(colorTarget.id, h, s, l))); setColorTarget(null) }}
           onClose={() => setColorTarget(null)}
         />
       )}
