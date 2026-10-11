@@ -29,6 +29,13 @@ function ConfirmInner() {
           router.replace(successPath)
           return
         }
+        // 브라우저 클라이언트(detectSessionInUrl)가 URL의 code를 먼저 교환했을 수 있다.
+        // 그 경우 위 교환은 "이미 사용된 코드"로 실패하지만 세션은 정상 → 성공으로 처리.
+        const { data: { session: autoSession } } = await supabase.auth.getSession()
+        if (autoSession) {
+          router.replace(successPath)
+          return
+        }
         // 재설정 링크 만료/다른 브라우저에서 열림(PKCE verifier 없음) → 재요청 화면으로
         if (isRecovery) {
           router.replace('/forgot-password?error=link')
