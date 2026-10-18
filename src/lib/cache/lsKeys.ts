@@ -38,6 +38,10 @@ export const lsHomeStatsCacheTs = (): string | null => buildUserCacheKey('home-s
 export const lsLastDriveBackup  = (): string | null => buildUserCacheKey('last-drive-backup')
 export const lsRealtimeSync     = (): string | null => buildUserCacheKey('realtime-sync')
 
+// ─── 리텐션 측정 ──────────────────────────────────────────────────────────
+/** 마지막으로 track_open을 보낸 KST 날짜 (YYYY-MM-DD) — ActivityPing */
+export const lsLastOpenDay      = (): string | null => buildUserCacheKey('last-open-day')
+
 /** 모든 user-specific 키 일괄 제거 (clearUserNamespace로도 처리되지만, 명시적 제거가 필요한 곳용) */
 export function getAllUserCacheKeys(): (string | null)[] {
   return [
@@ -47,5 +51,6 @@ export function getAllUserCacheKeys(): (string | null)[] {
     lsHomeMemosCache(), lsHomeMemosCacheTs(),
     lsHomeStatsCache(), lsHomeStatsCacheTs(),
     lsLastDriveBackup(), lsRealtimeSync(),
+    lsLastOpenDay(),
   ]
 }
