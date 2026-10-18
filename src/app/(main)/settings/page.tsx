@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { isRealtimeEnabled, setRealtimeEnabled } from '@/hooks/useRealtimeSync'
 import { lsLastDriveBackup } from '@/lib/cache/lsKeys'
-import { useConfirm } from '@/components/ui/ConfirmModal'
+import DeleteAccountModal from '@/components/settings/DeleteAccountModal'
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
@@ -52,10 +52,9 @@ export default function SettingsPage() {
   const [driveConnected, setDriveConnected] = useState(false)
   const [driveLoading, setDriveLoading] = useState(false)
   const [integrationsLoading, setIntegrationsLoading] = useState(true)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
-  const confirm = useConfirm()
   const [storageStats, setStorageStats] = useState<{
     fileCount: number
     originalBytes: number
@@ -642,23 +641,9 @@ export default function SettingsPage() {
     }
   }
 
-  function handleDeleteAccount() {
-    confirm.open({
-      title: '계정을 삭제할까요?',
-      description: '계정을 삭제하면 모든 데이터가 영구적으로 삭제돼요.\n이 작업은 되돌릴 수 없습니다.',
-      variant: 'danger',
-      confirmLabel: '계정 삭제',
-      onConfirm: async () => {
-        setDeleteLoading(true)
-        try {
-          // 서비스 역할로 계정 삭제는 서버 API가 필요하므로 로그아웃만 처리
-          await supabase.auth.signOut()
-          router.push('/login')
-        } finally {
-          setDeleteLoading(false)
-        }
-      },
-    })
+  function goToExportSection() {
+    setDeleteModalOpen(false)
+    document.getElementById('settings-export')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
@@ -907,7 +892,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* 내보내기 / 가져오기 */}
-      <Section title="내보내기 / 백업" icon={<Download size={15} />}>
+      <Section id="settings-export" title="내보내기 / 백업" icon={<Download size={15} />}>
         <SettingRow label="Markdown 내보내기" description="메모를 .md 파일로 저장합니다">
           <button
             onClick={() => exportData('markdown')}
@@ -1206,11 +1191,10 @@ export default function SettingsPage() {
         </SettingRow>
         <SettingRow label="계정 삭제" description="모든 데이터가 영구 삭제됩니다">
           <button
-            onClick={handleDeleteAccount}
-            disabled={deleteLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+            onClick={() => setDeleteModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
           >
-            {deleteLoading ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            <Trash2 size={12} />
             계정 삭제
           </button>
         </SettingRow>
@@ -1218,7 +1202,9 @@ export default function SettingsPage() {
 
       {/* 버전 */}
       <p className="text-xs text-center text-gray-400">Weave v0.1.0</p>
-      <confirm.Render />
+      {deleteModalOpen && (
+        <DeleteAccountModal onClose={() => setDeleteModalOpen(false)} onGoToExport={goToExportSection} />
+      )}
 
       {/* PR-5: Drive 복원 모달 */}
       {restoreModalOpen && (
@@ -1306,9 +1292,9 @@ export default function SettingsPage() {
   )
 }
 
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Section({ id, title, icon, children }: { id?: string; title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+    <div id={id} className="scroll-mt-4 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
         <span className="text-gray-500">{icon}</span>
         <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{title}</h3>

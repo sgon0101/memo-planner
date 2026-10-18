@@ -222,6 +222,12 @@ export async function clearAllPending(): Promise<void> {
   } catch { /* silent */ }
 }
 
+/** 계정 삭제 시 — 대기 쓰기·ID 매핑·이미지 blob 모두 비운다. 실패는 throw (호출부가 판단) */
+export async function clearAllOfflineData(): Promise<void> {
+  const db = await getDB()
+  await Promise.all([db.clear('pending_writes'), db.clear('id_map'), db.clear('image_blobs')])
+}
+
 // ─── id_map API ─────────────────────────────────────────────────
 
 /** flush 시 임시 ID → 진짜 ID 매핑 저장 */
