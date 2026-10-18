@@ -55,3 +55,6 @@ supabase/.branches/
 
 # 세션 임시 파일 (git lock 우회·스테이징 사본 등 — 삭제 대상)
 /_to_delete/
+
+# 다른 AI 에이전트 도구용 스킬 사본 (.claude/skills와 중복 — 커밋 대상 아님)
+.agents/
