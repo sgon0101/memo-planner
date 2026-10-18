@@ -195,6 +195,8 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   const folderIdRef = useRef<string | null>(initialFolderId ?? null)
   const titleRef = useRef(initialTitle)
   const createdIdRef = useRef<string | null>(isNew ? null : memoId)
+  // 진행 중인 새 메모 INSERT — 겹친 save가 결과를 공유해 중복 생성 방지
+  const createInFlightRef = useRef<Promise<string> | null>(null)
   // 최신 상태를 ref에 동기화 — render 중 ref 갱신 대신 layout effect (이벤트/인터벌에서만 읽음)
   useLayoutEffect(() => {
     folderIdRef.current = folderId
@@ -217,7 +219,13 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
   ) => {
     setSaveStatus('saving')
     try {
-      const id = createdIdRef.current
+      // 새 메모의 첫 INSERT가 진행 중이면 그 결과(실제 id)를 기다렸다가 UPDATE로 —
+      // 자동저장·목록 복귀 등으로 save가 겹치면 INSERT가 두 번 나가 메모가 2개 생기던 경로 차단
+      let existingId = createdIdRef.current
+      if (!existingId && createInFlightRef.current) {
+        existingId = await createInFlightRef.current.catch(() => null)
+      }
+      const id = existingId
       if (id) {
         const wikiLinks = extractWikiLinks(text)
         const tags = extractTags(text)
@@ -296,114 +304,123 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           body: JSON.stringify({ memoId: id }),
         }).catch(() => { /* 임베딩 실패는 silent */ })
       } else {
-        // PR-M1-B 핫픽스: getUser()는 offline에서 토큰 refresh fetch fail로 throw → user_id=''로 큐 적재 후 RLS 400
-        // getSession()은 cookie/localStorage sync 읽기 → 네트워크 호출 없음
-        const { data: { session } } = await supabase.auth.getSession()
-        const userId = session?.user?.id
-        if (!userId) {
-          throw new Error('로그인 세션이 만료되었어요. 다시 로그인해주세요.')
-        }
-        // 새 메모 INSERT에도 썸네일 추출 — 이미지 첨부 후 1.5s 안에 페이지를 벗어나면
-        // 다음 update 분기가 안 돌아 thumbnail_url이 null로 굳던 버그 방지
-        const firstImageUrl = extractFirstImage(content)
-        const insertThumb = (firstImageUrl && !firstImageUrl.startsWith('data:'))
-          ? firstImageUrl
-          : null
-        // PR-M1-B: tempId 부여 → online이면 즉시 server insert, offline이면 큐
-        const tempId = makeTempId('memo')
-        const insertFields = {
-          user_id: userId,
-          title: titleRef.current,
-          content,
-          content_text: text,
-          tags: extractTags(text),
-          wiki_links: extractWikiLinks(text),
-          folder_id: folderIdRef.current,
-          thumbnail_url: insertThumb,
-        }
-        const createResult = await createMemoOrQueue(insertFields, tempId)
-        const newMemo: Memo = createResult.row
-          ? toMemo(createResult.row)
-          : {
-              id: tempId,
-              userId: insertFields.user_id,
-              folderId: insertFields.folder_id ?? null,
-              title: insertFields.title,
-              content: insertFields.content as Record<string, unknown>,
-              contentText: insertFields.content_text,
-              isPinned: false,
-              isStarred: false,
-              isLocked: false,
-              lockedContent: null,
-              isDeleted: false,
-              deletedAt: null,
-              tags: insertFields.tags,
-              wikiLinks: insertFields.wiki_links,
-              linkedPlanIds: [],
-              thumbnailUrl: insertFields.thumbnail_url,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-        createdIdRef.current = newMemo.id
-        setCreatedId(newMemo.id)
-
-        // 새 메모 임베딩 — online에서 진짜 ID일 때만 (tempId면 flush 후 자동 백필이 따로 없으니
-        // 추후 update 시 자동임베드가 트리거됨)
-        if (!isTempId(newMemo.id)) {
-          void fetch('/api/embeddings/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ memoId: newMemo.id }),
-          }).catch(() => { /* 임베딩 실패는 silent */ })
-        }
-        // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
-        const newMemoForCache = { ...newMemo, content: {} as Record<string, unknown> }
-        queryClient.setQueryData<Memo[]>(
-          memoKeys.all(),
-          (old) => old ? [newMemoForCache, ...old] : [newMemoForCache]
-        )
-
-        // 홈 최근 메모 캐시 즉시 추가 — 새 메모는 항상 맨 앞, 5개로 자름
-        type HomeMemoIns = { id: string; title: string; contentText: string; updatedAt: string; isStarred: boolean; isPinned: boolean }
-        const newHomeEntry: HomeMemoIns = {
-          id: newMemo.id,
-          title: newMemo.title,
-          contentText: newMemo.contentText,
-          updatedAt: newMemo.updatedAt,
-          isStarred: newMemo.isStarred,
-          isPinned: newMemo.isPinned,
-        }
-        queryClient.setQueryData<{ recentMemos: HomeMemoIns[] } | undefined>(
-          ['home-memos'],
-          (old) => old
-            ? { ...old, recentMemos: [newHomeEntry, ...old.recentMemos].slice(0, 5) }
-            : { recentMemos: [newHomeEntry] },
-        )
-        if (typeof window !== 'undefined') {
-          try {
-            const raw = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
-            const parsed = raw ? JSON.parse(raw) as { recentMemos: HomeMemoIns[] } : { recentMemos: [] }
-            const nextCache = { ...parsed, recentMemos: [newHomeEntry, ...parsed.recentMemos].slice(0, 5) }
-            { const k = lsHomeMemosCache(); if (k) localStorage.setItem(k, JSON.stringify(nextCache)) }
-            { const k = lsHomeMemosCacheTs(); if (k) localStorage.setItem(k, String(Date.now())) }
-          } catch { /* ignore */ }
-        }
-        // 폴더 카운트 즉시 반영
-        const targetFolderId = folderIdRef.current
-        queryClient.setQueryData<Array<{ folder_id: string | null }>>(
-          ['memo-folder-counts'],
-          (old) => old ? [...old, { folder_id: targetFolderId }] : [{ folder_id: targetFolderId }]
-        )
-        queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-
-        if (!skipNavigate) {
-          // router.replace는 client-side navigation을 트리거해 페이지 컴포넌트가
-          // 재마운트 → Tiptap editor 재생성 → 사용자가 그 동안 입력한 내용 손실.
-          // history.replaceState는 URL만 silent 업데이트해 깜빡임 없음.
-          // 사용자가 새로고침/공유 시 URL이 정확한 id로 보임.
-          if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', `/memo/${newMemo.id}`)
+        const insertPromise = (async (): Promise<string> => {
+          // PR-M1-B 핫픽스: getUser()는 offline에서 토큰 refresh fetch fail로 throw → user_id=''로 큐 적재 후 RLS 400
+          // getSession()은 cookie/localStorage sync 읽기 → 네트워크 호출 없음
+          const { data: { session } } = await supabase.auth.getSession()
+          const userId = session?.user?.id
+          if (!userId) {
+            throw new Error('로그인 세션이 만료되었어요. 다시 로그인해주세요.')
           }
+          // 새 메모 INSERT에도 썸네일 추출 — 이미지 첨부 후 1.5s 안에 페이지를 벗어나면
+          // 다음 update 분기가 안 돌아 thumbnail_url이 null로 굳던 버그 방지
+          const firstImageUrl = extractFirstImage(content)
+          const insertThumb = (firstImageUrl && !firstImageUrl.startsWith('data:'))
+            ? firstImageUrl
+            : null
+          // PR-M1-B: tempId 부여 → online이면 즉시 server insert, offline이면 큐
+          const tempId = makeTempId('memo')
+          const insertFields = {
+            user_id: userId,
+            title: titleRef.current,
+            content,
+            content_text: text,
+            tags: extractTags(text),
+            wiki_links: extractWikiLinks(text),
+            folder_id: folderIdRef.current,
+            thumbnail_url: insertThumb,
+          }
+          const createResult = await createMemoOrQueue(insertFields, tempId)
+          const newMemo: Memo = createResult.row
+            ? toMemo(createResult.row)
+            : {
+                id: tempId,
+                userId: insertFields.user_id,
+                folderId: insertFields.folder_id ?? null,
+                title: insertFields.title,
+                content: insertFields.content as Record<string, unknown>,
+                contentText: insertFields.content_text,
+                isPinned: false,
+                isStarred: false,
+                isLocked: false,
+                lockedContent: null,
+                isDeleted: false,
+                deletedAt: null,
+                tags: insertFields.tags,
+                wikiLinks: insertFields.wiki_links,
+                linkedPlanIds: [],
+                thumbnailUrl: insertFields.thumbnail_url,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+          createdIdRef.current = newMemo.id
+          setCreatedId(newMemo.id)
+
+          // 새 메모 임베딩 — online에서 진짜 ID일 때만 (tempId면 flush 후 자동 백필이 따로 없으니
+          // 추후 update 시 자동임베드가 트리거됨)
+          if (!isTempId(newMemo.id)) {
+            void fetch('/api/embeddings/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ memoId: newMemo.id }),
+            }).catch(() => { /* 임베딩 실패는 silent */ })
+          }
+          // 목록 캐시에는 content 제외 — 에디터는 직접 DB fetch
+          const newMemoForCache = { ...newMemo, content: {} as Record<string, unknown> }
+          queryClient.setQueryData<Memo[]>(
+            memoKeys.all(),
+            (old) => old ? [newMemoForCache, ...old] : [newMemoForCache]
+          )
+
+          // 홈 최근 메모 캐시 즉시 추가 — 새 메모는 항상 맨 앞, 5개로 자름
+          type HomeMemoIns = { id: string; title: string; contentText: string; updatedAt: string; isStarred: boolean; isPinned: boolean }
+          const newHomeEntry: HomeMemoIns = {
+            id: newMemo.id,
+            title: newMemo.title,
+            contentText: newMemo.contentText,
+            updatedAt: newMemo.updatedAt,
+            isStarred: newMemo.isStarred,
+            isPinned: newMemo.isPinned,
+          }
+          queryClient.setQueryData<{ recentMemos: HomeMemoIns[] } | undefined>(
+            ['home-memos'],
+            (old) => old
+              ? { ...old, recentMemos: [newHomeEntry, ...old.recentMemos].slice(0, 5) }
+              : { recentMemos: [newHomeEntry] },
+          )
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = (() => { const k = lsHomeMemosCache(); return k ? localStorage.getItem(k) : null })()
+              const parsed = raw ? JSON.parse(raw) as { recentMemos: HomeMemoIns[] } : { recentMemos: [] }
+              const nextCache = { ...parsed, recentMemos: [newHomeEntry, ...parsed.recentMemos].slice(0, 5) }
+              { const k = lsHomeMemosCache(); if (k) localStorage.setItem(k, JSON.stringify(nextCache)) }
+              { const k = lsHomeMemosCacheTs(); if (k) localStorage.setItem(k, String(Date.now())) }
+            } catch { /* ignore */ }
+          }
+          // 폴더 카운트 즉시 반영
+          const targetFolderId = folderIdRef.current
+          queryClient.setQueryData<Array<{ folder_id: string | null }>>(
+            ['memo-folder-counts'],
+            (old) => old ? [...old, { folder_id: targetFolderId }] : [{ folder_id: targetFolderId }]
+          )
+          queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
+
+          if (!skipNavigate) {
+            // router.replace는 client-side navigation을 트리거해 페이지 컴포넌트가
+            // 재마운트 → Tiptap editor 재생성 → 사용자가 그 동안 입력한 내용 손실.
+            // history.replaceState는 URL만 silent 업데이트해 깜빡임 없음.
+            // 사용자가 새로고침/공유 시 URL이 정확한 id로 보임.
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', `/memo/${newMemo.id}`)
+            }
+          }
+          return newMemo.id
+        })()
+        createInFlightRef.current = insertPromise
+        try {
+          await insertPromise
+        } finally {
+          if (createInFlightRef.current === insertPromise) createInFlightRef.current = null
         }
       }
 
