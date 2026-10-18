@@ -23,6 +23,8 @@ function LoginForm() {
   const urlError = searchParams.get('error')
   const urlMsg = searchParams.get('msg')
   const urlErrorCode = searchParams.get('error_code')
+  const accountDeleted = searchParams.get('deleted') === '1'
+  const reauthForDelete = searchParams.get('reauth') === 'delete'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
@@ -101,6 +103,17 @@ function LoginForm() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weave</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">로그인하여 시작하세요</p>
       </div>
+
+      {accountDeleted && (
+        <p role="status" className="mb-4 text-sm text-center text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-4 py-3 rounded-xl">
+          계정이 삭제됐어요. 그동안 Weave를 써주셔서 고마워요.
+        </p>
+      )}
+      {reauthForDelete && (
+        <p role="status" className="mb-4 text-sm text-center text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 rounded-xl">
+          다시 로그인한 뒤 설정에서 계정 삭제를 진행해주세요.
+        </p>
+      )}
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8 space-y-5">
         {/* 구글 로그인 버튼 */}
