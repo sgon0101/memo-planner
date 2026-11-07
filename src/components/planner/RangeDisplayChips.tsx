@@ -36,7 +36,9 @@ export default function RangeDisplayChips({ daily, onChange, startDate, endDate,
         ))}
       </div>
       <p className="mt-1 text-[11px] text-gray-400">
-        {daily
+        {startDate === endDate
+          ? '시작일과 종료일이 같아서 하루 플랜으로 저장돼요'
+          : daily
           ? `${daysInclusive(startDate, endDate)}일 동안 날마다 하루 플랜으로 보이고, 날마다 따로 완료해요`
           : '시작일부터 종료일까지 하나로 이어진 막대로 보여요'}
       </p>
