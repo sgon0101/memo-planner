@@ -1,5 +1,5 @@
 /**
- * 공개 페이지(랜딩·개인정보 처리방침·이용약관) 공용 상수 (2026-11-07).
+ * 공개 페이지(첫 화면·소개·개인정보 처리방침·이용약관) 공용 상수 (2026-11-07).
  * 도메인(useweave.app)을 연결하면 NEXT_PUBLIC_SITE_URL만 바꾸면 된다 — 없으면 Vercel 운영 도메인.
  */
 
@@ -18,8 +18,8 @@ export const SITE_URL = (
 ).replace(/\/$/, '')
 
 /** 로그인 없이 열리는 페이지 — proxy.ts·robots·sitemap이 같은 목록을 쓴다 */
-export const PUBLIC_PAGES = ['/', '/privacy', '/terms'] as const
+export const PUBLIC_PAGES = ['/', '/about', '/privacy', '/terms'] as const
 
 export function isPublicPage(pathname: string): boolean {
-  return pathname === '/' || pathname === '/privacy' || pathname === '/terms'
+  return (PUBLIC_PAGES as readonly string[]).includes(pathname)
 }
