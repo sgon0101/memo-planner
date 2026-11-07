@@ -239,7 +239,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   }, [onDocMove, onDocUp])
 
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
-    if (!isDraggable(plan)) return
+    // 끌 수 없는 블록(기간·반복 플랜의 하루치 시간 블록)도 눌림을 여기서 받는다 — 뒤 칸으로 새면 '새 플랜' 폼이 열렸음
+    if (!isDraggable(plan)) { e.stopPropagation(); return }
     e.stopPropagation()
     const { pointerId, clientX, clientY, pointerType } = e
     const target = e.currentTarget as HTMLElement
@@ -437,7 +438,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                           longPressStart.current = null
                         }
                       }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); if (!isDraggable(plan)) onEditPlan(plan) }}
                   onContextMenu={(e) => e.preventDefault()}
                 >
                   <div className="font-medium truncate">{plainTitle(plan.title)}</div>
