@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Target, Bell, BellOff } from 'lucide-react'
+import { X, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Search, Clock, Paperclip, Bell, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner } from '@/hooks/usePlanner'
 import { useMemos } from '@/hooks/useMemos'
@@ -11,13 +11,18 @@ import TimePicker from './TimePicker'
 import {
   type RepeatPreset, type EndMode, type CustomFreq,
   type RecurrenceSettings,
-  defaultRecurrence, buildRRule, parseRRule, ALL_BYDAY,
+  defaultRecurrence, buildRRule, parseRRule,
 } from '@/lib/planner/rrulePresets'
 import { tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { Plan, PlanTemplate } from '@/types'
-import { TemplateChip } from './TemplateChip'
 import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { isInboxPlan, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
+import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
+import { toast } from '@/components/ui/Toast'
+import PlanWikiChips from './PlanWikiChips'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
@@ -34,6 +39,9 @@ const PRESET_CHIPS: { value: RepeatPreset; label: string }[] = [
   { value: 'yearly',        label: '매년' },
   { value: 'custom',        label: '맞춤' },
 ]
+/** 2026-11 옵션 정리: 기본으로 보이는 반복 프리셋 (실사용 0건 → 단순화).
+ *  이미 다른 프리셋(격주·맞춤 등)으로 저장된 플랜은 그 칩을 함께 보여 기존 데이터를 그대로 고칠 수 있다. */
+const VISIBLE_PRESETS: RepeatPreset[] = ['none', 'daily', 'weekdays', 'weekly', 'monthly-date']
 
 /** 색상 버튼 스크린리더 라벨 */
 const COLOR_NAMES: Record<string, string> = {
@@ -62,7 +70,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   const [title, setTitle]             = useState(plan?.title ?? '')
   const [description, setDescription] = useState(plan?.description ?? '')
   const [color, setColor]             = useState(plan?.color ?? '#7C3AED')
-  const [isRange, setIsRange]         = useState(!!(plan?.startDate))
+  // 날짜 유형 — 하루 / 기간 / 미정(인박스). 미정은 2026-11 인박스 도입으로 추가:
+  // 인박스 플랜을 이 폼에서 열어 저장하면 오늘 날짜가 강제로 들어가던 문제 방지
+  const [dateMode, setDateMode] = useState<'single' | 'range' | 'none'>(
+    plan ? (isInboxPlan(plan) ? 'none' : plan.startDate ? 'range' : 'single') : 'single',
+  )
+  const isRange = dateMode === 'range'
+  const isUndated = dateMode === 'none'
   const [singleDate, setSingleDate]   = useState(plan?.date ?? date)
   const [startDate, setStartDate]     = useState(plan?.startDate ?? date)
   const [endDate, setEndDate]         = useState(plan?.endDate ?? date)
@@ -104,13 +118,26 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     }
     return 10
   })
-  const [ddayTarget, setDdayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
+  // D-day 입력은 2026-11 옵션 정리로 제거(실사용 0건). 기존 값은 수정 시 그대로 보존한다
+  const [ddayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
+  const [wikiLinks, setWikiLinks] = useState<string[]>(plan?.wikiLinks ?? [])
+  // 위키·색상 추천 — 새 플랜이고 색을 직접 고르지 않았을 때만 위키에 맞춰 색을 바꾼다(기존 플랜 색은 건드리지 않음)
+  const hints = usePlanHints()
+  const colorTouched = useRef(!!plan)
+  const wikiSuggest = useMemo(() => (title.trim() ? suggestWikis(hints, title, wikiLinks) : []), [hints, title, wikiLinks])
+  function changeWikis(next: string[]) {
+    setWikiLinks(next)
+    if (!colorTouched.current && next[0]) {
+      const c = colorForWiki(hints, next[0])
+      if (c) setColor(c)
+    }
+  }
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.rruleStr || plan?.ddayTarget))
+  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.rruleStr))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
@@ -120,8 +147,9 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   // 제목 입력 시 자동완성 드롭다운용 (제목 포함 매칭)
   const matchingTemplates = useMemo(() => {
     const q = title.trim().toLowerCase()
-    if (!q) return []
-    return templates.filter((t) => t.title.toLowerCase().includes(q))
+    // 비어 있으면 자주 쓰는 즐겨찾기를 보여준다 (2026-11: 상단 칩 줄을 이 목록으로 통합)
+    if (!q) return templates
+    return templates.filter((t) => t.title.toLowerCase().includes(q) && t.title.trim().toLowerCase() !== q)
   }, [templates, title])
 
   // 검색어 기반 필터링 + 연결된 메모 상단 고정
@@ -182,66 +210,41 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
       .order('last_used_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .then(({ data }) => {
-        if (data) setTemplates(data.map((r) => ({
-          id: r.id,
-          userId: r.user_id,
-          title: r.title,
-          color: r.color,
-          startTime: r.start_time ?? null,
-          endTime: r.end_time ?? null,
-          isAllDay: r.is_all_day ?? true,
-          linkedMemoIds: r.linked_memo_ids ?? [],
-          description: r.description ?? null,
-          rruleStr: r.rrule_str ?? null,
-          notifyEnabled: r.notify_enabled ?? false,
-          notifyLeadMin: r.notify_lead_min ?? 10,
-          useCount: r.use_count ?? 0,
-          lastUsedAt: r.last_used_at ?? null,
-          createdAt: r.created_at,
-        })))
+        // 같은 제목 중복(과거 무조건 insert로 쌓인 것)은 화면에서만 하나로 — 많이 쓴 쪽이 남는다
+        if (data) setTemplates(dedupeTemplates(data.map(rowToTemplate)))
       })
+    // 모달이 열릴 때 1회만 불러온다 — supabase는 렌더마다 새로 만들어지는 클라이언트라 deps에 넣으면 매 렌더 재조회
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleSaveTemplate() {
     if (!title.trim()) return
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
-    // 현재 폼의 모든 옵션을 템플릿에 함께 저장 (반복/알림/설명 포함)
+    if (!user) return
+    // 현재 폼의 모든 옵션을 템플릿에 함께 저장 (반복/알림/메모 포함). 같은 제목이 있으면 갱신.
     const baseDate = isRange ? startDate : singleDate
-    const tplRrule = buildRRule(recurrence, baseDate)
-    const { data, error: tplErr } = await supabase
-      .from('plan_templates')
-      .insert({
-        user_id: user?.id,
+    const tplRrule = isUndated ? null : buildRRule(recurrence, baseDate)
+    try {
+      const { row, updated } = await upsertTemplate(supabase, user.id, {
         title: title.trim(),
         color,
-        start_time: isAllDay ? null : (startTime || null),
-        end_time: isAllDay ? null : (endTime || null),
-        is_all_day: isAllDay,
+        start_time: isAllDay || isUndated ? null : (startTime || null),
+        end_time: isAllDay || isUndated ? null : (endTime || null),
+        is_all_day: isAllDay || isUndated,
         linked_memo_ids: linkedMemoIds,
+        wiki_links: wikiLinks,
         description: description.trim() || null,
         rrule_str: tplRrule,
-        notify_enabled: notifyEnabled,
+        notify_enabled: notifyEnabled && !isUndated,
         notify_lead_min: notifyLeadMin,
       })
-      .select().single()
-    if (tplErr) { reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(tplErr); return }
-    if (data) setTemplates((prev) => [{
-      id: data.id,
-      userId: data.user_id,
-      title: data.title,
-      color: data.color,
-      startTime: data.start_time ?? null,
-      endTime: data.end_time ?? null,
-      isAllDay: data.is_all_day ?? true,
-      linkedMemoIds: data.linked_memo_ids ?? [],
-      description: data.description ?? null,
-      rruleStr: data.rrule_str ?? null,
-      notifyEnabled: data.notify_enabled ?? false,
-      notifyLeadMin: data.notify_lead_min ?? 10,
-      useCount: data.use_count ?? 0,
-      lastUsedAt: data.last_used_at ?? null,
-      createdAt: data.created_at,
-    }, ...prev])
+      const saved = rowToTemplate(row)
+      setTemplates((prev) => dedupeTemplates([saved, ...prev.filter((t) => t.id !== saved.id)]))
+      // 칩 줄이 없어져 저장 결과가 화면에 안 보이므로 토스트로 알린다
+      toast.success(updated ? '즐겨찾기를 업데이트했어요.' : '즐겨찾기에 저장했어요. 제목을 입력하면 불러올 수 있어요.')
+    } catch (err) {
+      reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(err)
+    }
   }
 
   function handleDeleteTemplate(t: PlanTemplate) {
@@ -260,11 +263,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   function applyTemplate(t: PlanTemplate) {
     setTitle(t.title)
     setColor(t.color)
+    colorTouched.current = true
     setIsAllDay(t.isAllDay)
     if (!t.isAllDay) {
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime)   setEndTime(t.endTime.slice(0, 5))
     }
+    if (t.wikiLinks && t.wikiLinks.length > 0) setWikiLinks(t.wikiLinks)
     if (t.linkedMemoIds && t.linkedMemoIds.length > 0) {
       setLinkedMemoIds(t.linkedMemoIds)
       setShowAdvanced(true)
@@ -321,7 +326,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) { setError('제목을 입력하세요.'); return }
-    if (!isAllDay) {
+    if (!isAllDay && !isUndated) {
       const [sh, sm] = startTime.split(':').map(Number)
       const [eh, em] = endTime.split(':').map(Number)
       if (eh * 60 + em <= sh * 60 + sm) {
@@ -332,8 +337,17 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     setLoading(true)
     try {
       const baseDate = isRange ? startDate : singleDate
-      const rruleStr = buildRRule(recurrence, baseDate)
-      const data: Partial<Plan> = {
+      const rruleStr = isUndated ? null : buildRRule(recurrence, baseDate)
+      const data: Partial<Plan> = isUndated ? {
+        // 미정(인박스) — 날짜·시간·반복·알림을 모두 비운다 (lib/planner/inbox.ts 정의)
+        title: title.trim(),
+        description: description.trim(),
+        color,
+        ...INBOX_RESET_FIELDS,
+        ddayTarget,
+        linkedMemoIds,
+        wikiLinks,
+      } : {
         title: title.trim(),
         description: description.trim(),
         color,
@@ -351,6 +365,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         notifyLeadMin,
         ddayTarget,
         linkedMemoIds,
+        wikiLinks,
       }
       if (plan) {
         await editPlan(plan.id, data)
@@ -383,23 +398,6 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          {/* 즐겨찾기 템플릿 (최대 3개 칩 표시) */}
-          {templates.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">즐겨찾기</p>
-              <div className="flex gap-1.5 flex-wrap items-center">
-                {templates.slice(0, 3).map((t) => (
-                  <TemplateChip key={t.id} template={t} onApply={applyTemplate} onDelete={handleDeleteTemplate} />
-                ))}
-                {templates.length > 3 && (
-                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                    +{templates.length - 3}개 · 제목 입력 시 자동완성
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* 제목 + 즐겨찾기 저장 + 자동완성 드롭다운 */}
           <div className="relative">
             <input
@@ -430,40 +428,60 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
               <Bookmark size={14} />
             </button>
 
-            {/* 자동완성 드롭다운 */}
-            {showTemplateDropdown && matchingTemplates.length > 0 && (
+            {/* 즐겨찾기 자동완성 — 제목이 비어 있으면(새 플랜) 자주 쓰는 순, 입력하면 일치 항목.
+                2026-11: 상단 칩 줄과 통합. 삭제(되돌리기 가능)도 여기서 */}
+            {showTemplateDropdown && matchingTemplates.length > 0 && (title.trim() || !plan) && (
               <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-gray-400">즐겨찾기</p>
                 {matchingTemplates.slice(0, 5).map((t) => (
-                  <button
+                  <div
                     key={t.id}
-                    type="button"
-                    onMouseDown={(e) => { e.preventDefault(); applyTemplate(t) }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-violet-50 dark:hover:bg-violet-950/20 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
+                    className="group flex items-center border-t border-gray-100 dark:border-gray-700/60 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors"
                   >
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {!t.isAllDay && t.startTime ? (
-                          <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
-                            <Clock size={10} />
-                            {t.startTime.slice(0,5)}{t.endTime ? `~${t.endTime.slice(0,5)}` : ''}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-gray-400">종일</span>
-                        )}
-                        {t.linkedMemoIds.length > 0 && (
-                          <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
-                            <Paperclip size={10} />
-                            메모 {t.linkedMemoIds.length}개
-                          </span>
-                        )}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); applyTemplate(t) }}
+                      className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2.5 text-left"
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {!t.isAllDay && t.startTime ? (
+                            <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                              <Clock size={10} />
+                              {t.startTime.slice(0,5)}{t.endTime ? `~${t.endTime.slice(0,5)}` : ''}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">종일</span>
+                          )}
+                          {t.linkedMemoIds.length > 0 && (
+                            <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                              <Paperclip size={10} />
+                              메모 {t.linkedMemoIds.length}개
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`'${t.title}' 즐겨찾기 삭제`}
+                      onMouseDown={(e) => { e.preventDefault(); handleDeleteTemplate(t) }}
+                      className="w-9 h-9 mr-1 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
+          </div>
+
+          {/* 위키 칩 — 제목과 별개로 저장(0023). 하루 마감·주간 돌아보기의 위키 집계 기준 */}
+          <div className="flex items-start gap-2">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
+            <PlanWikiChips value={wikiLinks} onChange={changeWikis} suggestions={wikiSuggest} className="flex-1 min-w-0" />
           </div>
 
           {/* 색상 */}
@@ -474,7 +492,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setColor(c)}
+                  onClick={() => { setColor(c); colorTouched.current = true }}
                   aria-label={`${COLOR_NAMES[c] ?? c} 색상`}
                   aria-pressed={color === c}
                   className={cn("relative w-6 h-6 rounded-full transition-transform hover:scale-110 before:absolute before:-inset-1 before:content-['']", color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}
@@ -486,10 +504,29 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
 
           {/* 날짜 유형 + 종일 */}
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
-              <input type="checkbox" checked={isRange} onChange={(e) => setIsRange(e.target.checked)} className="accent-violet-600" />
-              범위 플랜
-            </label>
+            <div role="group" aria-label="날짜 유형" className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+              {([['single', '하루'], ['range', '기간'], ['none', '미정']] as const)
+                // 반복 플랜을 '미정'으로 바꾸면 시리즈 전체가 인박스로 가고 완료 기록이 고아가 된다 — 숨김
+                .filter(([mode]) => mode !== 'none' || !(plan?.rruleStr || plan?.repeatType || plan?.isRecurringInstance))
+                .map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={dateMode === mode}
+                  onClick={() => setDateMode(mode)}
+                  title={mode === 'none' ? '날짜를 정하지 않고 인박스에 둡니다' : undefined}
+                  className={cn(
+                    'px-2.5 py-1 text-xs rounded-md transition-colors',
+                    dateMode === mode
+                      ? 'bg-white dark:bg-gray-700 text-violet-700 dark:text-violet-300 font-semibold shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!isUndated && <>
             {/* 종일 토글 */}
             <button
               type="button"
@@ -515,8 +552,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
             {/* 알림 받기 토글 — 시간 지정 플랜에 의미 있음 (종일도 일단 토글 노출, 09:00 기본) */}
             <button
               type="button"
-              onClick={() => setNotifyEnabled((v) => !v)}
-              title="이 플랜의 알림을 받을지 설정"
+              onClick={() => {
+                // 2026-11 옵션 정리: 알림 시점 선택을 없애고 '10분 전' 하나로 (실사용 0건)
+                if (!notifyEnabled) setNotifyLeadMin(10)
+                setNotifyEnabled((v) => !v)
+              }}
+              aria-pressed={notifyEnabled}
+              title="시작 10분 전에 알려드려요"
               className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
             >
               <span
@@ -533,36 +575,17 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 />
               </span>
               {notifyEnabled ? <Bell size={11} className="text-violet-500" /> : <BellOff size={11} />}
-              알림
+              {notifyEnabled && notifyLeadMin !== 10 ? `알림 ${notifyLeadMin === 0 ? '정시' : `${notifyLeadMin}분 전`}` : '알림 10분 전'}
             </button>
+            </>}
           </div>
 
-          {/* 알림 시점 — 토글 ON일 때만 노출 */}
-          {notifyEnabled && (
-            <div className="flex items-center gap-1.5 flex-wrap pl-2">
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mr-1">
-                <Bell size={10} className="text-violet-500" /> 시점
-              </span>
-              {[0, 5, 10, 30, 60].map((min) => (
-                <button
-                  key={min}
-                  type="button"
-                  onClick={() => setNotifyLeadMin(min)}
-                  className={cn(
-                    'text-[11px] px-2 py-0.5 rounded-full border transition-colors',
-                    notifyLeadMin === min
-                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300',
-                  )}
-                >
-                  {min === 0 ? '정시' : `${min}분 전`}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* 날짜 */}
-          {isRange ? (
+          {isUndated ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60 rounded-lg px-3 py-2">
+              날짜 없이 인박스에 둬요. 나중에 캘린더로 끌어서 일정을 정할 수 있어요.
+            </p>
+          ) : isRange ? (
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <p className="text-xs text-gray-500 mb-1">시작일</p>
@@ -584,7 +607,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
           )}
 
           {/* 시간 */}
-          {!isAllDay && (
+          {!isAllDay && !isUndated && (
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <TimePicker label="시작 시간" value={startTime} onChange={setStartTime} />
@@ -603,18 +626,18 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {showAdvanced ? '고급 설정 접기' : '고급 설정 (설명, 반복, D-day, 메모 연결)'}
+            {showAdvanced ? '더보기 접기' : '더보기 (메모, 반복, 메모 연결)'}
           </button>
 
           {showAdvanced && (
             <div className="space-y-4">
               {/* 설명 */}
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">설명</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">메모</p>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="플랜에 대한 설명을 입력하세요..."
+                  placeholder="준비물, 링크, 생각해둘 것…"
                   rows={3}
                   autoComplete="off"
                   autoCorrect="off"
@@ -628,11 +651,11 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 />
               </div>
 
-              {/* 반복 */}
-              <div>
+              {/* 반복 — 미정(인박스)에는 의미가 없어 숨김 */}
+              {!isUndated && <div>
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {PRESET_CHIPS.map((opt) => (
+                  {PRESET_CHIPS.filter((opt) => VISIBLE_PRESETS.includes(opt.value) || opt.value === recurrence.preset).map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
@@ -755,7 +778,10 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-medium text-gray-500 w-10 flex-shrink-0">종료</span>
                       <div className="flex gap-1">
-                        {(['forever', 'count', 'until'] as EndMode[]).map((m) => (
+                        {(['forever', 'count', 'until'] as EndMode[])
+                          // '횟수로 종료'는 기존에 그렇게 저장된 반복만 보여준다 (2026-11 단순화)
+                          .filter((m) => m !== 'count' || recurrence.endMode === 'count')
+                          .map((m) => (
                           <button
                             key={m}
                             type="button"
@@ -826,53 +852,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                     )}
                   </div>
                 )}
-              </div>
-
-              {/* D-day */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-                    <Target size={11} className="text-rose-500" /> D-day
-                  </p>
-                  {ddayTarget && (
-                    <button
-                      type="button"
-                      onClick={() => setDdayTarget(null)}
-                      className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                      해제
-                    </button>
-                  )}
-                </div>
-                {ddayTarget ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={ddayTarget}
-                      onChange={(e) => setDdayTarget(e.target.value || null)}
-                      className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-rose-500"
-                    />
-                    <span className="text-xs font-medium text-rose-500 whitespace-nowrap">
-                      {(() => {
-                        const today = new Date(); today.setHours(0, 0, 0, 0)
-                        const t = new Date(ddayTarget); t.setHours(0, 0, 0, 0)
-                        const diff = Math.round((t.getTime() - today.getTime()) / 86400000)
-                        if (diff > 0) return `D-${diff}`
-                        if (diff === 0) return 'D-Day'
-                        return `D+${-diff}`
-                      })()}
-                    </span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setDdayTarget(singleDate)}
-                    className="w-full px-3 py-2 text-xs text-rose-500 border border-dashed border-rose-200 dark:border-rose-900/50 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
-                  >
-                    + 목표일 지정 (홈 화면에 카운트다운 표시)
-                  </button>
-                )}
-              </div>
+              </div>}
 
               {/* 메모 연결 */}
               <div>

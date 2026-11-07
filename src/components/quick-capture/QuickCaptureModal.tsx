@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import {
   X, FileText, Calendar, Loader2, CheckCircle,
   ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
-  Link2, Search, Clock, Paperclip, Target, Bell, BellOff,
+  Link2, Search, Clock, Paperclip, Bell, BellOff,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +27,10 @@ import type { PlanTemplate } from '@/types'
 import { TemplateChip } from '@/components/planner/TemplateChip'
 import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
+import PlanWikiChips from '@/components/planner/PlanWikiChips'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
 
 const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
 
@@ -41,6 +45,8 @@ const PRESET_CHIPS: { value: RepeatPreset; label: string }[] = [
   { value: 'yearly',       label: '매년' },
   { value: 'custom',       label: '맞춤' },
 ]
+/** 2026-11 옵션 정리 — 플랜 폼(PlanFormModal)과 같은 기본 프리셋. 이미 고른 다른 프리셋은 함께 보인다 */
+const VISIBLE_PRESETS: RepeatPreset[] = ['none', 'daily', 'weekdays', 'weekly', 'monthly-date']
 
 /** 색상 버튼 스크린리더 라벨 */
 const COLOR_NAMES: Record<string, string> = {
@@ -115,8 +121,21 @@ function QuickCaptureInner({
     }
     return 10
   })
-  const [ddayTarget, setDdayTarget] = useState<string | null>(null)
+  // D-day 입력은 2026-11 옵션 정리로 제거 — 새 플랜은 항상 null
+  const [ddayTarget] = useState<string | null>(null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>([])
+  const [wikiLinks, setWikiLinks] = useState<string[]>([])
+  // 위키·색상 추천 (PlanFormModal과 같은 규칙 — 색을 직접 고르기 전까지만 위키 색을 따른다)
+  const hints = usePlanHints()
+  const colorTouched = useRef(false)
+  const wikiSuggest = useMemo(() => (planTitle.trim() ? suggestWikis(hints, planTitle, wikiLinks) : []), [hints, planTitle, wikiLinks])
+  function changeWikis(next: string[]) {
+    setWikiLinks(next)
+    if (!colorTouched.current && next[0]) {
+      const c = colorForWiki(hints, next[0])
+      if (c) setColor(c)
+    }
+  }
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -133,18 +152,8 @@ function QuickCaptureInner({
         .order('use_count', { ascending: false })
         .order('last_used_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-      return (data ?? []).map((r) => ({
-        id: r.id, userId: r.user_id, title: r.title, color: r.color,
-        startTime: r.start_time ?? null, endTime: r.end_time ?? null,
-        isAllDay: r.is_all_day ?? true, linkedMemoIds: r.linked_memo_ids ?? [],
-        description: r.description ?? null,
-        rruleStr: r.rrule_str ?? null,
-        notifyEnabled: r.notify_enabled ?? false,
-        notifyLeadMin: r.notify_lead_min ?? 10,
-        useCount: r.use_count ?? 0,
-        lastUsedAt: r.last_used_at ?? null,
-        createdAt: r.created_at,
-      }))
+      // 같은 제목 중복(과거 무조건 insert로 쌓인 것)은 화면에서만 하나로 (lib/planner/templates.ts)
+      return dedupeTemplates((data ?? []).map(rowToTemplate))
     },
     staleTime: 30_000,
   })
@@ -216,7 +225,7 @@ function QuickCaptureInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, memoTitle, memoBody, folderId, planTitle, description, color, isRange,
       singleDate, startDate, endDate, startTime, endTime, isAllDay,
-      recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds])
+      recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks])
 
   function calcDuration(s: string, e: string) {
     const [sh, sm] = s.split(':').map(Number)
@@ -236,18 +245,21 @@ function QuickCaptureInner({
   async function handleSaveTemplate() {
     if (!planTitle.trim()) return
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
+    if (!user) return
     const baseDate = isRange ? startDate : singleDate
-    const { error: tplErr } = await supabase.from('plan_templates').insert({
-      user_id: user?.id, title: planTitle.trim(), color,
-      start_time: isAllDay ? null : (startTime || null),
-      end_time: isAllDay ? null : (endTime || null),
-      is_all_day: isAllDay, linked_memo_ids: linkedMemoIds,
-      description: description.trim() || null,
-      rrule_str: buildRRule(recurrence, baseDate),
-      notify_enabled: notifyEnabled,
-      notify_lead_min: notifyLeadMin,
-    })
-    if (tplErr) { reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(tplErr); return }
+    try {
+      // 같은 제목이 있으면 갱신 — 저장 경로 셋(플랜 폼·상세 패널·빠른 캡처) 공통 (중복 즐겨찾기 방지)
+      await upsertTemplate(supabase, user.id, {
+        title: planTitle.trim(), color,
+        start_time: isAllDay ? null : (startTime || null),
+        end_time: isAllDay ? null : (endTime || null),
+        is_all_day: isAllDay, linked_memo_ids: linkedMemoIds, wiki_links: wikiLinks,
+        description: description.trim() || null,
+        rrule_str: buildRRule(recurrence, baseDate),
+        notify_enabled: notifyEnabled,
+        notify_lead_min: notifyLeadMin,
+      })
+    } catch (err) { reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(err); return }
     refetchTemplates()
   }
 
@@ -270,10 +282,12 @@ function QuickCaptureInner({
 
   function applyTemplate(t: PlanTemplate) {
     setPlanTitle(t.title); setColor(t.color); setIsAllDay(t.isAllDay)
+    colorTouched.current = true
     if (!t.isAllDay) {
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime) setEndTime(t.endTime.slice(0, 5))
     }
+    if (t.wikiLinks && t.wikiLinks.length > 0) setWikiLinks(t.wikiLinks)
     if (t.linkedMemoIds && t.linkedMemoIds.length > 0) { setLinkedMemoIds(t.linkedMemoIds); setShowAdvanced(true) }
     if (t.description) { setDescription(t.description); setShowAdvanced(true) }
     if (t.rruleStr) {
@@ -337,7 +351,7 @@ function QuickCaptureInner({
           endTime: isAllDay ? null : (endTime || null),
           rruleStr, repeatType: null,
           repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
-          notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds,
+          notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks,
         })
         flashSuccess()
       } catch (err) {
@@ -578,6 +592,12 @@ function QuickCaptureInner({
                 )}
               </div>
 
+              {/* 위키 칩 (0023) */}
+              <div className="flex items-start gap-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
+                <PlanWikiChips value={wikiLinks} onChange={changeWikis} suggestions={wikiSuggest} className="flex-1 min-w-0" />
+              </div>
+
               {/* 색상 */}
               <div className="flex items-center gap-2">
                 <p className="text-xs text-gray-500 dark:text-gray-400 w-10 flex-shrink-0">색상</p>
@@ -586,7 +606,7 @@ function QuickCaptureInner({
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setColor(c)}
+                      onClick={() => { setColor(c); colorTouched.current = true }}
                       aria-label={`${COLOR_NAMES[c] ?? c} 색상`}
                       aria-pressed={color === c}
                       className={cn("relative w-6 h-6 rounded-full transition-transform hover:scale-110 before:absolute before:-inset-1 before:content-['']", color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}
@@ -614,40 +634,21 @@ function QuickCaptureInner({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNotifyEnabled((v) => !v)}
+                  onClick={() => {
+                    // 2026-11 옵션 정리: 알림 시점은 '10분 전' 하나로 (실사용 0건)
+                    if (!notifyEnabled) setNotifyLeadMin(10)
+                    setNotifyEnabled((v) => !v)
+                  }}
+                  aria-pressed={notifyEnabled}
                   className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
                 >
                   <span className={cn('relative inline-flex h-4 w-7 items-center rounded-full transition-colors', notifyEnabled ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}>
                     <span className={cn('absolute h-3 w-3 rounded-full bg-white shadow transition-transform', notifyEnabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
                   </span>
                   {notifyEnabled ? <Bell size={11} className="text-violet-500" /> : <BellOff size={11} />}
-                  알림
+                  알림 10분 전
                 </button>
               </div>
-
-              {/* 알림 시점 */}
-              {notifyEnabled && (
-                <div className="flex items-center gap-1.5 flex-wrap pl-2">
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mr-1">
-                    <Bell size={10} className="text-violet-500" /> 시점
-                  </span>
-                  {[0, 5, 10, 30, 60].map((min) => (
-                    <button
-                      key={min}
-                      type="button"
-                      onClick={() => setNotifyLeadMin(min)}
-                      className={cn(
-                        'text-[11px] px-2 py-0.5 rounded-full border transition-colors',
-                        notifyLeadMin === min
-                          ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
-                      )}
-                    >
-                      {min === 0 ? '정시' : `${min}분 전`}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               {/* 날짜 */}
               {isRange ? (
@@ -691,7 +692,7 @@ function QuickCaptureInner({
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
               >
                 {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                {showAdvanced ? '고급 설정 접기' : '고급 설정 (설명, 반복, D-day, 메모 연결)'}
+                {showAdvanced ? '더보기 접기' : '더보기 (메모, 반복, 메모 연결)'}
               </button>
 
               {showAdvanced && (
@@ -714,7 +715,7 @@ function QuickCaptureInner({
                   <div>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
                     <div className="flex gap-1.5 flex-wrap">
-                      {PRESET_CHIPS.map((opt) => (
+                      {PRESET_CHIPS.filter((opt) => VISIBLE_PRESETS.includes(opt.value) || opt.value === recurrence.preset).map((opt) => (
                         <button
                           key={opt.value}
                           type="button"
@@ -840,39 +841,6 @@ function QuickCaptureInner({
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-
-                  {/* D-day */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-                        <Target size={11} className="text-rose-500" /> D-day
-                      </p>
-                      {ddayTarget && (
-                        <button type="button" onClick={() => setDdayTarget(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">해제</button>
-                      )}
-                    </div>
-                    {ddayTarget ? (
-                      <div className="flex items-center gap-2">
-                        <input type="date" value={ddayTarget} onChange={(e) => setDdayTarget(e.target.value || null)}
-                          className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-rose-500" />
-                        <span className="text-xs font-medium text-rose-500 whitespace-nowrap">
-                          {(() => {
-                            const t2 = new Date(); t2.setHours(0, 0, 0, 0)
-                            const t = new Date(ddayTarget); t.setHours(0, 0, 0, 0)
-                            const diff = Math.round((t.getTime() - t2.getTime()) / 86400000)
-                            if (diff > 0) return `D-${diff}`
-                            if (diff === 0) return 'D-Day'
-                            return `D+${-diff}`
-                          })()}
-                        </span>
-                      </div>
-                    ) : (
-                      <button type="button" onClick={() => setDdayTarget(singleDate)}
-                        className="w-full px-3 py-2 text-xs text-rose-500 border border-dashed border-rose-200 dark:border-rose-900/50 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors">
-                        + 목표일 지정 (홈 화면에 카운트다운 표시)
-                      </button>
                     )}
                   </div>
 

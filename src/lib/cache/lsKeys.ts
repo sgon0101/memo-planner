@@ -42,6 +42,11 @@ export const lsRealtimeSync     = (): string | null => buildUserCacheKey('realti
 /** 마지막으로 track_open을 보낸 KST 날짜 (YYYY-MM-DD) — ActivityPing */
 export const lsLastOpenDay      = (): string | null => buildUserCacheKey('last-open-day')
 
+// ─── 하루 마감 ────────────────────────────────────────────────────────────
+
+/** 그날 하루 마감을 저장했거나 닫았는지 — 자동으로 한 번만 띄우기 위해 */
+export const lsDayClosed        = (day: string): string | null => buildUserCacheKey(`day-closed-${day}`)
+
 /** 모든 user-specific 키 일괄 제거 (clearUserNamespace로도 처리되지만, 명시적 제거가 필요한 곳용) */
 export function getAllUserCacheKeys(): (string | null)[] {
   return [

@@ -57,6 +57,8 @@ export interface Plan {
   ddayTarget: string | null
   googleEventId: string | null
   linkedMemoIds: string[]
+  /** 플랜 위키 칩 (2026-11, 0023) — 제목과 별개. 하루 마감·주간 돌아보기의 위키 집계 기준 */
+  wikiLinks: string[]
   createdAt: string
   updatedAt: string
   // 클라이언트 전개 시 추가되는 가상 필드
@@ -83,6 +85,7 @@ export interface PlanTemplate {
   isAllDay: boolean
   linkedMemoIds: string[]
   // 확장 필드 (optional — 기존 코드 호환)
+  wikiLinks?: string[]
   description?: string | null
   rruleStr?: string | null
   notifyEnabled?: boolean

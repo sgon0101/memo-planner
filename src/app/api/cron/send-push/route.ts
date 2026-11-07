@@ -76,6 +76,7 @@ function rowToPlan(r: PlanRow): Plan {
     ddayTarget: r.dday_target ?? null,
     googleEventId: r.google_event_id ?? null,
     linkedMemoIds: r.linked_memo_ids ?? [],
+    wikiLinks: [],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
