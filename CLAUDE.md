@@ -55,7 +55,8 @@ memo-planner/
 │   │   │   └── [id]/
 │   │   │       └── page.tsx    # 메모 에디터
 │   │   ├── planner/
-│   │   │   └── page.tsx        # 플래너 (캘린더)
+│   │   │   ├── page.tsx        # 플래너 (캘린더)
+│   │   │   └── review/page.tsx # 주간 돌아보기 (WeeklyReview, ssr:false)
 │   │   ├── insights/
 │   │   │   └── page.tsx        # AI 인사이트
 │   │   └── settings/
@@ -95,7 +96,14 @@ memo-planner/
 │   │   ├── PlanForm.tsx            # 플랜 작성 폼
 │   │   ├── RangeBar.tsx            # 범위 플랜 바
 │   │   ├── TemplateChip.tsx        # 즐겨찾기 칩 (선택·삭제 버튼 분리, 32px 클릭 영역)
-│   │   └── TimePicker.tsx          # 시간 설정
+│   │   ├── TimePicker.tsx          # 시간 설정
+│   │   ├── InboxPanel.tsx          # 인박스/오늘 탭 — 빠른 추가(자연어 파싱)·드래그로 일정 배치·지난 미완료·하루 마감 버튼
+│   │   ├── ScheduleSheet.tsx       # 인박스 항목 시간 고르기 (빈 시간 추천·내일 9시·다음 월요일·날짜 지정)
+│   │   ├── PlanQuickEdit.tsx       # 블록 클릭 빠른 편집 팝오버/시트 (제목·메모·길이 칩·인박스로·삭제)
+│   │   ├── DayCloseModal.tsx       # 하루 마감 → '일지' 폴더에 날짜별 일지 메모 (재마감은 이어 붙이기)
+│   │   ├── PlannerGuide.tsx        # 첫 사용 안내 (실제 행동 기반 3단계, 연습 데이터 없음)
+│   │   ├── PlanTitle.tsx           # 제목의 [[위키]]·#태그를 칩/평문으로 표시
+│   │   └── WeeklyReview.tsx        # 주간 돌아보기 (완료·집중 시간대·마감한 날·일지)
 │   ├── auth/
 │   │   └── AuthControls.tsx        # 인증 폼 공용 — label 연결 입력·비밀번호 표시 토글·role="alert" 오류
 │   ├── settings/
@@ -161,7 +169,17 @@ memo-planner/
 │   │   ├── planCache.ts            # 플랜 RQ+LS 캐시 헬퍼 (planKeys, patch/add/remove/swap/find)
 │   │   ├── dragHelpers.ts          # 드래그/리사이즈 공용 상수·헬퍼 (HOUR_H, snap, ...)
 │   │   ├── rangeBars.ts            # 범위 플랜 바 슬롯 레이아웃 (월뷰 그리드·주뷰 종일 레인 공용)
-│   │   └── templateUndo.ts         # 즐겨찾기 삭제 되돌리기 (즉시 숨김 → 6.5초 후 서버 삭제, 실패 시 복원)
+│   │   ├── templateUndo.ts         # 즐겨찾기 삭제 되돌리기 (즉시 숨김 → 6.5초 후 서버 삭제, 실패 시 복원)
+│   │   ├── inbox.ts                # 인박스 판정(date·start_date·repeat 모두 null)·INBOX_RESET_FIELDS·빈 시간 추천
+│   │   ├── quickAdd.ts             # 빠른 추가 자연어 파싱 (오늘/내일/요일/M월D일·오후 3시·1시간 반)
+│   │   ├── planUndo.ts             # 플랜 되돌리기 스택 (토스트 '되돌리기'·⌘/Ctrl+Z 30초, 단일 사용)
+│   │   ├── dropTarget.ts           # 인박스 드래그 drop 대상 판정 (data-drop-kind/day, 15분 snap)
+│   │   ├── templates.ts            # 즐겨찾기 dedupe·upsertTemplate (같은 키 행 일괄 갱신)
+│   │   ├── titleTokens.ts          # 제목 [[위키]] 분리·plainTitle
+│   │   ├── journal.ts              # 일지 Tiptap JSON 생성 (회고·완료·미룬 일·오늘 메모·위키)
+│   │   ├── journalSave.ts          # '일지' 폴더 보장 + 일지 저장/이어 붙이기 (updated_at 조건부 갱신)
+│   │   ├── guide.ts                # 첫 사용 안내 진행도 (사용자별 LS)
+│   │   └── review.ts               # 주간 요약·집중 시간대 그리드·마감한 날
 │   ├── ui/
 │   │   └── reportSaveError.ts      # 저장 실패 공용 catch 핸들러 (Sentry + 오프라인 문구 + '다시 시도' 토스트 10초)
 │   ├── tiptap/
@@ -577,6 +595,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-11-07 | 플래너 개선 (ArchCalendar 벤치마크, 브랜치 `feat/planner-inbox`) | **DB 스키마 변경 없음**. 인박스 = date·start_date·repeat_type·rrule_str 모두 null인 플랜(기존 해당 행 0개). ①**인박스·오늘 패널**(좌측, 모바일 시트): 빠른 추가 자연어 파싱(Enter 저장·Shift+Enter 원문 그대로·IME 가드), 캘린더로 포인터 드래그해 일정 배치(월=종일, 주/일=15분 snap), 지난 미완료 '오늘로', 하루 마감 버튼 ②**되돌리기**: 이동·리사이즈·배치·인박스로·삭제에 토스트 '되돌리기'+⌘/Ctrl+Z(30초, 입력 중·모달 열림 시 무시), 삭제는 6.5초 지연 삭제로 ID 보존(메모 연결 유지) ③**빠른 편집 팝오버**(주/일 블록 클릭): 제목·메모·길이 칩·인박스로·삭제·전체 편집, 닫을 때 저장 ④**옵션 정리**: D-day UI 제거(값 보존), 알림 '10분 전' 단일 토글(기존 다른 값은 그대로 표시), 반복 프리셋 축소(현재 값은 유지), 설명→'메모', 즐겨찾기 칩 줄 → 제목 자동완성으로 통합, 즐겨찾기 저장 중복 방지(`upsertTemplate`) ⑤**Google Calendar 기본 미연동**(설정에서 선택 연결, 연결 시에만 동기화 버튼·'바쁨만 보내기' 토글) + 기존 버그 수정: 시간 형식 'HH:MM:SS'로 시간 플랜이 동기화 안 되던 문제, 완료·반복·지난·인박스 플랜 제외 ⑥**하루 마감 → 일지**: 오늘 할 일을 완료로 다 비우면 자동으로 열림(하루 1회), '일지' 폴더 자동 생성, `YYYY-MM-DD 일지` 메모 1개/일(재마감은 이어 붙이기·위키/태그 합집합·updated_at 조건부 갱신) ⑦**첫 사용 안내**: 연습 플랜을 넣으면 리텐션 트리거가 '첫 플랜'으로 기록해 지표가 오염되므로 실제 행동 3단계로 대체 ⑧**주간 돌아보기** `/planner/review`('계획 vs 실제'는 실제 시간 데이터가 없어 보류). **라이브 검증(로컬, 메인 계정, `[테스트]` 데이터)**: 빠른 추가→월뷰 드래그(11/9 종일)→주뷰 빠른 편집 '인박스로'→주뷰 시간 칸 드래그(11/10 19:45–20:45)→토스트 되돌리기로 인박스 복귀, 오늘 탭 추가→완료 시 하루 마감 자동 열림→일지 저장(DB: '일지' 폴더·#일지·회고·완료 항목, 메모 화면 렌더 정상)→돌아보기에 일지 표시, 설정 Google 행 미연결 표시. **라이브에서 발견해 고친 것**: 체크박스 `border-[1.5px]` 미생성으로 다크모드에서 안 보임 → `border-2` / 패널이 열려 좁아지면 헤더 버튼 줄바꿈·잘림 → 캘린더 폭 기준 `@container` 라벨 숨김+`flex-wrap` / 안내가 userId 확정 전 0/3으로 보이거나 닫은 안내가 다시 뜸 → userId 확정 후 렌더 / 토스트 '되돌리기'·'열기'가 빠른 기록 FAB에 가려짐 → 토스트를 FAB 위로(`bottom-36 md:bottom-24`, 앱 전체 공통) / 일지 첫 줄이 인용 블록이라 따옴표가 붙음 → 일반 문단 / 위키 없을 때도 '위 위키들과 연결돼요' 문구 → 조건부. **SW dev 캐시 재발 방지**: 코드 수정이 브라우저에 안 보이던 원인이 또 `sw.js` cache-first(dev 청크명 고정, 2026-09-24 교훈과 동일) → `ServiceWorkerRegister`가 dev에서는 등록하지 않고 기존 SW·캐시를 정리(운영 동작 무변경). 테스트 후 정리: 테스트 플랜 2·일지 메모 1·'일지' 폴더(테스트로 생성) 삭제, 브라우저 안내·마감 LS 키 삭제 → DB 기준값과 일치(plans 117·완료 108·해시 동일·templates 10·folders 16·memos 601). 검증: 단위 테스트(quickAdd 등 31·캐시 9·일지·돌아보기·gcal) 통과, tsc 0, 변경 파일 ESLint 클린 | 100% |
 | 2026-10-18 | 후속 정리 — .agents/ 무시·문서 배포(PR #354 → main `06010d3`)·auto mode 병합 규칙·중복 메모 확인 | ①**`.agents/` 정체 확인 후 `.gitignore` 추가**(`01a55e3`): `.agents/skills/ui-ux-pro-max/`(31파일·648KB, 2026-10-11 생성)는 이미 커밋된 `.claude/skills/ui-ux-pro-max/`와 내용 동일(`__pycache__` 제외)한 다른 AI 에이전트 도구용 사본 — 홈에도 `~/.agents/skills/`가 `~/.claude/skills/` 목록과 같아 스킬 동기화 도구가 만든 것으로 추정(도구 미확정). 폴더는 삭제하지 않음 ②**dev → main PR #354**(`CLAUDE.md`·`.gitignore` 2파일 +4줄, 앱 코드 무변경): CI·Vercel 미리보기 통과 → 사용자 병합 → Production success(13:23 UTC, Redeploy 없이 1회), `/login` 200 ③**`gh pr merge` 자동 병합 규칙**: `Bash(gh pr *)` allow가 이미 있었는데도 auto mode 분류기가 '리뷰 없는 병합'으로 차단 → 일반 allow 규칙으로는 해결 불가, `autoMode.allow`가 필요. Claude의 설정 파일 직접 수정은 'Self-Modification'으로 차단돼 사용자가 `.claude/settings.local.json`(git 제외, 커밋 없음)에 직접 추가: `$defaults` + **dev 병합만** 허용(CI 통과·사용자 요청 시), main 병합은 계속 사용자 실행. **주의**: 처음 붙여넣을 때 블록이 최상위 `}` 바깥, 다음엔 `},` 중복으로 JSON이 깨져 **파일 전체(allow 52개 포함)가 무시되던 상태** — 두 번 수정 후 파싱 OK(최상위 permissions·autoMode·worktree, allow 52) 확인. 실제 병합에서 규칙이 통하는지는 미검증(다음 dev 병합 때 확인, 막히면 `/hooks` 열기 또는 세션 재시작) ④**중복 메모 정리 요청**: 버그 수정 전 생긴 중복(`1765806e…` 26.10.18_일요일 일상 빈 본문, `f46e3b51…` 자동차보험 갱신 문의 LIST 짧은 쪽)을 휴지통 처리하려 했으나 두 id 모두 memos·memo_versions·memo_sources에 없음 — 사용자가 이미 앱에서 직접 삭제한 것으로 확인, DB 변경 없음. 남은 쪽 `bc0cd80f…`(517자)·`0af7ad00…`(1,177자) 정상, 각 제목 1개씩만 존재 ⑤**이 기록의 main 반영**: PR #355(`CLAUDE.md` +1줄, 앱 코드 무변경) CI·Vercel 미리보기 통과 → 사용자 병합(main `f0f99dd`) → Production success(13:40 UTC, Redeploy 없이 1회, `memo-planner-ti33xny89-sgon0101s-projects.vercel.app`), `/login` 200 | 100% |
 | 2026-10-18 | 새 메모 중복 INSERT 방지 (PR #352 → dev `0fe66f0`, #353 → main `5eab505`) | 첫 INSERT 진행 중 자동저장·탭 전환·Ctrl+S가 겹치면 `createdIdRef`가 아직 비어 있어 두 번째 `save()`도 INSERT 분기로 들어가 **메모가 2개 생성될 수 있던 경쟁 조건**. `MemoEditor.tsx` 1파일: `createInFlightRef`(진행 중 INSERT Promise) 추가 → `save()` 시작 시 id가 없고 INSERT가 진행 중이면 그 결과 id를 기다린 뒤 UPDATE 분기로(뒤에 들어온 save의 최신 내용도 저장). 진행 중 INSERT가 실패하면 `.catch(() => null)`로 받아 뒤쪽 save가 직접 INSERT 재시도, `finally`에서 자기 Promise일 때만 ref 해제. 기존 INSERT 분기 로직은 무변경(async IIFE로 감싸 들여쓰기만 — `git diff -w` 기준 실변경 두 군데). 검증: verify-changes.sh(null byte 0·파일 끝 정상·tsc 0에러)·ESLint 에러 0(기존 `triggerAutoEmbed` exhaustive-deps 경고 1건만), #352·#353 CI(lint·tsc)·Vercel 미리보기 통과. 병합은 auto mode 분류기가 '리뷰 없는 병합'으로 차단해 사용자가 `! gh pr merge`로 직접 실행. **운영 배포 성공**: main `5eab505` Vercel Production success(2026-10-18 13:09 UTC, `memo-planner-9cd4aqy6a-sgon0101s-projects.vercel.app`, Redeploy 없이 1회). **운영 라이브 검증 통과**: SW 해제+`memo-planner-v5` 캐시 삭제 후 `/memo/new`에서 제목 입력 → Ctrl+S keydown 3회를 같은 tick에 디스패치(셋 다 id 없는 상태로 `save()` 진입) → fetch 훅 기록 memos POST 1회 + PATCH(뒤쪽 save가 INSERT 결과를 기다려 UPDATE로), DB 해당 제목 1행만(`1f09cc99…`), URL `/memo/1f09cc99-…`로 교체. 테스트 메모는 휴지통 이동(soft delete). 한계: 수정 전 코드로 2행 생성되는 대조 재현은 미수행, PATCH 3회 중 1회의 출처는 미확인(중복 생성과 무관) | 100% |
 | 2026-10-18 | 리텐션 측정 (PR #349 → dev, #350 → main `a625d2a`, 0022 운영 적용) | 베타 초대 전 측정 장치. **1st-party**(외부 분석 도구·쿠키 동의 없음), 내용 없이 횟수·날짜만, 활성일은 KST. 쓰기는 트리거(클라이언트 직접 insert·오프라인 큐 flush 경로까지 누락 없음), 열기는 `ActivityPing`(하루 1회 `track_open`, 키 `weave-<uid>-last-open-day`라 계정 삭제 시 정리, 화면·온라인 복귀 시 날짜 재확인, 실패 무시). 과거 백필 안 함(네이버 이관분 created_at이 원래 날짜라 '앱 쓴 날'이 아님). 설계 보강 2건: ①트리거 함수도 자체 예외 처리(bump 자체가 깨져도 저장 성공) ②트리거 함수 SECURITY DEFINER(authenticated는 analytics 권한이 없어 호출자 권한이면 매번 조용히 실패). 메모 UPDATE는 제목·content_hash·wiki_links 변경 시에만 발화(고정·임베딩 저장 등 메타 변경은 '수정' 아님). `v_weekly_retention`은 eligible(그 주차가 시작된 사용자)을 분모로 써 미래 주차가 %를 깎지 않음. **리허설**(운영 DB, 단일 트랜잭션 + 마지막 예외로 전체 롤백, COMMIT 없음): 메인으로 메모 insert·본문 변경·고정만·위키만·플랜·track_open → opens/created/edited/plans 각 1, 마일스톤 3종, 뷰 5개 0행, bump를 예외 던지게 바꿔도 메모 저장 성공·카운트 불변, authenticated의 analytics 조회·bump 호출 거부, anon track_open·조회 거부 → 롤백 후 스키마·함수·트리거·리허설 데이터 0 확인. **운영 확인**: 메인 계정 열기·새 메모·기존 메모 수정 → 오늘(KST) 행 opens 1·memos_created 1·memos_edited 1(새 메모 직후 임베딩 저장 update는 수정으로 안 셈 — 의도대로), 뷰 5개 0행(내부 계정 제외). 테스트 계정 `d0d6838d…`(+weavetest): 메모 1 → activity 행·first_memo 생성, v_users에서 제외 → 사용자가 계정 삭제 → analytics activity·milestones 0행(CASCADE), auth.users 메인 1명. 보안 어드바이저 신규 항목은 `track_open` SECURITY DEFINER 실행 가능(의도, increment_api_usage와 동일)뿐. 운영 배포는 Redeploy 없이 1회 성공. 다음: 주간 리포트 예약 작업, 베타 2주 후 `v_first_week_behavior`로 잔존/이탈 비교 | 100% |

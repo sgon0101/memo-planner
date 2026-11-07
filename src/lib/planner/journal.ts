@@ -65,7 +65,8 @@ export function buildJournalBlocks(input: JournalInput): Node[] {
     b.push({ type: 'horizontalRule' })
     b.push(heading(`다시 마감 · ${input.appendLabel}`))
   } else {
-    b.push({ type: 'blockquote', content: [para(`${input.dayLabel} 하루 마감 · 플래너에서 자동으로 작성했어요`)] })
+    // 인용 블록은 prose 스타일이 따옴표를 붙여 '누가 한 말'처럼 보여서 일반 문단으로 둔다
+    b.push(para(`${input.dayLabel} 하루 마감 · 플래너에서 자동으로 작성했어요`))
   }
   const reflection = input.reflection.trim()
   if (reflection) {

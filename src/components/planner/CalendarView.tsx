@@ -393,9 +393,9 @@ export default function CalendarView() {
       )}
 
       {/* 캘린더 메인 */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
+      <div className="@container flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-3 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-0.5 sm:gap-2">
             <button
               onClick={goPrev}
@@ -455,13 +455,13 @@ export default function CalendarView() {
               aria-label={`인박스 ${inboxCount}개`}
               title="인박스 (C로 빠른 추가)"
               className={cn(
-                'flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border transition-colors',
+                'flex items-center gap-1.5 whitespace-nowrap text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border transition-colors',
                 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                 inboxOpen && 'md:border-violet-300 md:text-violet-700 md:bg-violet-50 dark:md:bg-violet-950/30 dark:md:text-violet-300',
               )}
             >
               <Inbox size={13} className="flex-shrink-0" aria-hidden="true" />
-              <span className="hidden sm:inline">인박스</span>
+              <span className="hidden @2xl:inline">인박스</span>
               {inboxCount > 0 && <span className="tabular-nums">{inboxCount}</span>}
             </button>
 
@@ -473,22 +473,22 @@ export default function CalendarView() {
               className="flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <BarChart3 size={13} className="flex-shrink-0" aria-hidden="true" />
-              <span className="hidden lg:inline">돌아보기</span>
+              <span className="hidden @3xl:inline">돌아보기</span>
             </Link>
 
             {/* Google Calendar 동기화 — 연결한 사용자만 */}
             {calendarConnected && <button
               onClick={handleSync}
               disabled={syncing}
+              aria-label="Google Calendar 동기화"
               title={lastSyncAt
                 ? `Google Calendar 동기화 — 마지막: ${format(parseISO(lastSyncAt), 'M/d HH:mm')}`
                 : 'Google Calendar 동기화'}
               className="flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={13} className={cn('flex-shrink-0', syncing && 'animate-spin')} />
-              {/* 모바일도 한 줄 라벨 — 2줄(10px) 스택은 우측 뷰 셀렉터와 높이/톤이 어긋났음 */}
-              <span className="hidden sm:inline">Google 동기화</span>
-              <span className="sm:hidden">동기화</span>
+              {/* 라벨은 캘린더 폭(@container) 기준 — 인박스·우측 패널이 열려 좁아지면 아이콘만 */}
+              <span className="hidden @3xl:inline whitespace-nowrap">Google 동기화</span>
             </button>}
 
             {/* 데스크톱: 평탄 뷰 토글 */}

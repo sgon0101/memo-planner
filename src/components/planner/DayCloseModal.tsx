@@ -237,7 +237,7 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
             onChange={(e) => setReflection(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save() } }}
             placeholder="오늘 하루를 한 줄로"
-            className="w-full min-h-12 rounded-xl border-[1.5px] border-violet-200 dark:border-violet-800 bg-white dark:bg-gray-800 px-3.5 text-[15px] outline-none focus:border-violet-500 [&::-webkit-search-cancel-button]:hidden"
+            className="w-full min-h-12 rounded-xl border-2 border-violet-200 dark:border-violet-800 bg-white dark:bg-gray-800 px-3.5 text-[15px] outline-none focus:border-violet-500 [&::-webkit-search-cancel-button]:hidden"
           />
         </div>
 
@@ -245,7 +245,7 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
           <button type="button" onClick={() => void save()} disabled={saving} className="w-full min-h-12 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-semibold">
             {saving ? '저장하는 중…' : '일지 메모로 저장하기'}
           </button>
-          <p className="mt-2 text-center text-xs text-gray-500">‘{day} 일지’가 ‘{JOURNAL_FOLDER_NAME}’ 폴더에 생기고 위 위키들과 연결돼요</p>
+          <p className="mt-2 text-center text-xs text-gray-500">‘{day} 일지’가 ‘{JOURNAL_FOLDER_NAME}’ 폴더에 {wikiCounts.length > 0 ? '생기고 위 위키들과 연결돼요' : '생겨요'}</p>
         </div>
       </div>
     </div>

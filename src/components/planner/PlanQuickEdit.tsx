@@ -200,7 +200,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
             aria-pressed={completed}
             aria-label={completed ? '완료 취소' : '완료'}
             className={cn(
-              'mt-1.5 w-5 h-5 flex-shrink-0 rounded border-[1.5px] flex items-center justify-center relative before:absolute before:-inset-3 before:content-[\'\']',
+              'mt-1.5 w-5 h-5 flex-shrink-0 rounded border-2 flex items-center justify-center relative before:absolute before:-inset-3 before:content-[\'\']',
               completed ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-300 dark:border-gray-600',
             )}
           >

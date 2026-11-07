@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { readGuide, dismissGuide, subscribeGuide, type GuideStep } from '@/lib/planner/guide'
+import { useCurrentUserId } from '@/hooks/useCurrentUserId'
 
 const STEPS: { id: GuideStep; label: string; hint: string }[] = [
   { id: 'capture', label: '머릿속 일을 적기', hint: '위 입력창에 적고 Enter' },
@@ -14,9 +15,14 @@ const STEPS: { id: GuideStep; label: string; hint: string }[] = [
 ]
 
 export default function PlannerGuide() {
-  const [state, setState] = useState(() => (typeof window === 'undefined' ? null : readGuide()))
-  useEffect(() => subscribeGuide(() => setState(readGuide())), [])
-  if (!state || state.dismissed) return null
+  // 진행도는 사용자별 LS 키라 userId가 정해진 뒤에만 읽을 수 있다. 그 전에 읽으면 0/3으로 보이거나
+  // 닫았던 안내가 다시 뜨므로, userId가 없으면 렌더하지 않고 있으면 매 렌더 LS에서 읽는다(서버에선 userId null).
+  const userId = useCurrentUserId()
+  const [, bump] = useState(0)
+  useEffect(() => subscribeGuide(() => bump((n) => n + 1)), [])
+  if (!userId) return null
+  const state = readGuide()
+  if (state.dismissed) return null
   const doneCount = STEPS.filter((s) => state.done[s.id]).length
   const allDone = doneCount === STEPS.length
 

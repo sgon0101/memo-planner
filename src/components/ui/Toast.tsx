@@ -112,11 +112,12 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts, onClose }: ToastContainerProps) {
   if (toasts.length === 0) return null
+  // 빠른 기록 FAB(bottom-20/md:bottom-6, right-4/md:right-6) 바로 위에 쌓는다 — 겹치면 '되돌리기'·'열기'가 FAB에 가려 눌리지 않았음
   return (
     <div
       role="region"
       aria-label="알림"
-      className="fixed bottom-20 md:bottom-6 right-4 flex flex-col gap-2 items-end pointer-events-none"
+      className="fixed bottom-36 md:bottom-24 right-4 md:right-6 flex flex-col gap-2 items-end pointer-events-none"
       style={{ zIndex: 'var(--z-toast)' as unknown as number }}
     >
       {toasts.map((t) => (

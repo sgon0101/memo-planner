@@ -335,7 +335,7 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void completeInbox(plan) }}
                         aria-label={`'${plan.title}' 완료`}
-                        className="w-5 h-5 flex-shrink-0 rounded border-[1.5px] border-gray-300 dark:border-gray-600 hover:border-violet-500 relative before:absolute before:-inset-2.5 before:content-['']"
+                        className="w-5 h-5 flex-shrink-0 rounded border-2 border-gray-300 dark:border-gray-600 hover:border-violet-500 relative before:absolute before:-inset-2.5 before:content-['']"
                       />
                       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} aria-hidden="true" />
                       <PlanTitle title={plan.title} className="flex-1 min-w-0 truncate" />
@@ -409,7 +409,7 @@ function TodayRow({
         aria-label={plan.isCompleted ? `'${plan.title}' 완료 취소` : `'${plan.title}' 완료`}
         aria-pressed={plan.isCompleted}
         className={cn(
-          'w-5 h-5 flex-shrink-0 rounded border-[1.5px] flex items-center justify-center relative before:absolute before:-inset-2.5 before:content-[\'\']',
+          'w-5 h-5 flex-shrink-0 rounded border-2 flex items-center justify-center relative before:absolute before:-inset-2.5 before:content-[\'\']',
           plan.isCompleted ? 'bg-violet-600 border-violet-600 text-white' : overdueLabel ? 'border-amber-400' : 'border-gray-300 dark:border-gray-600',
         )}
       >
