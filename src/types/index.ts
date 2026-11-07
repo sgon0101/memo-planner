@@ -64,6 +64,8 @@ export interface Plan {
   // 클라이언트 전개 시 추가되는 가상 필드
   isRecurringInstance?: boolean
   originalPlanId?: string
+  /** 반복 인스턴스의 원본 시리즈 시작일(원본 plan.date) — 편집 시 시리즈로 되돌릴 때 사용 */
+  seriesDate?: string | null
 }
 
 export interface MemoVersion {
