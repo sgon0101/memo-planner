@@ -20,24 +20,18 @@ export function WeaveMark({ size = 32, className }: { size?: number; className?:
   )
 }
 
-export default function PublicShell({ children }: { children: React.ReactNode }) {
+/** hideHeader: 첫 화면(/)은 가운데 로고가 있어 위쪽 바를 빼고 깔끔하게 */
+export default function PublicShell({ children, hideHeader = false }: { children: React.ReactNode; hideHeader?: boolean }) {
   return (
     <div className="min-h-screen flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <header className="sticky top-0 z-10 border-b border-gray-100 dark:border-gray-900 bg-white/90 dark:bg-gray-950/90 backdrop-blur">
+      {!hideHeader && <header className="sticky top-0 z-10 border-b border-gray-100 dark:border-gray-900 bg-white/90 dark:bg-gray-950/90 backdrop-blur">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2 min-h-11" aria-label={`${SITE_NAME} 홈`}>
             <WeaveMark size={30} />
             <span className="text-lg font-bold tracking-tight">{SITE_NAME}</span>
           </Link>
-          <div className="flex-1" />
-          <Link href="/login" className="min-h-11 px-3 sm:px-4 inline-flex items-center rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900">
-            로그인
-          </Link>
-          <Link href="/signup" className="min-h-11 px-4 inline-flex items-center rounded-lg text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700">
-            시작하기
-          </Link>
         </div>
-      </header>
+      </header>}
 
       <main className="flex-1">{children}</main>
 
@@ -48,6 +42,7 @@ export default function PublicShell({ children }: { children: React.ReactNode })
             <span className="font-semibold text-gray-700 dark:text-gray-300">{SITE_NAME}</span>
           </div>
           <nav aria-label="정책 및 문의" className="flex flex-wrap gap-x-5 gap-y-2 sm:ml-auto">
+            <Link href="/about" className="hover:text-gray-900 dark:hover:text-white">서비스 소개</Link>
             <Link href="/privacy" className="hover:text-gray-900 dark:hover:text-white">개인정보 처리방침</Link>
             <Link href="/terms" className="hover:text-gray-900 dark:hover:text-white">이용약관</Link>
             <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-gray-900 dark:hover:text-white">문의 {CONTACT_EMAIL}</a>

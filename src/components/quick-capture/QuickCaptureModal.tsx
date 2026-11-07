@@ -627,15 +627,15 @@ function QuickCaptureInner({
               </div>
 
               {/* 날짜 유형 + 종일 + 알림 */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+              <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none whitespace-nowrap">
                   <input type="checkbox" checked={isRange} onChange={(e) => setIsRange(e.target.checked)} className="accent-violet-600" />
                   범위 플랜
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsAllDay((v) => !v)}
-                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none whitespace-nowrap shrink-0"
                 >
                   <span className={cn('relative inline-flex h-4 w-7 items-center rounded-full transition-colors', isAllDay ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}>
                     <span className={cn('absolute h-3 w-3 rounded-full bg-white shadow transition-transform', isAllDay ? 'translate-x-3.5' : 'translate-x-0.5')} />
@@ -650,7 +650,7 @@ function QuickCaptureInner({
                     setNotifyEnabled((v) => !v)
                   }}
                   aria-pressed={notifyEnabled}
-                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+                  className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none whitespace-nowrap shrink-0"
                 >
                   <span className={cn('relative inline-flex h-4 w-7 items-center rounded-full transition-colors', notifyEnabled ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}>
                     <span className={cn('absolute h-3 w-3 rounded-full bg-white shadow transition-transform', notifyEnabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
