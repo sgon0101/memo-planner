@@ -71,6 +71,7 @@ export function expandRecurringPlans(
         isCompleted: completion === true,
         isRecurringInstance: true,
         originalPlanId: plan.id,
+        seriesDate: plan.date,
       })
     }
   }

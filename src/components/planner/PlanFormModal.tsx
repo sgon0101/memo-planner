@@ -23,6 +23,8 @@ import { toast } from '@/components/ui/Toast'
 import PlanWikiChips from './PlanWikiChips'
 import { usePlanHints } from '@/hooks/usePlanHints'
 import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
+import { dailySpanRRule, readDailySpan, seriesOf } from '@/lib/planner/dailySpan'
+import RangeDisplayChips from './RangeDisplayChips'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
@@ -62,7 +64,11 @@ interface PlanFormModalProps {
   onSaved: () => void
 }
 
-export default function PlanFormModal({ date, plan, initialStartTime, initialEndTime, onClose, onSaved }: PlanFormModalProps) {
+export default function PlanFormModal({ date, plan: planProp, initialStartTime, initialEndTime, onClose, onSaved }: PlanFormModalProps) {
+  // 반복 인스턴스(주·일 보기의 하루치)를 열면 원본 시리즈를 편집한다 — 가상 id로 저장하면 실패했다
+  const [plan] = useState(() => (planProp ? seriesOf(planProp) : undefined))
+  // '기간 · 매일 하루씩'으로 저장된 플랜(매일 반복 + 종료일)은 기간 모드로 연다
+  const [span] = useState(() => (plan ? readDailySpan(plan) : null))
   const { createPlan, editPlan } = usePlanner()
   const { memos } = useMemos(undefined) // React Query 단일 출처 (연결 메모 목록)
   const supabase = createClient()
@@ -73,19 +79,22 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   // 날짜 유형 — 하루 / 기간 / 미정(인박스). 미정은 2026-11 인박스 도입으로 추가:
   // 인박스 플랜을 이 폼에서 열어 저장하면 오늘 날짜가 강제로 들어가던 문제 방지
   const [dateMode, setDateMode] = useState<'single' | 'range' | 'none'>(
-    plan ? (isInboxPlan(plan) ? 'none' : plan.startDate ? 'range' : 'single') : 'single',
+    plan ? (isInboxPlan(plan) ? 'none' : plan.startDate || span ? 'range' : 'single') : 'single',
   )
+  // 기간 표시 방식 — 한 덩어리(막대) / 매일 하루씩(날마다 하루 플랜)
+  const [rangeDaily, setRangeDaily] = useState(!!span)
   const isRange = dateMode === 'range'
   const isUndated = dateMode === 'none'
   const [singleDate, setSingleDate]   = useState(plan?.date ?? date)
-  const [startDate, setStartDate]     = useState(plan?.startDate ?? date)
-  const [endDate, setEndDate]         = useState(plan?.endDate ?? date)
+  const [startDate, setStartDate]     = useState(span?.start ?? plan?.startDate ?? date)
+  const [endDate, setEndDate]         = useState(span?.end ?? plan?.endDate ?? date)
   const [startTime, setStartTime]     = useState(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? '09:00')
   const [endTime, setEndTime]         = useState(plan?.endTime?.slice(0, 5) ?? initialEndTime ?? '10:00')
   const [isAllDay, setIsAllDay]       = useState(plan ? (plan.isAllDay ?? true) : !initialStartTime)
   // 반복 설정 — RRULE 기반 (preset + 종료 조건 + 맞춤 옵션)
   const [recurrence, setRecurrence] = useState<RecurrenceSettings>(() => {
     const baseDate = plan?.date ?? plan?.startDate ?? date
+    if (span) return defaultRecurrence() // 기간 모드에서 날짜로 표현 — 반복 칩은 비운다
     if (plan?.rruleStr) {
       return parseRRule(plan.rruleStr, baseDate)
     }
@@ -137,7 +146,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || plan?.repeatType || plan?.rruleStr))
+  const [showAdvanced, setShowAdvanced]   = useState(!!(plan?.description || ((plan?.repeatType || plan?.rruleStr) && !span)))
   const [templates, setTemplates]         = useState<PlanTemplate[]>([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
@@ -334,10 +343,13 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         return
       }
     }
+    if (isRange && endDate < startDate) { setError('종료일은 시작일과 같거나 뒤여야 해요.'); return }
     setLoading(true)
     try {
       const baseDate = isRange ? startDate : singleDate
-      const rruleStr = isUndated ? null : buildRRule(recurrence, baseDate)
+      // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일
+      const daily = isRange && rangeDaily
+      const rruleStr = isUndated ? null : daily ? dailySpanRRule(startDate, endDate) : isRange ? null : buildRRule(recurrence, baseDate)
       const data: Partial<Plan> = isUndated ? {
         // 미정(인박스) — 날짜·시간·반복·알림을 모두 비운다 (lib/planner/inbox.ts 정의)
         title: title.trim(),
@@ -352,15 +364,15 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         description: description.trim(),
         color,
         isAllDay,
-        date: isRange ? null : singleDate,
-        startDate: isRange ? startDate : null,
-        endDate: isRange ? endDate : null,
+        date: daily ? startDate : isRange ? null : singleDate,
+        startDate: isRange && !daily ? startDate : null,
+        endDate: isRange && !daily ? endDate : null,
         startTime: isAllDay ? null : (startTime || null),
         endTime: isAllDay ? null : (endTime || null),
         // 새 데이터는 항상 RRULE 사용 — repeat_type은 null로 명시
         rruleStr,
         repeatType: null,
-        repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
+        repeatEndDate: daily ? endDate : isRange ? null : recurrence.endMode === 'until' ? recurrence.endUntil : null,
         notifyEnabled,
         notifyLeadMin,
         ddayTarget,
@@ -597,6 +609,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate}
                   className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
               </div>
+              {/* 표시 방식 — 기간은 날짜를 여기서 한 번만 정한다(반복 칩 대신) */}
+              <RangeDisplayChips className="col-span-2" daily={rangeDaily} onChange={setRangeDaily} startDate={startDate} endDate={endDate} />
             </div>
           ) : (
             <div>
@@ -626,7 +640,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {showAdvanced ? '더보기 접기' : '더보기 (메모, 반복, 메모 연결)'}
+            {showAdvanced ? '더보기 접기' : isRange || isUndated ? '더보기 (메모, 메모 연결)' : '더보기 (메모, 반복, 메모 연결)'}
           </button>
 
           {showAdvanced && (
@@ -651,8 +665,8 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 />
               </div>
 
-              {/* 반복 — 미정(인박스)에는 의미가 없어 숨김 */}
-              {!isUndated && <div>
+              {/* 반복 — 미정(인박스)에는 의미가 없고, 기간은 위 '표시 방식'으로 정해 숨김 */}
+              {!isUndated && !isRange && <div>
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
                 <div className="flex gap-1.5 flex-wrap">
                   {PRESET_CHIPS.filter((opt) => VISIBLE_PRESETS.includes(opt.value) || opt.value === recurrence.preset).map((opt) => (
@@ -967,3 +981,4 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
     </Modal>
   )
 }
+

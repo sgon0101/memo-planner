@@ -31,6 +31,8 @@ import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/te
 import PlanWikiChips from '@/components/planner/PlanWikiChips'
 import { usePlanHints } from '@/hooks/usePlanHints'
 import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
+import { dailySpanRRule } from '@/lib/planner/dailySpan'
+import RangeDisplayChips from '@/components/planner/RangeDisplayChips'
 
 const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
 
@@ -103,6 +105,8 @@ function QuickCaptureInner({
   const [description, setDescription] = useState('')
   const [color, setColor] = useState<string>(PRESET_COLORS[0])
   const [isRange, setIsRange] = useState(false)
+  // 기간 표시 방식 — 한 덩어리(막대) / 매일 하루씩
+  const [rangeDaily, setRangeDaily] = useState(false)
   const [singleDate, setSingleDate] = useState(today)
   const [startDate, setStartDate] = useState(today)
   const [endDate, setEndDate] = useState(today)
@@ -223,7 +227,7 @@ function QuickCaptureInner({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, memoTitle, memoBody, folderId, planTitle, description, color, isRange,
+  }, [mode, memoTitle, memoBody, folderId, planTitle, description, color, isRange, rangeDaily,
       singleDate, startDate, endDate, startTime, endTime, isAllDay,
       recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks])
 
@@ -338,19 +342,22 @@ function QuickCaptureInner({
         const [eh, em] = endTime.split(':').map(Number)
         if (eh * 60 + em <= sh * 60 + sm) { setError('종료 시간은 시작 시간보다 늦어야 해요.'); return }
       }
+      if (isRange && endDate < startDate) { setError('종료일은 시작일과 같거나 뒤여야 해요.'); return }
       setSaving(true)
       try {
         const baseDate = isRange ? startDate : singleDate
-        const rruleStr = buildRRule(recurrence, baseDate)
+        // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일
+        const daily = isRange && rangeDaily
+        const rruleStr = daily ? dailySpanRRule(startDate, endDate) : isRange ? null : buildRRule(recurrence, baseDate)
         await createPlan({
           title: planTitle.trim(), description: description.trim(), color, isAllDay,
-          date: isRange ? null : singleDate,
-          startDate: isRange ? startDate : null,
-          endDate: isRange ? endDate : null,
+          date: daily ? startDate : isRange ? null : singleDate,
+          startDate: isRange && !daily ? startDate : null,
+          endDate: isRange && !daily ? endDate : null,
           startTime: isAllDay ? null : (startTime || null),
           endTime: isAllDay ? null : (endTime || null),
           rruleStr, repeatType: null,
-          repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
+          repeatEndDate: daily ? endDate : isRange ? null : recurrence.endMode === 'until' ? recurrence.endUntil : null,
           notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks,
         })
         flashSuccess()
@@ -663,6 +670,8 @@ function QuickCaptureInner({
                     <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)}
                       className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-violet-500" />
                   </div>
+                  {/* 표시 방식 — 기간은 날짜를 여기서 한 번만 정한다(반복 칩 대신) */}
+                  <RangeDisplayChips className="col-span-2" daily={rangeDaily} onChange={setRangeDaily} startDate={startDate} endDate={endDate} />
                 </div>
               ) : (
                 <div>
@@ -692,7 +701,7 @@ function QuickCaptureInner({
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
               >
                 {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                {showAdvanced ? '더보기 접기' : '더보기 (메모, 반복, 메모 연결)'}
+                {showAdvanced ? '더보기 접기' : isRange ? '더보기 (메모, 메모 연결)' : '더보기 (메모, 반복, 메모 연결)'}
               </button>
 
               {showAdvanced && (
@@ -711,8 +720,8 @@ function QuickCaptureInner({
                     />
                   </div>
 
-                  {/* 반복 */}
-                  <div>
+                  {/* 반복 — 기간은 위 '표시 방식'으로 정해 숨김 */}
+                  {!isRange && <div>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">반복</p>
                     <div className="flex gap-1.5 flex-wrap">
                       {PRESET_CHIPS.filter((opt) => VISIBLE_PRESETS.includes(opt.value) || opt.value === recurrence.preset).map((opt) => (
@@ -842,7 +851,7 @@ function QuickCaptureInner({
                         )}
                       </div>
                     )}
-                  </div>
+                  </div>}
 
                   {/* 메모 연결 */}
                   <div>
