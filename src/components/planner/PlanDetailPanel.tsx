@@ -11,8 +11,10 @@ import { useMemos } from '@/hooks/useMemos'
 import { usePlanner, usePlansQuery, useRecurringCompletionsQuery } from '@/hooks/usePlanner'
 import { describeRRule } from '@/lib/planner/rrulePresets'
 import { useConfirm } from '@/components/ui/ConfirmModal'
+import { upsertTemplate } from '@/lib/planner/templates'
 import type { Plan } from '@/types'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 interface PlanDetailPanelProps {
   plan: Plan
@@ -43,8 +45,8 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
     try {
       const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null
       if (!user) throw new Error('로그인 필요')
-      await supabase.from('plan_templates').insert({
-        user_id: user.id,
+      // 같은 제목이 있으면 갱신 (중복 즐겨찾기 방지 — lib/planner/templates.ts)
+      await upsertTemplate(supabase, user.id, {
         title: plan.title,
         color: plan.color,
         start_time: plan.isAllDay ? null : (plan.startTime || null),
@@ -59,7 +61,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
       setTplSaveState('saved')
       setTimeout(() => setTplSaveState('idle'), 1500)
     } catch (e) {
-      console.error('[saveAsTemplate]', e)
+      reportSaveError('즐겨찾기에 저장하지 못했어요.')(e)
       setTplSaveState('idle')
     }
   }
@@ -125,7 +127,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
           <div className="flex items-center gap-2.5">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} />
             <h2 className={cn('text-sm font-semibold text-gray-900 dark:text-white', isCompleted && 'line-through text-gray-400')}>
-              {plan.title}
+              {plainTitle(plan.title)}
             </h2>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">

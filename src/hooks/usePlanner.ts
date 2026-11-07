@@ -8,7 +8,7 @@ import { usePlannerStore } from '@/store/plannerStore'
 import { setUntilOnRRule } from '@/lib/planner/rrulePresets'
 import { safeUpdateOrForce } from '@/lib/db/safeUpdate'
 import { writeOrQueue, createPlanOrQueue } from '@/lib/sync/withQueue'
-import { makeTempId } from '@/lib/sync/queueDB'
+import { makeTempId, isTempId } from '@/lib/sync/queueDB'
 import { broadcast } from '@/lib/sync/broadcast'
 import {
   planKeys,
@@ -16,7 +16,14 @@ import {
   patchPlanInCaches, addPlanToCaches, removePlanFromCaches, findPlanInCaches,
   setRecurringCompletionInCaches, deleteRecurringCompletionInCaches,
   patchHomeStatsOnPlanCreate, patchHomeStatsOnPlanUpdate, patchHomeStatsOnPlanDelete,
+  patchHomeStatsOnPlanReschedule,
 } from '@/lib/planner/planCache'
+import { isInboxPlan, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
+import { expandRecurringPlans } from '@/lib/planner/expandRecurringPlans'
+import { pushPlanUndo, TOAST_MS } from '@/lib/planner/planUndo'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { markGuideStep } from '@/lib/planner/guide'
+import { plainTitle } from '@/lib/planner/titleTokens'
 import type { Plan } from '@/types'
 
 export function toPlan(row: Record<string, unknown>): Plan {
@@ -135,6 +142,75 @@ export function useRecurringCompletionsQuery(): Record<string, boolean> {
   return data ?? {}
 }
 
+/**
+ * 인박스(시간 미정) 플랜 — 날짜·기간·반복이 모두 없는 행 (lib/planner/inbox.ts 정의와 동일 조건).
+ * 캘린더 범위 쿼리와 겹치지 않으므로 별도 키로 관리하고, 뮤테이션은 planCache가 소속을 옮긴다.
+ */
+export function useInboxQuery(): { plans: Plan[]; isLoading: boolean } {
+  const supabase = createClient()
+  const { data, isLoading } = useQuery({
+    queryKey: planKeys.inbox,
+    queryFn: async (): Promise<Plan[]> => {
+      const { data: rows, error } = await supabase
+        .from('plans')
+        .select('*')
+        .is('date', null)
+        .is('start_date', null)
+        .is('repeat_type', null)
+        .is('rrule_str', null)
+        .order('created_at', { ascending: true })
+        .limit(200)
+      if (error) throw error
+      return (rows ?? []).map(toPlan).filter(isInboxPlan)
+    },
+  })
+  return { plans: data ?? [], isLoading }
+}
+
+/**
+ * '오늘' 탭 — 지난 미완료(단일일·비반복) + 오늘 플랜 + 오늘의 반복 인스턴스.
+ * 기간 플랜은 '오늘 할 일'이 아니라 진행 중인 묶음이라 제외한다(캘린더 종일 레인에 보임).
+ */
+export function useTodayListQuery(day: string): { overdue: Plan[]; today: Plan[]; isLoading: boolean } {
+  const supabase = createClient()
+  const { data, isLoading } = useQuery({
+    queryKey: planKeys.today(day),
+    queryFn: async (): Promise<Plan[]> => {
+      const [todayRes, overdueRes, recurringRes, completionsRes] = await Promise.all([
+        supabase.from('plans').select('*').eq('date', day).is('repeat_type', null).is('rrule_str', null),
+        supabase.from('plans').select('*').lt('date', day).eq('is_completed', false)
+          .is('repeat_type', null).is('rrule_str', null)
+          .order('date', { ascending: false }).limit(50),
+        supabase.from('plans').select('*').or('repeat_type.not.is.null,rrule_str.not.is.null'),
+        supabase.from('recurring_plan_completions').select('original_plan_id, plan_date, is_completed').eq('plan_date', day),
+      ])
+      if (todayRes.error) throw todayRes.error
+      if (overdueRes.error) throw overdueRes.error
+      if (recurringRes.error) throw recurringRes.error
+      // completions 테이블 오류는 '모두 미완료'로 보이는 것보다 재시도가 낫다
+      if (completionsRes.error) throw completionsRes.error
+      const completions: Record<string, boolean> = {}
+      for (const c of completionsRes.data ?? []) completions[`${c.original_plan_id}_${c.plan_date}`] = c.is_completed
+      const d = new Date(`${day}T12:00:00`)
+      const recurringToday = expandRecurringPlans((recurringRes.data ?? []).map(toPlan), d, d, completions)
+        .filter((p) => p.date === day)
+      return [...(overdueRes.data ?? []).map(toPlan), ...(todayRes.data ?? []).map(toPlan), ...recurringToday]
+    },
+  })
+  const all = data ?? []
+  return {
+    overdue: all.filter((p) => !!p.date && p.date < day),
+    today: all
+      .filter((p) => p.date === day)
+      .sort((a, b) => {
+        const ka = a.isAllDay || !a.startTime ? '' : a.startTime
+        const kb = b.isAllDay || !b.startTime ? '' : b.startTime
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      }),
+    isLoading,
+  }
+}
+
 export function usePlanner() {
   const supabase = createClient()
   const queryClient = useQueryClient()
@@ -142,6 +218,8 @@ export function usePlanner() {
   const invalidateHomeQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['home-stats'] })
     queryClient.invalidateQueries({ queryKey: ['home-dday'] })
+    // '오늘' 탭은 소속(지난 미완료 ↔ 오늘 ↔ 다른 날)이 바뀔 수 있어 재조회로 맞춘다
+    queryClient.invalidateQueries({ queryKey: planKeys.todayAll })
   }, [queryClient])
 
   /** Google Calendar 동기화 등 외부 변경 후 전체 재조회 */
@@ -183,6 +261,8 @@ export function usePlanner() {
       dday_target: data.ddayTarget ?? null,
       linked_memo_ids: data.linkedMemoIds ?? [],
     }
+    // 인박스(날짜·기간 없음)는 알릴 시각이 없다 — 알림은 항상 끈다
+    if (!fields.date && !fields.start_date) fields.notify_enabled = false
 
     const result = await createPlanOrQueue(fields, tempId)
 
@@ -259,7 +339,11 @@ export function usePlanner() {
     const completedDelta: -1 | 0 | 1 =
       data.isCompleted === undefined || !original || data.isCompleted === original.isCompleted
         ? 0 : data.isCompleted ? 1 : -1
+    if (data.isCompleted === true) markGuideStep('complete')
     patchHomeStatsOnPlanUpdate(queryClient, id, data, completedDelta)
+    if (original && (data.date !== undefined || data.startDate !== undefined || data.endDate !== undefined)) {
+      patchHomeStatsOnPlanReschedule(queryClient, { ...original, ...data })
+    }
     if (result.queued) {
       const tempUpdatedAt = new Date().toISOString()
       patchPlanInCaches(queryClient, id, { ...data, updatedAt: tempUpdatedAt })
@@ -290,6 +374,7 @@ export function usePlanner() {
     const result = await writeOrQueue({
       table: 'plans', recordId: id, patch: { is_completed: !current }, knownUpdatedAt,
     })
+    if (!current) markGuideStep('complete')
     // 홈 '이번 주 플랜' 즉시 반영 (완료 수 ±1)
     patchHomeStatsOnPlanUpdate(queryClient, id, { isCompleted: !current }, !current ? 1 : -1)
     if (result.queued) {
@@ -329,6 +414,7 @@ export function usePlanner() {
       }, { onConflict: 'original_plan_id,plan_date' })
       if (error) throw error
       setRecurringCompletionInCaches(queryClient, key, true)
+      markGuideStep('complete')
     }
     invalidateHomeQueries()
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
@@ -393,10 +479,86 @@ export function usePlanner() {
     broadcast({ type: 'invalidate', queryKey: ['plans', 'recurring-completions'] })
   }, [queryClient])
 
+  /**
+   * 일정 정하기 (인박스 → 날짜/시간, 또는 다른 시간으로 이동) + 실행 취소.
+   * 되돌리기는 바뀌기 전 값으로 editPlan — 인박스였다면 인박스로 돌아간다.
+   */
+  const schedulePlan = useCallback(async (
+    plan: Plan,
+    target: { date: string; startTime: string | null; endTime: string | null; isAllDay: boolean },
+    message?: string,
+  ) => {
+    const before: Partial<Plan> = {
+      date: plan.date, startDate: plan.startDate, endDate: plan.endDate,
+      startTime: plan.startTime, endTime: plan.endTime, isAllDay: plan.isAllDay,
+    }
+    await editPlan(plan.id, { ...target, startDate: null, endDate: null })
+    if (isInboxPlan(plan)) markGuideStep('schedule')
+    const when = target.isAllDay || !target.startTime
+      ? `${Number(target.date.slice(5, 7))}/${Number(target.date.slice(8, 10))}`
+      : `${Number(target.date.slice(5, 7))}/${Number(target.date.slice(8, 10))} ${target.startTime.slice(0, 5)}`
+    pushPlanUndo(message ?? `'${plainTitle(plan.title)}'을(를) ${when}에 넣었어요`, () => editPlan(plan.id, before))
+  }, [editPlan])
+
+  /** 인박스로 보내기 — 날짜·시간·반복·알림을 비운다 + 실행 취소 */
+  const sendToInbox = useCallback(async (plan: Plan) => {
+    const before: Partial<Plan> = {
+      date: plan.date, startDate: plan.startDate, endDate: plan.endDate,
+      startTime: plan.startTime, endTime: plan.endTime, isAllDay: plan.isAllDay,
+      repeatType: plan.repeatType, repeatEndDate: plan.repeatEndDate, rruleStr: plan.rruleStr,
+      notifyEnabled: plan.notifyEnabled,
+    }
+    await editPlan(plan.id, INBOX_RESET_FIELDS)
+    pushPlanUndo(`'${plainTitle(plan.title)}'을(를) 인박스로 보냈어요`, () => editPlan(plan.id, before))
+  }, [editPlan])
+
+  /**
+   * 되돌릴 수 있는 삭제 — 화면에서 먼저 숨기고 토스트 시간이 지나면 서버에서 지운다
+   * (templateUndo와 같은 패턴). 다시 만들기 방식은 ID가 바뀌어 메모의 linked_plan_ids가 끊긴다.
+   * 확정 전에 페이지를 떠나면 삭제되지 않고 남는다(안전한 쪽).
+   */
+  const removePlanWithUndo = useCallback((plan: Plan) => {
+    // 오프라인에서 만든(아직 서버에 없는) 플랜은 지연 삭제를 할 수 없다 — 기존 즉시 삭제 경로로
+    if (isTempId(plan.id)) {
+      removePlan(plan.id).catch(reportSaveError('플랜을 삭제하지 못했어요.'))
+      return
+    }
+    const original = findPlanInCaches(queryClient, plan.id) ?? plan
+    removePlanFromCaches(queryClient, plan.id)
+    patchHomeStatsOnPlanDelete(queryClient, plan.id, original.isCompleted)
+    let undone = false
+    const timer = setTimeout(async () => {
+      if (undone) return
+      const { error } = await supabase.from('plans').delete().eq('id', plan.id)
+      if (error) {
+        addPlanToCaches(queryClient, original)
+        patchHomeStatsOnPlanReschedule(queryClient, original)
+        reportSaveError('플랜을 삭제하지 못했어요.')(error)
+        return
+      }
+      // 기다리는 동안 재조회(다른 탭·실시간 동기화)로 다시 들어왔을 수 있어 확정 시 한 번 더 지운다
+      removePlanFromCaches(queryClient, plan.id)
+      invalidateHomeQueries()
+      broadcast({ type: 'plan-delete', id: plan.id })
+    }, TOAST_MS)
+    pushPlanUndo(`'${plainTitle(plan.title)}'을(를) 삭제했어요`, async () => {
+      undone = true
+      clearTimeout(timer)
+      addPlanToCaches(queryClient, original)
+      patchHomeStatsOnPlanReschedule(queryClient, original)
+      // '오늘' 목록·홈 완료 수는 서버 기준으로 다시 맞춘다 (서버에선 아직 지워지지 않았다)
+      invalidateHomeQueries()
+    }, { windowMs: TOAST_MS - 300 })
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase는 렌더마다 새로 만드는 클라이언트 (다른 콜백과 동일)
+  }, [invalidateHomeQueries, queryClient, removePlan])
+
   return {
     refresh,
     createPlan,
     editPlan,
+    schedulePlan,
+    sendToInbox,
+    removePlanWithUndo,
     removePlan,
     toggleComplete,
     toggleRecurringComplete,

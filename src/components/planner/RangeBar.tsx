@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 interface RangeBarProps {
   plan: Plan
@@ -16,7 +17,7 @@ export default function RangeBar({ plan, startCol, endCol, slot, continuesLeft, 
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onClick?.() }}
-      title={plan.title}
+      title={plainTitle(plan.title)}
       className={cn(
         'absolute h-5 text-xs flex items-center px-1.5 truncate cursor-pointer transition-opacity hover:opacity-80 z-10',
         plan.isCompleted && 'opacity-50 line-through',
@@ -36,7 +37,7 @@ export default function RangeBar({ plan, startCol, endCol, slot, continuesLeft, 
         color: plan.color,
       }}
     >
-      {plan.title}
+      {plainTitle(plan.title)}
     </div>
   )
 }

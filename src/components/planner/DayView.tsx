@@ -9,7 +9,10 @@ import {
 } from '@/lib/planner/dragHelpers'
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
+import { useInboxDragStore } from '@/store/inboxDragStore'
+import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
@@ -61,6 +64,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
 
   const [currentTop, setCurrentTop] = useState(nowTop())
   const { editPlan } = usePlanner()
+  const inboxTarget = useInboxDragStore((s) => s.target)
   const [drag, setDrag] = useState<DragState | null>(null)
   useEffect(() => { dragRef.current = drag }, [drag])
   useEffect(() => { plansRef.current = plans }, [plans])
@@ -159,6 +163,11 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (newStartTime !== d.originalStartTime || newEndTime !== d.originalEndTime) {
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime })
+        const before = { startTime: d.originalStartTime, endTime: d.originalEndTime }
+        pushPlanUndo(
+          d.mode === 'move' ? `'${plan.title}' 시간을 옮겼어요` : `'${plan.title}' 길이를 바꿨어요`,
+          () => editPlan(plan.id, before),
+        )
       } catch (err) {
         reportSaveError('일정 시간을 바꾸지 못했어요.')(err)
       }
@@ -292,7 +301,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                   onClick={() => onEditPlan(plan)}
                 >
                   <span className={cn('font-medium truncate', plan.isCompleted && 'line-through')}>
-                    {plan.title}
+                    {plainTitle(plan.title)}
                   </span>
                   {isRange && (
                     <span className="ml-auto flex-shrink-0 opacity-70 tabular-nums">
@@ -325,8 +334,19 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
           {/* 하루 컬럼 */}
           <div
             className="flex-1 border-l border-gray-100 dark:border-gray-800 relative cursor-pointer"
+            data-drop-kind="timed"
+            data-drop-day={date}
             onClick={handleGridClick}
           >
+            {/* 인박스에서 끌어온 플랜이 놓일 자리 (1시간) */}
+            {inboxTarget?.kind === 'timed' && inboxTarget.date === date && (
+              <div
+                className="absolute left-1 right-1 rounded-md border-2 border-dashed border-violet-500 bg-violet-100/60 dark:bg-violet-900/40 pointer-events-none z-30 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-200"
+                style={{ top: `${(inboxTarget.startMin / 60) * HOUR_H}px`, height: `${HOUR_H}px` }}
+              >
+                {minutesToTime(inboxTarget.startMin)} – {minutesToTime(Math.min(inboxTarget.startMin + 60, 1439))}
+              </div>
+            )}
             {HOURS.map((h) => (
               <div
                 key={h}
@@ -407,7 +427,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                   onClick={(e) => e.stopPropagation()}
                   onContextMenu={(e) => e.preventDefault()}
                 >
-                  <div className="font-medium truncate">{plan.title}</div>
+                  <div className="font-medium truncate">{plainTitle(plan.title)}</div>
                   <div className="opacity-70">
                     {snappedTime ?? `${plan.startTime?.slice(0, 5)}–${plan.endTime?.slice(0, 5)}`}
                   </div>

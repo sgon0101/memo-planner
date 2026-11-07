@@ -30,13 +30,6 @@ interface HomeMemos {
   }>
 }
 
-interface DdayPlan {
-  id: string
-  title: string
-  color: string
-  ddayTarget: string
-}
-
 function readHomeMemoCache(): HomeMemos | undefined {
   if (typeof window === 'undefined') return undefined
   try {
@@ -247,29 +240,6 @@ export default function HomePageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient])
 
-  // 다가오는 D-day — 미래(또는 오늘) 8개
-  const { data: ddayPlans = [] } = useQuery<DdayPlan[]>({
-    queryKey: ['home-dday'],
-    queryFn: async () => {
-      const supabase = createClient()
-      const today = fmtDate(new Date(), 'yyyy-MM-dd')
-      const { data } = await supabase
-        .from('plans')
-        .select('id, title, color, dday_target')
-        .not('dday_target', 'is', null)
-        .gte('dday_target', today)
-        .order('dday_target', { ascending: true })
-        .limit(8)
-      return (data ?? []).map((p) => ({
-        id: p.id as string,
-        title: p.title as string,
-        color: (p.color as string) ?? '#7F77DD',
-        ddayTarget: p.dday_target as string,
-      }))
-    },
-    staleTime: HOME_STALE,
-  })
-
   return (
     <HomeClient
       userName={userName}
@@ -277,7 +247,6 @@ export default function HomePageClient() {
       completedPlans={stats?.completedPlans}
       recentMemos={homeMemos?.recentMemos}
       weekPlans={stats?.weekPlans ?? []}
-      ddayPlans={ddayPlans}
     />
   )
 }

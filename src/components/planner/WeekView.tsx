@@ -10,7 +10,10 @@ import {
 } from '@/lib/planner/dragHelpers'
 import { computeRangeBars } from '@/lib/planner/rangeBars'
 import type { Plan } from '@/types'
+import { useInboxDragStore } from '@/store/inboxDragStore'
+import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const WEEKDAYS_SHORT = ['일', '월', '화', '수', '목', '금', '토']
@@ -94,6 +97,8 @@ export default function WeekView({
   const dragRef = useRef<DragState | null>(null)
   const plansRef = useRef<Plan[]>(plans)
   const { editPlan } = usePlanner()
+  // 인박스에서 끌고 오는 중일 때 놓일 자리 (미리보기용)
+  const inboxTarget = useInboxDragStore((s) => s.target)
 
   const [drag, setDrag] = useState<DragState | null>(null)
   useEffect(() => { dragRef.current = drag }, [drag])
@@ -204,6 +209,11 @@ export default function WeekView({
     if (changed) {
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime, date: newDate })
+        const before = { startTime: d.originalStartTime, endTime: d.originalEndTime, date: d.originalDate }
+        pushPlanUndo(
+          d.mode === 'move' ? `'${plan.title}' 시간을 옮겼어요` : `'${plan.title}' 길이를 바꿨어요`,
+          () => editPlan(plan.id, before),
+        )
       } catch (err) {
         reportSaveError('일정을 옮기지 못했어요.')(err)
       }
@@ -547,7 +557,12 @@ export default function WeekView({
                   // 칩/범위 바는 각자 stopPropagation이라 편집 클릭과 충돌 없음.
                   <div
                     key={i}
-                    className="border-l border-gray-100 dark:border-gray-800 px-0.5 pb-0.5 space-y-0.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                    data-drop-kind="allday"
+                    data-drop-day={dayStr}
+                    className={cn(
+                      'border-l border-gray-100 dark:border-gray-800 px-0.5 pb-0.5 space-y-0.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors',
+                      inboxTarget?.kind === 'allday' && inboxTarget.date === dayStr && 'ring-2 ring-inset ring-violet-400 bg-violet-50/70 dark:bg-violet-950/30',
+                    )}
                     style={{ paddingTop: `${rangeBarHeight + 2}px` }}
                     onClick={() => onNewPlan(dayStr)}
                   >
@@ -558,7 +573,7 @@ export default function WeekView({
                         style={{ backgroundColor: plan.color + '22', borderLeft: `2px solid ${plan.color}`, color: plan.color }}
                         onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
                       >
-                        {plan.title}
+                        {plainTitle(plan.title)}
                       </div>
                     ))}
                     {single.length > 2 && <div className="text-xs text-gray-400 px-1">+{single.length - 2}</div>}
@@ -572,7 +587,7 @@ export default function WeekView({
                   <div
                     key={`range-${plan.id}`}
                     onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
-                    title={`${plan.title} (${plan.startDate} ~ ${plan.endDate})`}
+                    title={`${plainTitle(plan.title)} (${plan.startDate} ~ ${plan.endDate})`}
                     className={cn(
                       'absolute h-5 text-xs flex items-center px-1.5 cursor-pointer transition-opacity hover:opacity-80 z-10',
                       plan.isCompleted && 'opacity-50 line-through',
@@ -591,7 +606,7 @@ export default function WeekView({
                       color: plan.color,
                     }}
                   >
-                    <span className="truncate">{plan.title}</span>
+                    <span className="truncate">{plainTitle(plan.title)}</span>
                     {/* 실제 전체 기간 라벨 — 3칸 이상일 때만 (좁으면 제목 우선) */}
                     {span >= 3 && plan.startDate && plan.endDate && (
                       <span className="ml-auto pl-1.5 flex-shrink-0 opacity-70 tabular-nums">
@@ -641,6 +656,8 @@ export default function WeekView({
             return (
               <div
                 key={i}
+                data-drop-kind="timed"
+                data-drop-day={dayStr}
                 className={cn(
                   'flex-1 border-l border-gray-100 dark:border-gray-800 relative select-none',
                   isToday && 'bg-violet-50/30 dark:bg-violet-950/10',
@@ -655,6 +672,15 @@ export default function WeekView({
                 // touchCallout/userSelect none: Android long-press 텍스트 선택·Touch to Search 차단
                 style={{ touchAction: 'pan-y', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
               >
+                {/* 인박스에서 끌어온 플랜이 놓일 자리 (1시간) */}
+                {inboxTarget?.kind === 'timed' && inboxTarget.date === dayStr && (
+                  <div
+                    className="absolute left-1 right-1 rounded-md border-2 border-dashed border-violet-500 bg-violet-100/60 dark:bg-violet-900/40 pointer-events-none z-30 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-200"
+                    style={{ top: `${(inboxTarget.startMin / 60) * HOUR_H}px`, height: `${HOUR_H}px` }}
+                  >
+                    {minutesToTime(inboxTarget.startMin)} – {minutesToTime(Math.min(inboxTarget.startMin + 60, 1439))}
+                  </div>
+                )}
                 {/* 드래그 프리뷰 — 반투명 violet 박스 + 상/하단 시간 라벨 */}
                 {rangeSelect && rangeSelect.dayStr === dayStr && (() => {
                   const s = Math.min(rangeSelect.startMin, rangeSelect.currentMin)
@@ -745,7 +771,7 @@ export default function WeekView({
                       onClick={(e) => e.stopPropagation()}
                       onContextMenu={(e) => e.preventDefault()}
                     >
-                      <div className="font-medium truncate">{plan.title}</div>
+                      <div className="font-medium truncate">{plainTitle(plan.title)}</div>
                       <div className="opacity-70">
                         {snappedTime ?? `${plan.startTime?.slice(0, 5)}–${plan.endTime?.slice(0, 5)}`}
                       </div>
