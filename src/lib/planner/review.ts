@@ -176,3 +176,40 @@ export function yearGrid(
 export function streakLevel(count: number): number {
   return count <= 0 ? 0 : Math.min(4, count)
 }
+
+// ── 마감 기록 묶기 (2026-11) ───────────────────────────────────────────────
+
+export interface CloseDay { day: string; journal: { id: string; reflection: string } | null; done: string[] }
+export type CloseGroup =
+  | { kind: 'journal'; days: string[]; text: string; memoId: string }
+  | { kind: 'plan'; days: string[]; text: string }
+  | { kind: 'empty'; days: string[]; text: string }
+
+/**
+ * 마감 기록을 카드 단위로 묶는다.
+ * - 일지가 있는 날: 하루 한 카드(한 줄 회고)
+ * - 일지 없이 마감한 날: 그날 끝낸 플랜 제목별로 묶어 '크로스핏 — 10/26·10/19·10/12'처럼 날짜를 모은다
+ *   (제목은 공백·대소문자를 무시하고 같게 본다 — '맨몸 운동' = '맨몸운동', 카드 제목은 가장 최근 표기)
+ * - 끝낸 플랜도 일지도 없는 날: 한 카드에 날짜만 모은다
+ * 카드 순서 = 가장 최근 날짜 내림차순, 각 카드의 날짜도 최근순.
+ */
+export function groupCloseRecords(days: readonly CloseDay[]): CloseGroup[] {
+  const groups: CloseGroup[] = []
+  const byTitle = new Map<string, { kind: 'plan'; days: string[]; text: string }>()
+  const empty: { kind: 'empty'; days: string[]; text: string } = { kind: 'empty', days: [], text: '끝낸 플랜 없이 마감' }
+  for (const e of [...days].sort((a, b) => b.day.localeCompare(a.day))) {
+    if (e.journal) {
+      groups.push({ kind: 'journal', days: [e.day], text: e.journal.reflection || '회고 없이 마감', memoId: e.journal.id })
+      continue
+    }
+    if (!e.done.length) { empty.days.push(e.day); continue }
+    for (const raw of new Set(e.done.map((t) => t.trim()))) {
+      const key = raw.replace(/\s+/g, '').toLowerCase() // '맨몸 운동' = '맨몸운동'
+      let g = byTitle.get(key)
+      if (!g) { g = { kind: 'plan', days: [], text: raw }; byTitle.set(key, g); groups.push(g) }
+      if (!g.days.includes(e.day)) g.days.push(e.day)
+    }
+  }
+  if (empty.days.length) groups.push(empty)
+  return groups.sort((a, b) => b.days[0].localeCompare(a.days[0]))
+}
