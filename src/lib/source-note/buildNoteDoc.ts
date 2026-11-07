@@ -137,8 +137,8 @@ export function buildNoteDoc(input: BuildNoteInput): BuiltNote {
   }
 }
 
-/** 텍스트 블록(paragraph/heading)마다 한 줄 */
-function collectText(node: Node | TextNode): string[] {
+/** 텍스트 블록(paragraph/heading)마다 한 줄 — 일지(lib/planner/journal.ts)도 사용 */
+export function collectText(node: Node | TextNode): string[] {
   if (node.type === 'text') return [(node as TextNode).text]
   const n = node as Node
   if (n.type === 'paragraph' || n.type === 'heading') {

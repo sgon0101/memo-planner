@@ -9,7 +9,11 @@ import {
 } from '@/lib/planner/dragHelpers'
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
+import { useInboxDragStore } from '@/store/inboxDragStore'
+import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { isOverInbox } from '@/lib/planner/dropTarget'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
@@ -60,7 +64,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   const plansRef = useRef<Plan[]>(plans)
 
   const [currentTop, setCurrentTop] = useState(nowTop())
-  const { editPlan } = usePlanner()
+  const { editPlan, sendToInbox } = usePlanner()
+  const inboxTarget = useInboxDragStore((s) => s.target)
   const [drag, setDrag] = useState<DragState | null>(null)
   useEffect(() => { dragRef.current = drag }, [drag])
   useEffect(() => { plansRef.current = plans }, [plans])
@@ -114,6 +119,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const dy = e.clientY - d.startClientY
     const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX
     const next = { ...d, deltaY: dy, moved }
+    // 캘린더 → 인박스: 시간 블록을 인박스 패널 위로 끌면 패널이 받을 준비 표시
+    if (d.mode === 'move') useInboxDragStore.getState().setOverInbox(isOverInbox(e.clientX, e.clientY))
     dragRef.current = next
     setDrag(next)
   }, [])
@@ -127,6 +134,15 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     cleanupRef.current = null
 
     if (!plan) { setDrag(null); return }
+
+    // 인박스 패널 위에서 놓음 → 인박스로 (날짜·시간 비움, 토스트 되돌리기는 sendToInbox가 처리)
+    if (d.mode === 'move' && isOverInbox(e.clientX, e.clientY)) {
+      justDragged.current = true
+      setTimeout(() => { justDragged.current = false }, 400)
+      setDrag(null)
+      try { await sendToInbox(plan) } catch (err) { reportSaveError('인박스로 보내지 못했어요.')(err) }
+      return
+    }
 
     if (!d.moved) {
       setDrag(null)
@@ -159,12 +175,17 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     if (newStartTime !== d.originalStartTime || newEndTime !== d.originalEndTime) {
       try {
         await editPlan(plan.id, { startTime: newStartTime, endTime: newEndTime })
+        const before = { startTime: d.originalStartTime, endTime: d.originalEndTime }
+        pushPlanUndo(
+          d.mode === 'move' ? `'${plan.title}' 시간을 옮겼어요` : `'${plan.title}' 길이를 바꿨어요`,
+          () => editPlan(plan.id, before),
+        )
       } catch (err) {
         reportSaveError('일정 시간을 바꾸지 못했어요.')(err)
       }
     }
     setDrag(null)
-  }, [editPlan, onEditPlan])
+  }, [editPlan, onEditPlan, sendToInbox])
 
   const startDrag = useCallback((
     plan: Plan,
@@ -196,6 +217,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       document.removeEventListener('pointermove', onDocMove)
       document.removeEventListener('pointerup', onDocUp)
       document.removeEventListener('pointercancel', onDocUp)
+      useInboxDragStore.getState().setOverInbox(false)
       document.body.style.overflow = oldBodyOverflow
       if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
       try { target.style.touchAction = '' } catch { /* ignore */ }
@@ -217,7 +239,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   }, [onDocMove, onDocUp])
 
   function onPointerDown(e: React.PointerEvent, plan: Plan) {
-    if (!isDraggable(plan)) return
+    // 끌 수 없는 블록(기간·반복 플랜의 하루치 시간 블록)도 눌림을 여기서 받는다 — 뒤 칸으로 새면 '새 플랜' 폼이 열렸음
+    if (!isDraggable(plan)) { e.stopPropagation(); return }
     e.stopPropagation()
     const { pointerId, clientX, clientY, pointerType } = e
     const target = e.currentTarget as HTMLElement
@@ -292,7 +315,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                   onClick={() => onEditPlan(plan)}
                 >
                   <span className={cn('font-medium truncate', plan.isCompleted && 'line-through')}>
-                    {plan.title}
+                    {plainTitle(plan.title)}
                   </span>
                   {isRange && (
                     <span className="ml-auto flex-shrink-0 opacity-70 tabular-nums">
@@ -325,8 +348,19 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
           {/* 하루 컬럼 */}
           <div
             className="flex-1 border-l border-gray-100 dark:border-gray-800 relative cursor-pointer"
+            data-drop-kind="timed"
+            data-drop-day={date}
             onClick={handleGridClick}
           >
+            {/* 인박스에서 끌어온 플랜이 놓일 자리 (1시간) */}
+            {inboxTarget?.kind === 'timed' && inboxTarget.date === date && (
+              <div
+                className="absolute left-1 right-1 rounded-md border-2 border-dashed border-violet-500 bg-violet-100/60 dark:bg-violet-900/40 pointer-events-none z-30 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-200"
+                style={{ top: `${(inboxTarget.startMin / 60) * HOUR_H}px`, height: `${HOUR_H}px` }}
+              >
+                {minutesToTime(inboxTarget.startMin)} – {minutesToTime(Math.min(inboxTarget.startMin + 60, 1439))}
+              </div>
+            )}
             {HOURS.map((h) => (
               <div
                 key={h}
@@ -404,10 +438,10 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                           longPressStart.current = null
                         }
                       }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); if (!isDraggable(plan)) onEditPlan(plan) }}
                   onContextMenu={(e) => e.preventDefault()}
                 >
-                  <div className="font-medium truncate">{plan.title}</div>
+                  <div className="font-medium truncate">{plainTitle(plan.title)}</div>
                   <div className="opacity-70">
                     {snappedTime ?? `${plan.startTime?.slice(0, 5)}–${plan.endTime?.slice(0, 5)}`}
                   </div>

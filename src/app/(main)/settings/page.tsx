@@ -862,8 +862,8 @@ export default function SettingsPage() {
           label="Google Calendar"
           description={
             integrationsLoading ? '연결 확인 중...' :
-            calendarConnected ? `${email} 계정으로 연결됨 ✅` :
-            '연결하면 플랜을 Google 캘린더에 동기화할 수 있습니다'
+            calendarConnected ? `${email} 계정으로 연결됨 ✅ · 플래너의 'Google 동기화'로 다가올 플랜을 보내요` :
+            '선택 사항이에요. 연결하면 다가올 플랜을 Google 캘린더로 보낼 수 있어요 (메모·위키는 보내지 않아요)'
           }
         >
           {integrationsLoading ? (
@@ -889,6 +889,14 @@ export default function SettingsPage() {
             </a>
           )}
         </SettingRow>
+        {calendarConnected && (
+          <SettingRow
+            label="Google에 바쁨으로만 표시"
+            description="켜면 플랜 제목 대신 'Weave 일정'으로 보내요. 공유 캘린더에 내용을 드러내고 싶지 않을 때 쓰세요."
+          >
+            <GcalBusyOnlyToggle />
+          </SettingRow>
+        )}
       </Section>
 
       {/* 내보내기 / 가져오기 */}
@@ -1351,6 +1359,30 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
           enabled && 'translate-x-[18px]'
         )}
       />
+    </button>
+  )
+}
+
+/** Google 동기화 '바쁨으로만' — 기기별 설정(localStorage). 동기화 요청 본문으로 서버에 전달된다 */
+function GcalBusyOnlyToggle() {
+  const [on, setOn] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try { return localStorage.getItem('weave:gcal-busy-only') === '1' } catch { return false }
+  })
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Google에 바쁨으로만 표시"
+      onClick={() => {
+        const next = !on
+        setOn(next)
+        try { localStorage.setItem('weave:gcal-busy-only', next ? '1' : '0') } catch { /* 무시 */ }
+      }}
+      className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', on ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600')}
+    >
+      <span className={cn('absolute h-5 w-5 rounded-full bg-white shadow transition-transform', on ? 'translate-x-5' : 'translate-x-0.5')} />
     </button>
   )
 }

@@ -12,6 +12,7 @@ import { describeRRule } from '@/lib/planner/rrulePresets'
 import PlanDetailPanel from './PlanDetailPanel'
 import type { Plan } from '@/types'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 interface PlanPanelProps {
   date: string
@@ -310,7 +311,7 @@ function PlanItem({
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} />
           <span className={cn('text-sm text-gray-800 dark:text-gray-200 truncate', plan.isCompleted && 'line-through text-gray-400')}>
-            {plan.title}
+            {plainTitle(plan.title)}
           </span>
         </div>
 

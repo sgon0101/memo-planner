@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import type { Plan } from '@/types'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 interface RangeBarProps {
   plan: Plan
@@ -9,14 +10,17 @@ interface RangeBarProps {
   continuesLeft?: boolean  // 이전 주부터 이어짐 → 좌측 끝단 flat
   continuesRight?: boolean // 다음 주로 이어짐 → 우측 끝단 flat
   onClick?: () => void
+  /** 마우스로 끌어 다른 날짜·인박스로 옮기기 (CalendarView.startItemDrag) */
+  onPointerDown?: (e: React.PointerEvent) => void
 }
 
-export default function RangeBar({ plan, startCol, endCol, slot, continuesLeft, continuesRight, onClick }: RangeBarProps) {
+export default function RangeBar({ plan, startCol, endCol, slot, continuesLeft, continuesRight, onClick, onPointerDown }: RangeBarProps) {
   const span = endCol - startCol + 1
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onClick?.() }}
-      title={plan.title}
+      onPointerDown={onPointerDown}
+      title={plainTitle(plan.title)}
       className={cn(
         'absolute h-5 text-xs flex items-center px-1.5 truncate cursor-pointer transition-opacity hover:opacity-80 z-10',
         plan.isCompleted && 'opacity-50 line-through',
@@ -36,7 +40,7 @@ export default function RangeBar({ plan, startCol, endCol, slot, continuesLeft, 
         color: plan.color,
       }}
     >
-      {plan.title}
+      {plainTitle(plan.title)}
     </div>
   )
 }

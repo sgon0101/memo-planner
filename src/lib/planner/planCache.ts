@@ -15,12 +15,18 @@
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import type { QueryClient } from '@tanstack/react-query'
 import { lsPlansCache, lsPlansCacheTs, lsHomeStatsCache, lsHomeStatsCacheTs } from '@/lib/cache/lsKeys'
+import { isInboxPlan } from '@/lib/planner/inbox'
 import type { Plan } from '@/types'
 
 export const planKeys = {
   /** 모든 범위 키 prefix — setQueriesData/invalidate용 */
   ranges: ['plans', 'range'] as const,
   range: (calStart: string, calEnd: string) => ['plans', 'range', calStart, calEnd] as const,
+  /** 인박스(시간 미정) 목록 — 범위 키와 배타적. 일정이 정해지면 ranges로 옮겨진다 */
+  inbox: ['plans', 'inbox'] as const,
+  /** '오늘' 탭 목록(지난 미완료 + 오늘) prefix — 항목 패치만, 소속 판정은 재조회로 */
+  todayAll: ['plans', 'today-list'] as const,
+  today: (day: string) => ['plans', 'today-list', day] as const,
   completionsAll: ['plans', 'recurring-completions'] as const,
   completions: (calStart: string, calEnd: string) =>
     ['plans', 'recurring-completions', calStart, calEnd] as const,
@@ -79,27 +85,83 @@ function mutatePlansLocalCache(mutate: (plans: Plan[]) => Plan[]): void {
   } catch { /* ignore */ }
 }
 
-/* ─── RQ + LS 동시 패치 헬퍼 ─────────────────────────────────────────── */
+/* ─── RQ + LS 동시 패치 헬퍼 ─────────────────────────────────────────
+   2026-11 인박스: 플랜은 ranges(캘린더) 또는 inbox 중 한 곳에만 산다.
+   패치 결과로 소속이 바뀌면(인박스 → 날짜 지정, 그 반대) 한쪽에서 빼고
+   다른 쪽에 넣는다. '오늘' 탭 목록은 항목만 패치하고 소속은 재조회에 맡긴다. */
 
-export function patchPlanInCaches(qc: QueryClient, id: string, patch: Partial<Plan>): void {
-  qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) =>
+function upsert(list: Plan[] | undefined, plan: Plan): Plan[] {
+  if (!list) return [plan]
+  return list.some((p) => p.id === plan.id)
+    ? list.map((p) => (p.id === plan.id ? plan : p))
+    : [...list, plan]
+}
+
+function placeInRanges(qc: QueryClient, plan: Plan): void {
+  // 아직 데이터가 없는(로딩 중) 범위 쿼리에 [plan] 하나만 채워 넣으면 '플랜 1개짜리 달력'이
+  // 잠깐 보인다 — 데이터가 있는 캐시만 갱신하고 나머지는 서버 응답을 기다린다
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) => (old ? upsert(old, plan) : old))
+  mutatePlansLocalCache((plans) => upsert(plans, plan))
+}
+
+function dropFromRanges(qc: QueryClient, id: string): void {
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) => old?.filter((p) => p.id !== id))
+  mutatePlansLocalCache((plans) => plans.filter((p) => p.id !== id))
+}
+
+function placeInInbox(qc: QueryClient, plan: Plan): void {
+  // 인박스 쿼리가 아직 없으면 만들지 않는다 (다음 마운트 때 서버에서 가져옴)
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.inbox }, (old) => (old ? upsert(old, plan) : old))
+}
+
+function dropFromInbox(qc: QueryClient, id: string): void {
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.inbox }, (old) => old?.filter((p) => p.id !== id))
+}
+
+function patchTodayLists(qc: QueryClient, id: string, patch: Partial<Plan>): void {
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.todayAll }, (old) =>
     old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
   )
-  mutatePlansLocalCache((plans) => plans.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+}
+
+export function patchPlanInCaches(qc: QueryClient, id: string, patch: Partial<Plan>): void {
+  const current = findPlanInCaches(qc, id)
+  patchTodayLists(qc, id, patch)
+  if (!current) {
+    // 어느 캐시에도 없으면 있는 곳만 제자리 패치 (구 동작)
+    qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) =>
+      old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    )
+    qc.setQueriesData<Plan[]>({ queryKey: planKeys.inbox }, (old) =>
+      old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    )
+    mutatePlansLocalCache((plans) => plans.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+    return
+  }
+  const merged: Plan = { ...current, ...patch }
+  if (isInboxPlan(merged)) {
+    dropFromRanges(qc, id)
+    placeInInbox(qc, merged)
+  } else {
+    dropFromInbox(qc, id)
+    placeInRanges(qc, merged)
+  }
 }
 
 export function addPlanToCaches(qc: QueryClient, plan: Plan): void {
-  qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) =>
-    old ? [...old.filter((p) => p.id !== plan.id), plan] : [plan],
-  )
-  mutatePlansLocalCache((plans) => [...plans.filter((p) => p.id !== plan.id), plan])
+  if (isInboxPlan(plan)) {
+    dropFromRanges(qc, plan.id)
+    placeInInbox(qc, plan)
+  } else {
+    dropFromInbox(qc, plan.id)
+    placeInRanges(qc, plan)
+  }
 }
 
 export function removePlanFromCaches(qc: QueryClient, id: string): void {
-  qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) =>
-    old?.filter((p) => p.id !== id),
-  )
-  mutatePlansLocalCache((plans) => plans.filter((p) => p.id !== id))
+  dropFromRanges(qc, id)
+  dropFromInbox(qc, id)
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.todayAll }, (old) => old?.filter((p) => p.id !== id))
 }
 
 /** 오프라인 큐 flush 후 임시 ID → 진짜 ID 교체 (구 plannerStore.swapPlanId) */
@@ -112,14 +174,19 @@ export function swapPlanIdInCaches(
   const swap = (p: Plan): Plan =>
     p.id === oldId ? { ...p, id: newId, ...(extraPatch ?? {}) } : p
   qc.setQueriesData<Plan[]>({ queryKey: planKeys.ranges }, (old) => old?.map(swap))
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.inbox }, (old) => old?.map(swap))
+  qc.setQueriesData<Plan[]>({ queryKey: planKeys.todayAll }, (old) => old?.map(swap))
   mutatePlansLocalCache((plans) => plans.map(swap))
 }
 
-/** knownUpdatedAt 조회 등 — 모든 범위 캐시에서 탐색, 없으면 LS fallback */
+/** knownUpdatedAt 조회 등 — 범위·인박스·오늘 캐시에서 탐색, 없으면 LS fallback */
 export function findPlanInCaches(qc: QueryClient, id: string): Plan | undefined {
-  for (const [, data] of qc.getQueriesData<Plan[]>({ queryKey: planKeys.ranges })) {
-    const found = data?.find((p) => p.id === id)
-    if (found) return found
+  for (const key of [planKeys.ranges, planKeys.inbox, planKeys.todayAll]) {
+    for (const [, data] of qc.getQueriesData<Plan[]>({ queryKey: key })) {
+      // 반복 인스턴스(가상 행)는 원본이 아니므로 건너뛴다
+      const found = data?.find((p) => p.id === id && !p.isRecurringInstance)
+      if (found) return found
+    }
   }
   return readPlansLocalCache()?.find((p) => p.id === id)
 }
@@ -225,6 +292,16 @@ export function patchHomeStatsOnPlanUpdate(
         : p,
     ),
   }))
+}
+
+/** 날짜가 바뀐 플랜 — 이번 주로 들어오면 홈 카드에 넣고, 나가면 뺀다
+ *  (인박스 → 이번 주 배치, 이번 주 → 다음 주 이동이 홈에 바로 반영되도록) */
+export function patchHomeStatsOnPlanReschedule(qc: QueryClient, plan: Plan): void {
+  if (isInThisWeek(plan)) {
+    patchHomeStatsOnPlanCreate(qc, plan)
+  } else {
+    mutateHomeStats(qc, (s) => ({ ...s, weekPlans: s.weekPlans.filter((p) => p.id !== plan.id) }))
+  }
 }
 
 /** 플랜 삭제 — 홈 카드에서 제거 + 완료였다면 전체 완료 수 차감 */
