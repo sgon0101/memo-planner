@@ -96,7 +96,8 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  const id = plan.id
+  // 반복 인스턴스는 가상 id(`원본id_날짜`) — 저장은 원본 시리즈에
+  const id = plan.isRecurringInstance && plan.originalPlanId ? plan.originalPlanId : plan.id
   const timed = !plan.isAllDay && !!plan.startTime && !!plan.endTime && !!plan.date && !plan.startDate
   const curDur = timed ? timeToMinutes(plan.endTime!.slice(0, 5)) - timeToMinutes(plan.startTime!.slice(0, 5)) : 0
 
