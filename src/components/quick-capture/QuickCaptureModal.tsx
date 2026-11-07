@@ -346,14 +346,17 @@ function QuickCaptureInner({
       setSaving(true)
       try {
         const baseDate = isRange ? startDate : singleDate
-        // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일
-        const daily = isRange && rangeDaily
+        // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일.
+        // 시작일 = 종료일이면 하루 플랜으로 저장 (PlanFormModal과 같은 규칙)
+        const oneDay = isRange && startDate === endDate
+        const daily = isRange && rangeDaily && !oneDay
+        const rangeBlock = isRange && !rangeDaily && !oneDay
         const rruleStr = daily ? dailySpanRRule(startDate, endDate) : isRange ? null : buildRRule(recurrence, baseDate)
         await createPlan({
           title: planTitle.trim(), description: description.trim(), color, isAllDay,
-          date: daily ? startDate : isRange ? null : singleDate,
-          startDate: isRange && !daily ? startDate : null,
-          endDate: isRange && !daily ? endDate : null,
+          date: isRange ? (rangeBlock ? null : startDate) : singleDate,
+          startDate: rangeBlock ? startDate : null,
+          endDate: rangeBlock ? endDate : null,
           startTime: isAllDay ? null : (startTime || null),
           endTime: isAllDay ? null : (endTime || null),
           rruleStr, repeatType: null,
