@@ -12,8 +12,10 @@
 
 @theme inline {
   /* Fonts */
-  --font-sans: 'Pretendard Variable', var(--font-sans, 'Noto Sans KR'), system-ui, sans-serif;
-  --font-mono: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
+  /* 본문 = Noto Sans KR 하나로 통일 (2026-11-07). next/font가 html에 --font-noto/--font-jetbrains를 단다.
+     예전엔 Pretendard CDN을 받아 놓고도 next/font 변수(--font-sans)가 덮어써 실제론 Noto만 쓰였다. */
+  --font-sans: var(--font-noto), 'Noto Sans KR', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
 
   /* Brand — Violet */
   --color-brand:        #7C3AED;
