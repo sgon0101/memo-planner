@@ -21,6 +21,8 @@ import { isInboxPlan, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
 import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
 import { toast } from '@/components/ui/Toast'
 import PlanWikiChips from './PlanWikiChips'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
@@ -120,6 +122,17 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   const [ddayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [wikiLinks, setWikiLinks] = useState<string[]>(plan?.wikiLinks ?? [])
+  // 위키·색상 추천 — 새 플랜이고 색을 직접 고르지 않았을 때만 위키에 맞춰 색을 바꾼다(기존 플랜 색은 건드리지 않음)
+  const hints = usePlanHints()
+  const colorTouched = useRef(!!plan)
+  const wikiSuggest = useMemo(() => (title.trim() ? suggestWikis(hints, title, wikiLinks) : []), [hints, title, wikiLinks])
+  function changeWikis(next: string[]) {
+    setWikiLinks(next)
+    if (!colorTouched.current && next[0]) {
+      const c = colorForWiki(hints, next[0])
+      if (c) setColor(c)
+    }
+  }
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
@@ -250,6 +263,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   function applyTemplate(t: PlanTemplate) {
     setTitle(t.title)
     setColor(t.color)
+    colorTouched.current = true
     setIsAllDay(t.isAllDay)
     if (!t.isAllDay) {
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
@@ -467,7 +481,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
           {/* 위키 칩 — 제목과 별개로 저장(0023). 하루 마감·주간 돌아보기의 위키 집계 기준 */}
           <div className="flex items-start gap-2">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
-            <PlanWikiChips value={wikiLinks} onChange={setWikiLinks} className="flex-1 min-w-0" />
+            <PlanWikiChips value={wikiLinks} onChange={changeWikis} suggestions={wikiSuggest} className="flex-1 min-w-0" />
           </div>
 
           {/* 색상 */}
@@ -478,7 +492,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setColor(c)}
+                  onClick={() => { setColor(c); colorTouched.current = true }}
                   aria-label={`${COLOR_NAMES[c] ?? c} 색상`}
                   aria-pressed={color === c}
                   className={cn("relative w-6 h-6 rounded-full transition-transform hover:scale-110 before:absolute before:-inset-1 before:content-['']", color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}

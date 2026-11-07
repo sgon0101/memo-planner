@@ -63,18 +63,22 @@ export default function WeeklyReview() {
     queryKey: ['planner-review', fetchFrom, to],
     queryFn: async () => {
       const supabase = createClient()
-      const [plansRes, journalsRes] = await Promise.all([
+      const [plansRes, journalsRes, closesRes] = await Promise.all([
         // 단일일 플랜 (기간·반복·인박스 제외 — 하루 단위로 셀 수 있는 것만)
         supabase.from('plans').select('*').gte('date', fetchFrom).lte('date', to)
           .is('repeat_type', null).is('rrule_str', null),
         supabase.from('memos').select('title, content_text').eq('is_deleted', false)
           .like('title', '____-__-__ 일지').order('title', { ascending: false }).limit(800),
+        // 하루 마감 기록(0024) — 일지 없이 건너뛴 날도 '마감한 날'
+        supabase.from('plan_day_closes').select('day'),
       ])
       if (plansRes.error) throw plansRes.error
       if (journalsRes.error) throw journalsRes.error
+      if (closesRes.error) throw closesRes.error
       return {
         plans: (plansRes.data ?? []).map(toPlan),
         journals: (journalsRes.data ?? []) as { title: string; content_text: string | null }[],
+        closes: (closesRes.data ?? []).map((r) => r.day as string),
       }
     },
   })
@@ -85,11 +89,17 @@ export default function WeeklyReview() {
     const summary = summarizeWeek(inPeriod)
     const focus = focusGrid(plans.filter((p) => p.date! >= focusRange.from && p.date! <= focusRange.to))
     const titles = (data?.journals ?? []).map((j) => j.title)
+    // 마감한 날 = 일지가 있는 날 ∪ 마감 기록(건너뛰기 포함)
+    const closedDays = new Set([...journalDays(titles), ...(data?.closes ?? [])])
+    const closedInPeriod = [...closedDays].filter((d) => d >= from && d <= to).length
     const periodJournals = (data?.journals ?? []).filter((j) => {
       const d = j.title.slice(0, 10)
       return d >= from && d <= to
     }).sort((a, b) => b.title.localeCompare(a.title))
-    return { summary, focus, periodJournals, titles, streak: journalStreak(titles, today) }
+    return {
+      summary, focus, periodJournals, closedDays, closedInPeriod,
+      streak: journalStreak([...closedDays].map((d) => `${d} 일지`), today),
+    }
   }, [data, from, to, focusRange.from, focusRange.to, today])
 
   const { summary, focus } = view
@@ -179,7 +189,7 @@ export default function WeeklyReview() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="완료한 플랜" value={`${summary.completed}`} sub={summary.total ? `${scopeWord} 플랜 ${summary.total}개 중 ${Math.round((summary.completed / summary.total) * 100)}%` : `${scopeWord} 플랜이 없어요`} />
             <Stat label="완료한 일에 쓴 계획 시간" value={fmtMin(summary.plannedMin)} sub="시간을 정해둔 플랜 기준" />
-            <Stat label="하루 마감" value={`${view.periodJournals.length}일`} sub={view.streak > 1 ? `지금 ${view.streak}일 연속` : '마감하면 일지가 쌓여요'} />
+            <Stat label="하루 마감" value={`${view.closedInPeriod}일`} sub={view.streak > 1 ? `지금 ${view.streak}일 연속` : '마감하면 일지가 쌓여요'} />
             <Stat label="엮인 위키" value={`${summary.wikiMinutes.length}개`} sub={summary.wikiMinutes[0] ? `[[${summary.wikiMinutes[0].name}]] 외` : '플랜에 위키를 달아보세요'} />
           </div>
 
@@ -222,7 +232,7 @@ export default function WeeklyReview() {
             </Card>
           </div>
 
-          <StreakCard today={today} journalTitles={view.titles} />
+          <StreakCard today={today} closedDays={view.closedDays} />
 
           <Card title={mode === 'week' ? '이번 주 일지' : `${scopeWord} 일지`} caption={view.periodJournals.length > 12 ? `최근 12개 · 전체 ${view.periodJournals.length}개` : undefined}>
             {view.periodJournals.length === 0 ? (
@@ -246,9 +256,9 @@ export default function WeeklyReview() {
 
 /**
  * 1년 스트릭 — 위 기간 선택과 무관하게 1월~12월 고정, 연도만 넘긴다.
- * 칸 색 = 그날 완료한 플랜 수(단일일), 테두리 = 하루 마감(일지)한 날.
+ * 칸 색 = 그날 완료한 플랜 수(단일일), 테두리 = 하루 마감한 날(일지 저장 또는 건너뛰기, 0024).
  */
-function StreakCard({ today, journalTitles }: { today: string; journalTitles: string[] }) {
+function StreakCard({ today, closedDays }: { today: string; closedDays: ReadonlySet<string> }) {
   const thisYear = Number(today.slice(0, 4))
   const [year, setYear] = useState(thisYear)
   const { data } = useQuery({
@@ -262,10 +272,9 @@ function StreakCard({ today, journalTitles }: { today: string; journalTitles: st
       return counts
     },
   })
-  const closed = useMemo(() => journalDays(journalTitles), [journalTitles])
-  const grid = useMemo(() => yearGrid(year, data ?? new Map(), closed, today), [year, data, closed, today])
+  const grid = useMemo(() => yearGrid(year, data ?? new Map(), closedDays, today), [year, data, closedDays, today])
   const activeDays = grid.weeks.flat().filter((c) => c.inYear && c.count > 0).length
-  const closedDays = grid.weeks.flat().filter((c) => c.closed).length
+  const closedCount = grid.weeks.flat().filter((c) => c.closed).length
 
   // 모바일에서 가로 스크롤이 생기면 이번 달이 보이게
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -281,7 +290,7 @@ function StreakCard({ today, journalTitles }: { today: string; journalTitles: st
     <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <h2 className="text-base font-bold text-gray-900 dark:text-white">스트릭</h2>
-        <span className="text-xs text-gray-500 dark:text-gray-400">완료한 날 {activeDays}일 · 마감한 날 {closedDays}일</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">완료한 날 {activeDays}일 · 마감한 날 {closedCount}일</span>
         <div className="flex-1" />
         <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="이전 해" className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronLeft size={16} /></button>
         <span className="text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">{year}</span>
@@ -296,7 +305,7 @@ function StreakCard({ today, journalTitles }: { today: string; journalTitles: st
               <span key={m.month} className="absolute top-0" style={{ left: m.col * 15 }}>{m.month}월</span>
             ))}
           </div>
-          <div className="grid grid-rows-7 grid-flow-col gap-[3px]" role="img" aria-label={`${year}년 완료한 날 ${activeDays}일, 마감한 날 ${closedDays}일`}>
+          <div className="grid grid-rows-7 grid-flow-col gap-[3px]" role="img" aria-label={`${year}년 완료한 날 ${activeDays}일, 마감한 날 ${closedCount}일`}>
             {grid.weeks.flat().map((c) => (
               <span
                 key={c.d}
@@ -304,7 +313,7 @@ function StreakCard({ today, journalTitles }: { today: string; journalTitles: st
                 className={cn(
                   'w-3 h-3 rounded-sm',
                   !c.inYear ? 'bg-transparent' : c.future ? 'bg-gray-50 dark:bg-gray-800/40' : STREAK_SHADES[streakLevel(c.count)],
-                  c.closed && 'ring-2 ring-inset ring-violet-600 dark:ring-violet-300',
+                  c.closed && 'ring-1 ring-inset ring-violet-700 dark:ring-violet-200',
                   c.d === today && 'outline outline-1 outline-offset-1 outline-gray-400',
                 )}
               />
@@ -315,7 +324,7 @@ function StreakCard({ today, journalTitles }: { today: string; journalTitles: st
 
       <div className="mt-3 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm ring-2 ring-inset ring-violet-600 dark:ring-violet-300" aria-hidden="true" /> 하루 마감
+          <span className="w-3 h-3 rounded-sm ring-1 ring-inset ring-violet-700 dark:ring-violet-200" aria-hidden="true" /> 하루 마감
         </span>
         <span className="inline-flex items-center gap-1">
           적음

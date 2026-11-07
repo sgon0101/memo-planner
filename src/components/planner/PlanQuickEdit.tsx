@@ -9,7 +9,7 @@
  * 반복 인스턴스는 시리즈 전체가 바뀌는 조작을 막고 완료·전체 편집만 허용한다.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -24,6 +24,8 @@ import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import PlanTitle from './PlanTitle'
 import PlanWikiChips from './PlanWikiChips'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis } from '@/lib/planner/planHints'
 import type { Plan } from '@/types'
 
 interface PlanQuickEditProps {
@@ -101,6 +103,8 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
   const savedTitle = useRef(plan.title)
   const savedNote = useRef(plan.description ?? '')
   const [wikis, setWikis] = useState<string[]>(plan.wikiLinks ?? [])
+  const hints = usePlanHints()
+  const wikiSuggest = useMemo(() => (isInstance ? [] : suggestWikis(hints, title, wikis)), [hints, title, wikis, isInstance])
   async function saveWikis(next: string[]) {
     if (isInstance) return
     const prev = wikis
@@ -233,7 +237,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
               )}
             />
             {hasTokens && <PlanTitle title={title} className="block text-xs text-gray-500 mt-0.5" />}
-            <PlanWikiChips value={wikis} onChange={(next) => void saveWikis(next)} disabled={isInstance} className="mt-2" />
+            <PlanWikiChips value={wikis} onChange={(next) => void saveWikis(next)} suggestions={wikiSuggest} disabled={isInstance} className="mt-2" />
           </div>
         </div>
 

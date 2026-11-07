@@ -29,6 +29,8 @@ import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
 import PlanWikiChips from '@/components/planner/PlanWikiChips'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
 
 const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
 
@@ -123,6 +125,17 @@ function QuickCaptureInner({
   const [ddayTarget] = useState<string | null>(null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>([])
   const [wikiLinks, setWikiLinks] = useState<string[]>([])
+  // 위키·색상 추천 (PlanFormModal과 같은 규칙 — 색을 직접 고르기 전까지만 위키 색을 따른다)
+  const hints = usePlanHints()
+  const colorTouched = useRef(false)
+  const wikiSuggest = useMemo(() => (planTitle.trim() ? suggestWikis(hints, planTitle, wikiLinks) : []), [hints, planTitle, wikiLinks])
+  function changeWikis(next: string[]) {
+    setWikiLinks(next)
+    if (!colorTouched.current && next[0]) {
+      const c = colorForWiki(hints, next[0])
+      if (c) setColor(c)
+    }
+  }
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -269,6 +282,7 @@ function QuickCaptureInner({
 
   function applyTemplate(t: PlanTemplate) {
     setPlanTitle(t.title); setColor(t.color); setIsAllDay(t.isAllDay)
+    colorTouched.current = true
     if (!t.isAllDay) {
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime) setEndTime(t.endTime.slice(0, 5))
@@ -581,7 +595,7 @@ function QuickCaptureInner({
               {/* 위키 칩 (0023) */}
               <div className="flex items-start gap-2">
                 <p className="text-xs text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
-                <PlanWikiChips value={wikiLinks} onChange={setWikiLinks} className="flex-1 min-w-0" />
+                <PlanWikiChips value={wikiLinks} onChange={changeWikis} suggestions={wikiSuggest} className="flex-1 min-w-0" />
               </div>
 
               {/* 색상 */}
@@ -592,7 +606,7 @@ function QuickCaptureInner({
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setColor(c)}
+                      onClick={() => { setColor(c); colorTouched.current = true }}
                       aria-label={`${COLOR_NAMES[c] ?? c} 색상`}
                       aria-pressed={color === c}
                       className={cn("relative w-6 h-6 rounded-full transition-transform hover:scale-110 before:absolute before:-inset-1 before:content-['']", color === c && 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900')}

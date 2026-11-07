@@ -303,6 +303,7 @@ export function usePlanner() {
 
     const plan = toPlan(result.row!)
     addPlanToCaches(queryClient, plan)
+    if (plan.wikiLinks.length) queryClient.invalidateQueries({ queryKey: ['plan-hints'] }) // 위키·색상 추천 갱신
     patchHomeStatsOnPlanCreate(queryClient, plan) // 홈 '이번 주 플랜' 즉시 반영 (invalidate는 백업)
     invalidateHomeQueries()
     broadcast({ type: 'plan-create', plan })
@@ -339,6 +340,7 @@ export function usePlanner() {
     const result = await writeOrQueue({
       table: 'plans', recordId: id, patch: dbPatch, knownUpdatedAt,
     })
+    if (data.wikiLinks !== undefined || data.color !== undefined) queryClient.invalidateQueries({ queryKey: ['plan-hints'] })
     // 홈 '이번 주 플랜' 즉시 반영 — isCompleted가 실제로 바뀌면 전체 완료 수도 조정
     const completedDelta: -1 | 0 | 1 =
       data.isCompleted === undefined || !original || data.isCompleted === original.isCompleted

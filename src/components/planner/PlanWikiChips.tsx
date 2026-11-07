@@ -18,9 +18,11 @@ interface PlanWikiChipsProps {
   onChange: (next: string[]) => void
   disabled?: boolean
   className?: string
+  /** 지난 플랜에서 추천한 위키 (lib/planner/planHints) — 눌러서 추가 */
+  suggestions?: string[]
 }
 
-export default function PlanWikiChips({ value, onChange, disabled, className }: PlanWikiChipsProps) {
+export default function PlanWikiChips({ value, onChange, disabled, className, suggestions: recommended = [] }: PlanWikiChipsProps) {
   const { allWikiLinks, wikiCanonical } = useAllMemosMeta()
   const [adding, setAdding] = useState(false)
   const [q, setQ] = useState('')
@@ -74,6 +76,20 @@ export default function PlanWikiChips({ value, onChange, disabled, className }: 
           )}
         </span>
       ))}
+
+      {!disabled && !full && !adding && recommended
+        .filter((w) => !chosen.has(wikiKey(w)))
+        .map((w) => (
+          <button
+            key={`s-${w}`}
+            type="button"
+            onClick={() => add(w)}
+            title="지난 비슷한 플랜에 단 위키예요"
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-emerald-300 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 px-2.5 py-1 min-h-7 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            <Plus size={11} aria-hidden="true" /> {w} <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70">추천</span>
+          </button>
+        ))}
 
       {!disabled && !full && !adding && (
         <button

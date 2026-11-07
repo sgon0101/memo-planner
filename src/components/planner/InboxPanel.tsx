@@ -17,6 +17,8 @@ import { usePlanner, useInboxQuery, useTodayListQuery } from '@/hooks/usePlanner
 import { parseQuickAdd } from '@/lib/planner/quickAdd'
 import { minToTime, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
 import { plainTitle, splitWikisFromText } from '@/lib/planner/titleTokens'
+import { usePlanHints } from '@/hooks/usePlanHints'
+import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
 import { resolveDropTarget } from '@/lib/planner/dropTarget'
 import { DRAG_THRESHOLD_PX } from '@/lib/planner/dragHelpers'
 import { pushPlanUndo } from '@/lib/planner/planUndo'
@@ -72,6 +74,10 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
   // [[위키]]는 칩으로 떼어 내고(제목에 남기지 않음) 나머지에서 날짜·시간을 읽는다
   const wikiSplit = splitWikisFromText(text.trim())
   const parsed = text.trim() ? parseQuickAdd(wikiSplit.title) : null
+  // 위키를 안 적었으면 지난 비슷한 플랜의 위키를 추천(눌러서 붙임), 적은 위키는 그 위키에 많이 쓴 색으로 저장
+  const hints = usePlanHints()
+  const quickSuggest = parsed && !wikiSplit.wikis.length ? suggestWikis(hints, parsed.title, [], 1) : []
+  const wikiColor = wikiSplit.wikis[0] ? colorForWiki(hints, wikiSplit.wikis[0]) ?? undefined : undefined
 
   async function submit(raw: boolean) {
     const value = text.trim()
@@ -82,11 +88,12 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
       // '오늘' 탭에서 날짜 없이 적으면 오늘(종일)로 — 인박스로 사라지면 어색하다
       const fallbackDate = tab === 'today' ? today : null
       if (raw || !parsed) {
-        await createPlan({ title: wikiSplit.title, wikiLinks: wikiSplit.wikis, date: raw ? null : fallbackDate, startDate: null, isAllDay: true })
+        await createPlan({ title: wikiSplit.title, wikiLinks: wikiSplit.wikis, color: wikiColor, date: raw ? null : fallbackDate, startDate: null, isAllDay: true })
       } else {
         const created = await createPlan({
           title: parsed.title,
           wikiLinks: wikiSplit.wikis,
+          color: wikiColor,
           date: parsed.date ?? fallbackDate,
           startDate: null,
           startTime: parsed.startTime,
@@ -302,6 +309,18 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
               ) : (
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">인박스</span>
               )}
+              {quickSuggest.map((w) => (
+                <button
+                  key={`s-${w}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setText((t) => `${t.trimEnd()} [[${w}]]`); inputRef.current?.focus() }}
+                  title="지난 비슷한 플랜에 단 위키예요"
+                  className="px-2 py-0.5 rounded-full border border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                >
+                  + {w} <span className="text-[10px] opacity-70">추천</span>
+                </button>
+              ))}
               {wikiSplit.wikis.map((w) => (
                 <span key={w} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{w}</span>
               ))}

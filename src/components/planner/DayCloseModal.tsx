@@ -19,6 +19,7 @@ import { usePlanner, useTodayListQuery } from '@/hooks/usePlanner'
 import { memoKeys } from '@/hooks/useMemos'
 import { folderKeys } from '@/hooks/useFolders'
 import { journalStreak, JOURNAL_FOLDER_NAME } from '@/lib/planner/journal'
+import { recordDayClose } from '@/lib/planner/dayCloses'
 import { saveJournal } from '@/lib/planner/journalSave'
 import { timeToMinutes } from '@/lib/planner/dragHelpers'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
@@ -138,6 +139,12 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
       queryClient.invalidateQueries({ queryKey: folderKeys.all() })
       queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
       queryClient.invalidateQueries({ queryKey: ['day-close'] })
+      if (result.status !== 'locked') {
+        // 마감 기록(0024) — 실패해도 일지는 이미 저장됐으니 흐름을 막지 않는다(일지 날짜로도 집계됨)
+        recordDayClose(day, true).catch(() => { /* 무시 */ })
+        queryClient.invalidateQueries({ queryKey: ['planner-review'] })
+        queryClient.invalidateQueries({ queryKey: ['planner-review-year'] })
+      }
       if (result.status === 'locked') {
         toast.warning(`'${day} 일지'가 잠겨 있어 저장하지 않았어요. 잠금을 풀고 다시 마감해주세요.`)
       } else {
@@ -149,6 +156,24 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
       onClose()
     } catch (err) {
       reportSaveError('일지를 저장하지 못했어요.', save)(err)
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  /** 건너뛰기 — 일지 없이 '마감한 날'로만 남긴다(스트릭에 잡힘) */
+  async function skip() {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    try {
+      await recordDayClose(day, false)
+      queryClient.invalidateQueries({ queryKey: ['planner-review'] })
+      queryClient.invalidateQueries({ queryKey: ['planner-review-year'] })
+      onClose()
+    } catch (err) {
+      reportSaveError('마감을 기록하지 못했어요.', skip)(err)
     } finally {
       savingRef.current = false
       setSaving(false)
@@ -248,8 +273,8 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
           </button>
           <p className="mt-2 text-center text-xs text-gray-500">‘{day} 일지’가 ‘{JOURNAL_FOLDER_NAME}’ 폴더에 {wikiCounts.length > 0 ? '생기고 위 위키들과 연결돼요' : '생겨요'}</p>
           {/* 건너뛰기 — 일지를 남기지 않고 닫는다. 오늘은 다시 자동으로 뜨지 않음(닫기와 같음), 원하면 '하루 마감하기'로 다시 열 수 있다 */}
-          <button type="button" onClick={onClose} disabled={saving} className="mt-3 w-full min-h-11 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
-            오늘은 건너뛰기 <span className="text-xs text-gray-400">· 일지는 남지 않아요</span>
+          <button type="button" onClick={() => void skip()} disabled={saving} className="mt-3 w-full min-h-11 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+            오늘은 건너뛰기 <span className="text-xs text-gray-400">· 일지 없이 마감만 기록해요</span>
           </button>
         </div>
       </div>
