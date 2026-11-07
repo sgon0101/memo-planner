@@ -347,8 +347,11 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
     setLoading(true)
     try {
       const baseDate = isRange ? startDate : singleDate
-      // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일
-      const daily = isRange && rangeDaily
+      // 기간은 반복 칩을 쓰지 않는다: 한 덩어리 = 반복 없음, 매일 하루씩 = 시작일부터 종료일까지 매일.
+      // 시작일 = 종료일이면 하루 플랜으로 저장 — 하루짜리 기간은 '오늘' 목록에서 빠지고 월 보기에 시간이 안 보였다
+      const oneDay = isRange && startDate === endDate
+      const daily = isRange && rangeDaily && !oneDay
+      const rangeBlock = isRange && !rangeDaily && !oneDay
       const rruleStr = isUndated ? null : daily ? dailySpanRRule(startDate, endDate) : isRange ? null : buildRRule(recurrence, baseDate)
       const data: Partial<Plan> = isUndated ? {
         // 미정(인박스) — 날짜·시간·반복·알림을 모두 비운다 (lib/planner/inbox.ts 정의)
@@ -364,9 +367,9 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
         description: description.trim(),
         color,
         isAllDay,
-        date: daily ? startDate : isRange ? null : singleDate,
-        startDate: isRange && !daily ? startDate : null,
-        endDate: isRange && !daily ? endDate : null,
+        date: isRange ? (rangeBlock ? null : startDate) : singleDate,
+        startDate: rangeBlock ? startDate : null,
+        endDate: rangeBlock ? endDate : null,
         startTime: isAllDay ? null : (startTime || null),
         endTime: isAllDay ? null : (endTime || null),
         // 새 데이터는 항상 RRULE 사용 — repeat_type은 null로 명시
