@@ -103,7 +103,7 @@ export default function WeeklyReview() {
             <Stat label="완료한 플랜" value={`${summary.completed}`} sub={summary.total ? `이 주 플랜 ${summary.total}개 중 ${Math.round((summary.completed / summary.total) * 100)}%` : '이 주 플랜이 없어요'} />
             <Stat label="완료한 일에 쓴 계획 시간" value={fmtMin(summary.plannedMin)} sub="시간을 정해둔 플랜 기준" />
             <Stat label="하루 마감" value={`${view.closedThisWeek}일`} sub={view.streak > 1 ? `지금 ${view.streak}일 연속` : '마감하면 일지가 쌓여요'} />
-            <Stat label="엮인 위키" value={`${summary.wikiMinutes.length}개`} sub={summary.wikiMinutes[0] ? `[[${summary.wikiMinutes[0].name}]] 외` : '제목에 [[위키]]를 붙여보세요'} />
+            <Stat label="엮인 위키" value={`${summary.wikiMinutes.length}개`} sub={summary.wikiMinutes[0] ? `[[${summary.wikiMinutes[0].name}]] 외` : '플랜에 위키를 달아보세요'} />
           </div>
 
           <div className="grid lg:grid-cols-2 gap-3">
@@ -128,9 +128,9 @@ export default function WeeklyReview() {
               </div>
             </Card>
 
-            <Card title="위키별 시간" caption="이 주 완료한 플랜 제목의 [[위키]] 기준">
+            <Card title="위키별 시간" caption="이 주 완료한 플랜의 위키 기준">
               {summary.wikiMinutes.length === 0 ? (
-                <p className="text-sm text-gray-500">플랜 제목에 [[위키]]를 붙이면 여기에 모여요.</p>
+                <p className="text-sm text-gray-500">플랜에 위키를 달면 완료한 시간이 위키별로 모여요.</p>
               ) : (
                 <ul className="space-y-2.5">
                   {summary.wikiMinutes.map((w) => (

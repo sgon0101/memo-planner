@@ -5,11 +5,11 @@ import { useSearchParams } from 'next/navigation'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, eachDayOfInterval,
-  isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO, isSameWeek,
+  isSameMonth, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, parseISO, isSameWeek, differenceInCalendarDays,
 } from 'date-fns'
 import { computeRangeBars } from '@/lib/planner/rangeBars'
 import { ko } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Inbox, BarChart3 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Inbox, BarChart3, PanelRight } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
@@ -29,8 +29,12 @@ import PlanQuickEdit from './PlanQuickEdit'
 import DayCloseModal from './DayCloseModal'
 import { lsDayClosed } from '@/lib/cache/lsKeys'
 import { useInboxDragStore } from '@/store/inboxDragStore'
-import { undoLastPlanAction } from '@/lib/planner/planUndo'
+import { undoLastPlanAction, pushPlanUndo } from '@/lib/planner/planUndo'
 import { minToTime } from '@/lib/planner/inbox'
+import { resolveDropTarget } from '@/lib/planner/dropTarget'
+import { DRAG_THRESHOLD_PX, timeToMinutes } from '@/lib/planner/dragHelpers'
+import { reportSaveError } from '@/lib/ui/reportSaveError'
+import type { DropTarget } from '@/store/inboxDragStore'
 import { toast } from '@/components/ui/Toast'
 import type { Plan } from '@/types'
 import { plainTitle } from '@/lib/planner/titleTokens'
@@ -46,7 +50,7 @@ export default function CalendarView() {
     viewMode, setViewMode,
   } = usePlannerStore()
 
-  const { refresh } = usePlanner()
+  const { refresh, editPlan, sendToInbox } = usePlanner()
 
   // ── 인박스 (2026-11) — 데스크톱 좌측 패널(열림 상태 기억) / 모바일 전체 시트 ──
   const { plans: inboxPlans } = useInboxQuery()
@@ -56,6 +60,24 @@ export default function CalendarView() {
     try { return localStorage.getItem('weave:planner-inbox-open') !== '0' } catch { return true }
   })
   const [mobileInboxOpen, setMobileInboxOpen] = useState(false)
+  // ── 우측 목록 패널 (2026-11) — PC·모바일 모두 기본 숨김, 상단 '목록' 버튼으로 연다(PC는 상태 기억).
+  // 모바일 월뷰는 칸에 점만 보여 날짜 탭으로도 그 날 목록을 연다.
+  const [listOpen, setListOpenState] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    // 홈 '이번 주 플랜' → /planner?focus=ID: 상세는 목록 패널(PlanPanel)이 열므로 이번엔 연 채로 시작
+    if (new URLSearchParams(window.location.search).has('focus')) return true
+    if (!window.matchMedia('(min-width: 768px)').matches) return false
+    try { return localStorage.getItem('weave:planner-list-open') === '1' } catch { return false }
+  })
+  function setListOpen(open: boolean, remember = true) {
+    setListOpenState(open)
+    const desktop = window.matchMedia('(min-width: 768px)').matches
+    if (desktop && remember) {
+      try { localStorage.setItem('weave:planner-list-open', open ? '1' : '0') } catch { /* 무시 */ }
+    }
+    // 좁은 PC(1280px 미만)에선 인박스와 목록 중 하나만 — 캘린더가 너무 좁아지지 않게
+    if (open && desktop && !window.matchMedia('(min-width: 1280px)').matches) setInboxOpen(false)
+  }
   const [scheduleTarget, setScheduleTarget] = useState<Plan | null>(null)
   const modalOpenRef = useRef(false)
   // 블록 빠른 편집 — 누른 위치 옆에 띄우기 위해 마지막 포인터 좌표를 기억
@@ -96,12 +118,93 @@ export default function CalendarView() {
   const [inboxFocus, setInboxFocus] = useState(0)
   const dragTarget = useInboxDragStore((s) => s.target)
 
+  // ── 캘린더 칩·기간 바 끌기 (2026-11) — 다른 날짜로 옮기거나 인박스로 (마우스만, 반복 제외) ──
+  // 인박스 → 캘린더와 같은 드래그 스토어·고스트·놓을 자리 표시를 쓴다(source: 'calendar').
+  function startItemDrag(e: React.PointerEvent, plan: Plan) {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    if (plan.isRecurringInstance || plan.rruleStr || plan.repeatType) return
+    const sx = e.clientX, sy = e.clientY
+    const timedDur = !plan.isAllDay && plan.startTime && plan.endTime
+      ? timeToMinutes(plan.endTime.slice(0, 5)) - timeToMinutes(plan.startTime.slice(0, 5))
+      : 0
+    const dur = timedDur > 0 ? timedDur : 60
+    let started = false
+    const prevSelect = document.body.style.userSelect
+    const store = useInboxDragStore.getState()
+
+    const onMove = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.abs(ev.clientX - sx) < DRAG_THRESHOLD_PX && Math.abs(ev.clientY - sy) < DRAG_THRESHOLD_PX) return
+        started = true
+        document.body.style.userSelect = 'none'
+        store.start(plan.id, plan.title, ev.clientX, ev.clientY, 'calendar', dur)
+      }
+      store.move(ev.clientX, ev.clientY, resolveDropTarget(ev.clientX, ev.clientY, dur))
+    }
+    const finish = (ev: PointerEvent, cancelled: boolean) => {
+      cleanup()
+      if (!started) return
+      // 끈 뒤 따라오는 click(새 플랜 폼·빠른 편집 열기)을 한 번 삼킨다
+      const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
+      document.addEventListener('click', swallow, true)
+      setTimeout(() => document.removeEventListener('click', swallow, true), 300)
+      const target = cancelled ? null : resolveDropTarget(ev.clientX, ev.clientY, dur)
+      store.end()
+      if (target) void moveCalendarItem(plan, target, dur)
+    }
+    const onUp = (ev: PointerEvent) => finish(ev, false)
+    const onCancel = (ev: PointerEvent) => finish(ev, true)
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { cleanup(); store.end() } }
+    function cleanup() {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onCancel)
+      document.removeEventListener('keydown', onKey)
+      document.body.style.userSelect = prevSelect
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onCancel)
+    document.addEventListener('keydown', onKey)
+  }
+
+  async function moveCalendarItem(plan: Plan, target: DropTarget, dur: number) {
+    try {
+      if (target.kind === 'inbox') { await sendToInbox(plan); return }
+      const name = plainTitle(plan.title)
+      if (plan.startDate && plan.endDate) {
+        // 기간 플랜 — 길이를 유지한 채 시작일을 놓은 날로
+        const shift = differenceInCalendarDays(parseISO(target.date), parseISO(plan.startDate))
+        if (shift === 0) return
+        const before = { startDate: plan.startDate, endDate: plan.endDate }
+        const next = {
+          startDate: format(addDays(parseISO(plan.startDate), shift), 'yyyy-MM-dd'),
+          endDate: format(addDays(parseISO(plan.endDate), shift), 'yyyy-MM-dd'),
+        }
+        await editPlan(plan.id, next)
+        pushPlanUndo(`'${name}'을(를) ${format(parseISO(next.startDate), 'M/d')}–${format(parseISO(next.endDate), 'M/d')}로 옮겼어요`, () => editPlan(plan.id, before))
+        return
+      }
+      if (!plan.date) return
+      const before = { date: plan.date, startTime: plan.startTime, endTime: plan.endTime, isAllDay: plan.isAllDay }
+      const next = target.kind === 'timed'
+        ? { date: target.date, startTime: minToTime(target.startMin), endTime: minToTime(Math.min(target.startMin + dur, 24 * 60 - 1)), isAllDay: false }
+        : { date: target.date } // 종일 칸·월뷰 날짜 칸: 날짜만 바꾸고 시간은 그대로
+      if (next.date === plan.date && target.kind !== 'timed') return
+      await editPlan(plan.id, next)
+      const when = target.kind === 'timed' ? `${format(parseISO(target.date), 'M/d')} ${minToTime(target.startMin)}` : format(parseISO(target.date), 'M/d')
+      pushPlanUndo(`'${name}'을(를) ${when}로 옮겼어요`, () => editPlan(plan.id, before))
+    } catch (err) {
+      reportSaveError(target.kind === 'inbox' ? '인박스로 보내지 못했어요.' : '일정을 옮기지 못했어요.')(err)
+    }
+  }
+
   function toggleInbox() {
     if (window.matchMedia('(min-width: 768px)').matches) {
-      setInboxOpen((v) => {
-        try { localStorage.setItem('weave:planner-inbox-open', v ? '0' : '1') } catch { /* 무시 */ }
-        return !v
-      })
+      const next = !inboxOpen
+      setInboxOpen(next)
+      try { localStorage.setItem('weave:planner-inbox-open', next ? '1' : '0') } catch { /* 무시 */ }
+      if (next && !window.matchMedia('(min-width: 1280px)').matches) setListOpenState(false)
     } else {
       setMobileInboxOpen(true)
     }
@@ -125,6 +228,7 @@ export default function CalendarView() {
         if (window.matchMedia('(min-width: 768px)').matches) {
           setInboxOpen(true)
           try { localStorage.setItem('weave:planner-inbox-open', '1') } catch { /* 무시 */ }
+          if (!window.matchMedia('(min-width: 1280px)').matches) setListOpenState(false)
         } else {
           setMobileInboxOpen(true)
         }
@@ -260,7 +364,7 @@ export default function CalendarView() {
   // 갱신해 패널이 이전 기간 날짜에 고착돼 있었다. 오늘이 새 기간 안이면 오늘,
   // 아니면 기간 첫날로 옮긴다 (패널이 닫혀 있으면 열지 않음 — 빈 selectedDate 유지).
   function syncPanelToPeriod(periodStart: Date, periodEnd: Date) {
-    if (!selectedDate) return
+    if (!listOpen) return
     const startStr = format(periodStart, 'yyyy-MM-dd')
     const endStr = format(periodEnd, 'yyyy-MM-dd')
     selectDate(today >= startStr && today <= endStr ? today : startStr)
@@ -342,25 +446,13 @@ export default function CalendarView() {
     return computeRangeBars(weekStrs, expandedPlans, MAX_RANGE_BARS)
   }
 
-  // panelDismissed — 일 뷰에서 panel만 숨기고 selectedDate는 유지하기 위한 별도 상태
-  // selectedDate가 바뀌면(네비게이션) 자동 reset → 새 날짜에서 panel 다시 열림
-  const [panelDismissed, setPanelDismissed] = useState(false)
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 날짜 변경 시 panel 닫힘 상태 리셋 (의도된 패턴)
-    setPanelDismissed(false)
-  }, [selectedDate])
-
+  // 목록 닫기 — 선택한 날짜는 그대로 둔다(일뷰가 오늘로 돌아가지 않게, 다시 열면 같은 날)
   function handlePanelClose() {
-    if (viewMode === 'day') {
-      // 일 뷰: panel만 숨김 — selectedDate 유지 → DayView가 today로 안 돌아감
-      setPanelDismissed(true)
-    } else {
-      // 월/주 뷰: 기존대로 날짜 선택 해제
-      selectDate('')
-    }
+    setListOpen(false)
   }
 
-  const panelOpen = !!selectedDate && !panelDismissed
+  const panelOpen = listOpen
+  const panelDate = selectedDate || today
 
   // 주/월 뷰: 우측 패널을 선택일 하루치가 아니라 기간 전체 플랜 모드로
   const panelPeriod = viewMode === 'week'
@@ -463,6 +555,24 @@ export default function CalendarView() {
               <Inbox size={13} className="flex-shrink-0" aria-hidden="true" />
               <span className="hidden @2xl:inline">인박스</span>
               {inboxCount > 0 && <span className="tabular-nums">{inboxCount}</span>}
+            </button>
+
+            {/* 우측 목록 패널 열기/닫기 — 기본 숨김 */}
+            <button
+              type="button"
+              onClick={() => setListOpen(!listOpen)}
+              aria-pressed={listOpen}
+              aria-label={listOpen ? '일정 목록 닫기' : '일정 목록 열기'}
+              title="이 기간 일정 목록"
+              className={cn(
+                'flex items-center gap-1.5 whitespace-nowrap text-xs font-medium px-2 sm:px-2.5 py-1 rounded-lg border transition-colors',
+                listOpen
+                  ? 'border-violet-300 text-violet-700 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-300'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+              )}
+            >
+              <PanelRight size={13} className="flex-shrink-0" aria-hidden="true" />
+              <span className="hidden @2xl:inline">목록</span>
             </button>
 
             {/* 주간 돌아보기 */}
@@ -577,13 +687,16 @@ export default function CalendarView() {
                         style={{ paddingTop: `${barAreaHeight}px` }}
                         // 데스크탑(md↑, 칩 레이아웃): 날짜 클릭 = 바로 새 플랜 폼. 날짜도 선택해 두어
                         // 폼을 닫으면 그 날 플랜 패널이 남는다(기존 플랜 확인은 칩·범위 바·더보기).
-                        // 모바일(dot 레이아웃): 플랜을 따로 누를 수 없어 기존대로 날짜 선택 토글(패널).
+                        // 모바일(dot 레이아웃): 플랜을 따로 누를 수 없어 날짜 탭 = 그 날 목록 열기(다시 탭하면 닫기).
                         onClick={() => {
                           if (window.matchMedia('(min-width: 768px)').matches) {
                             selectDate(dayStr)
                             setFormState({ open: true, date: dayStr })
+                          } else if (isSelected && listOpen) {
+                            setListOpen(false)
                           } else {
-                            selectDate(isSelected ? '' : dayStr)
+                            selectDate(dayStr)
+                            setListOpen(true)
                           }
                         }}
                       >
@@ -614,7 +727,8 @@ export default function CalendarView() {
                                 borderLeft: `2px solid ${plan.color}`,
                                 color: plan.color,
                               }}
-                              onClick={(e) => { e.stopPropagation(); selectDate(dayStr) }}
+                              onClick={(e) => { e.stopPropagation(); openQuickEdit(plan) }}
+                              onPointerDown={(e) => startItemDrag(e, plan)}
                               title={plainTitle(plan.title)}
                             >
                               {!plan.isAllDay && plan.startTime && (
@@ -626,7 +740,7 @@ export default function CalendarView() {
                           {dayPlans.length > 3 && (
                             <div
                               className="text-xs text-gray-400 px-1 hover:text-gray-600 dark:hover:text-gray-300"
-                              onClick={(e) => { e.stopPropagation(); selectDate(dayStr) }}
+                              onClick={(e) => { e.stopPropagation(); selectDate(dayStr); setListOpen(true) }}
                             >
                               +{dayPlans.length - 3} 더보기
                             </div>
@@ -671,7 +785,8 @@ export default function CalendarView() {
                       slot={slot}
                       continuesLeft={continuesLeft}
                       continuesRight={continuesRight}
-                      onClick={() => selectDate(format(week[startCol], 'yyyy-MM-dd'))}
+                      onClick={() => openQuickEdit(plan)}
+                      onPointerDown={(e) => startItemDrag(e, plan)}
                     />
                   ))}
 
@@ -703,6 +818,7 @@ export default function CalendarView() {
                 setFormState({ open: true, date, initialTime: startTime, initialEndTime: endTime })
               }}
               onEditPlan={openQuickEdit}
+              onItemPointerDown={startItemDrag}
             />
           )}
 
@@ -737,12 +853,12 @@ export default function CalendarView() {
               md:h-full: 데스크탑에서 패널 루트에 높이 기준을 줘야 내부 flex-1 목록이 스크롤됨 */}
           <div className="fixed bottom-16 left-0 right-0 z-40 md:static md:z-auto md:h-full md:flex-shrink-0">
             <PlanPanel
-              date={selectedDate}
+              date={panelDate}
               periodStart={panelPeriod?.start}
               periodEnd={panelPeriod?.end}
               periodLabel={panelPeriod?.label}
-              onNewPlan={() => setFormState({ open: true, date: selectedDate })}
-              onEditPlan={(plan) => setFormState({ open: true, date: selectedDate, plan })}
+              onNewPlan={() => setFormState({ open: true, date: panelDate })}
+              onEditPlan={(plan) => setFormState({ open: true, date: panelDate, plan })}
               onClose={handlePanelClose}
             />
           </div>
@@ -866,14 +982,25 @@ function ViewModeDropdown({
   )
 }
 
-/** 인박스 드래그 고스트 — 놓일 자리를 글로 보여준다. 화면 밖으로 넘치지 않게 끼운다 */
+/** 드래그 고스트 — 놓일 자리를 글로 보여준다. 화면 밖으로 넘치지 않게 끼운다 */
 function InboxDragGhost() {
   const planId = useInboxDragStore((s) => s.planId)
   const title = useInboxDragStore((s) => s.title)
   const x = useInboxDragStore((s) => s.x)
   const y = useInboxDragStore((s) => s.y)
   const target = useInboxDragStore((s) => s.target)
+  const source = useInboxDragStore((s) => s.source)
+  const dur = useInboxDragStore((s) => s.durationMin)
   if (!planId) return null
+  const day = (d: string) => format(parseISO(d), 'M/d (eee)', { locale: ko })
+  const durLabel = dur % 60 === 0 ? `${dur / 60}시간` : dur > 60 ? `${Math.floor(dur / 60)}시간 ${dur % 60}분` : `${dur}분`
+  const label = !target
+    ? (source === 'calendar' ? '다른 날짜나 인박스에 놓으세요' : '캘린더에 놓으면 일정이 정해져요')
+    : target.kind === 'inbox'
+      ? '인박스로 보내기'
+      : target.kind === 'timed'
+        ? `${day(target.date)} ${minToTime(target.startMin)} · ${durLabel}`
+        : source === 'calendar' ? `${day(target.date)}로 옮기기` : `${day(target.date)} 종일`
   return (
     <div
       className="fixed z-[70] pointer-events-none px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800 shadow-lg text-sm max-w-56 -rotate-2"
@@ -881,13 +1008,7 @@ function InboxDragGhost() {
       aria-hidden="true"
     >
       <div className="font-semibold truncate text-gray-900 dark:text-gray-100">{plainTitle(title)}</div>
-      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-        {target
-          ? target.kind === 'timed'
-            ? `${format(parseISO(target.date), 'M/d (eee)', { locale: ko })} ${minToTime(target.startMin)} · 1시간`
-            : `${format(parseISO(target.date), 'M/d (eee)', { locale: ko })} 종일`
-          : '캘린더에 놓으면 일정이 정해져요'}
-      </div>
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{label}</div>
     </div>
   )
 }

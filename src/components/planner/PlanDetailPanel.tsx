@@ -53,6 +53,7 @@ export default function PlanDetailPanel({ plan, onEdit, onDelete, onClose }: Pla
         end_time:   plan.isAllDay ? null : (plan.endTime   || null),
         is_all_day: plan.isAllDay,
         linked_memo_ids: plan.linkedMemoIds ?? [],
+        wiki_links: plan.wikiLinks ?? [],
         description: plan.description?.trim() || null,
         rrule_str: plan.rruleStr ?? null,
         notify_enabled: plan.notifyEnabled ?? false,

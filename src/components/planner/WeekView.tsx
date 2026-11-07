@@ -13,6 +13,7 @@ import type { Plan } from '@/types'
 import { useInboxDragStore } from '@/store/inboxDragStore'
 import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { isOverInbox } from '@/lib/planner/dropTarget'
 import { plainTitle } from '@/lib/planner/titleTokens'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -26,6 +27,8 @@ interface WeekViewProps {
   onSelectDate: (date: string) => void
   onNewPlan: (date: string, startTime?: string, endTime?: string) => void
   onEditPlan: (plan: Plan) => void
+  /** 종일 칩·기간 바를 마우스로 끌어 다른 날짜·인박스로 (CalendarView.startItemDrag) */
+  onItemPointerDown?: (e: React.PointerEvent, plan: Plan) => void
 }
 
 function planTop(startTime: string): number {
@@ -84,7 +87,7 @@ function lockScrollForRangeSelect(scrollEl: HTMLElement | null): () => void {
 
 export default function WeekView({
   weekStart, plans, today, selectedDate,
-  onSelectDate, onNewPlan, onEditPlan,
+  onSelectDate, onNewPlan, onEditPlan, onItemPointerDown,
 }: WeekViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const colsContainerRef = useRef<HTMLDivElement>(null)
@@ -96,7 +99,7 @@ export default function WeekView({
   // pointermove 핸들러가 항상 최신 drag state 접근 — ref로 우회 (closure stale 방지)
   const dragRef = useRef<DragState | null>(null)
   const plansRef = useRef<Plan[]>(plans)
-  const { editPlan } = usePlanner()
+  const { editPlan, sendToInbox } = usePlanner()
   // 인박스에서 끌고 오는 중일 때 놓일 자리 (미리보기용)
   const inboxTarget = useInboxDragStore((s) => s.target)
 
@@ -153,6 +156,8 @@ export default function WeekView({
     const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX || Math.abs(dx) > DRAG_THRESHOLD_PX
     const deltaDays = Math.round(dx / d.colWidthPx)
     const next = { ...d, deltaY: dy, deltaDays, moved }
+    // 캘린더 → 인박스: 시간 블록을 인박스 패널 위로 끌면 패널이 받을 준비 표시
+    if (d.mode === 'move') useInboxDragStore.getState().setOverInbox(isOverInbox(e.clientX, e.clientY))
     dragRef.current = next  // 다음 pointermove에서 누적 정확하도록 즉시 sync
     setDrag(next)
   }, [])
@@ -167,6 +172,15 @@ export default function WeekView({
     cleanupRef.current = null
 
     if (!plan) { setDrag(null); return }
+
+    // 인박스 패널 위에서 놓음 → 인박스로 (날짜·시간 비움, 토스트 되돌리기는 sendToInbox가 처리)
+    if (d.mode === 'move' && isOverInbox(e.clientX, e.clientY)) {
+      justDragged.current = true
+      setTimeout(() => { justDragged.current = false }, 400)
+      setDrag(null)
+      try { await sendToInbox(plan) } catch (err) { reportSaveError('인박스로 보내지 못했어요.')(err) }
+      return
+    }
 
     if (!d.moved) {
       setDrag(null)
@@ -219,7 +233,7 @@ export default function WeekView({
       }
     }
     setDrag(null)
-  }, [editPlan, onEditPlan])
+  }, [editPlan, onEditPlan, sendToInbox])
 
   // startDrag — explicit params, 즉시 document listener 부착
   const startDrag = useCallback((
@@ -256,6 +270,7 @@ export default function WeekView({
       document.removeEventListener('pointermove', onDocMove)
       document.removeEventListener('pointerup', onDocUp)
       document.removeEventListener('pointercancel', onDocUp)
+      useInboxDragStore.getState().setOverInbox(false)
       document.body.style.overflow = oldBodyOverflow
       if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
       try { target.style.touchAction = '' } catch { /* ignore */ }
@@ -572,6 +587,7 @@ export default function WeekView({
                         className="text-xs px-1 py-0.5 rounded truncate cursor-pointer"
                         style={{ backgroundColor: plan.color + '22', borderLeft: `2px solid ${plan.color}`, color: plan.color }}
                         onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
+                        onPointerDown={(e) => onItemPointerDown?.(e, plan)}
                       >
                         {plainTitle(plan.title)}
                       </div>
@@ -587,6 +603,7 @@ export default function WeekView({
                   <div
                     key={`range-${plan.id}`}
                     onClick={(e) => { e.stopPropagation(); onEditPlan(plan) }}
+                    onPointerDown={(e) => onItemPointerDown?.(e, plan)}
                     title={`${plainTitle(plan.title)} (${plan.startDate} ~ ${plan.endDate})`}
                     className={cn(
                       'absolute h-5 text-xs flex items-center px-1.5 cursor-pointer transition-opacity hover:opacity-80 z-10',

@@ -31,6 +31,7 @@ export interface TemplateFields {
   end_time: string | null
   is_all_day: boolean
   linked_memo_ids: string[]
+  wiki_links: string[]
   description: string | null
   rrule_str: string | null
   notify_enabled: boolean
@@ -85,6 +86,7 @@ export function rowToTemplate(r: Record<string, unknown>): PlanTemplate {
     endTime: (r.end_time as string) ?? null,
     isAllDay: (r.is_all_day as boolean) ?? true,
     linkedMemoIds: (r.linked_memo_ids as string[]) ?? [],
+    wikiLinks: (r.wiki_links as string[] | null) ?? [],
     description: (r.description as string) ?? null,
     rruleStr: (r.rrule_str as string) ?? null,
     notifyEnabled: (r.notify_enabled as boolean) ?? false,

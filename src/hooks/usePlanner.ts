@@ -23,7 +23,7 @@ import { expandRecurringPlans } from '@/lib/planner/expandRecurringPlans'
 import { pushPlanUndo, TOAST_MS } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { markGuideStep } from '@/lib/planner/guide'
-import { plainTitle } from '@/lib/planner/titleTokens'
+import { plainTitle, cleanWikiList } from '@/lib/planner/titleTokens'
 import type { Plan } from '@/types'
 
 export function toPlan(row: Record<string, unknown>): Plan {
@@ -48,6 +48,7 @@ export function toPlan(row: Record<string, unknown>): Plan {
     ddayTarget: (row.dday_target as string) ?? null,
     googleEventId: (row.google_event_id as string) ?? null,
     linkedMemoIds: (row.linked_memo_ids as string[]) ?? [],
+    wikiLinks: (row.wiki_links as string[] | null) ?? [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -260,6 +261,7 @@ export function usePlanner() {
       notify_lead_min: data.notifyLeadMin ?? 10,
       dday_target: data.ddayTarget ?? null,
       linked_memo_ids: data.linkedMemoIds ?? [],
+      wiki_links: cleanWikiList(data.wikiLinks ?? []),
     }
     // 인박스(날짜·기간 없음)는 알릴 시각이 없다 — 알림은 항상 끈다
     if (!fields.date && !fields.start_date) fields.notify_enabled = false
@@ -289,6 +291,7 @@ export function usePlanner() {
         ddayTarget: fields.dday_target,
         googleEventId: null,
         linkedMemoIds: fields.linked_memo_ids,
+        wikiLinks: fields.wiki_links,
         createdAt: nowIso,
         updatedAt: nowIso,
       }
@@ -327,6 +330,7 @@ export function usePlanner() {
       dday_target: data.ddayTarget,
     }
     if (data.linkedMemoIds !== undefined) dbPatch.linked_memo_ids = data.linkedMemoIds
+    if (data.wikiLinks !== undefined) dbPatch.wiki_links = cleanWikiList(data.wikiLinks)
 
     const original = findPlanInCaches(queryClient, id)
     const knownUpdatedAt = original?.updatedAt ?? new Date().toISOString()

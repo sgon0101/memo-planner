@@ -20,6 +20,7 @@ import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { isInboxPlan, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
 import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
 import { toast } from '@/components/ui/Toast'
+import PlanWikiChips from './PlanWikiChips'
 
 const PRESET_COLORS = [
   '#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899',
@@ -118,6 +119,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
   // D-day 입력은 2026-11 옵션 정리로 제거(실사용 0건). 기존 값은 수정 시 그대로 보존한다
   const [ddayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
+  const [wikiLinks, setWikiLinks] = useState<string[]>(plan?.wikiLinks ?? [])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
@@ -217,6 +219,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         end_time: isAllDay || isUndated ? null : (endTime || null),
         is_all_day: isAllDay || isUndated,
         linked_memo_ids: linkedMemoIds,
+        wiki_links: wikiLinks,
         description: description.trim() || null,
         rrule_str: tplRrule,
         notify_enabled: notifyEnabled && !isUndated,
@@ -252,6 +255,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime)   setEndTime(t.endTime.slice(0, 5))
     }
+    if (t.wikiLinks && t.wikiLinks.length > 0) setWikiLinks(t.wikiLinks)
     if (t.linkedMemoIds && t.linkedMemoIds.length > 0) {
       setLinkedMemoIds(t.linkedMemoIds)
       setShowAdvanced(true)
@@ -328,6 +332,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         ...INBOX_RESET_FIELDS,
         ddayTarget,
         linkedMemoIds,
+        wikiLinks,
       } : {
         title: title.trim(),
         description: description.trim(),
@@ -346,6 +351,7 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
         notifyLeadMin,
         ddayTarget,
         linkedMemoIds,
+        wikiLinks,
       }
       if (plan) {
         await editPlan(plan.id, data)
@@ -456,6 +462,12 @@ export default function PlanFormModal({ date, plan, initialStartTime, initialEnd
                 ))}
               </div>
             )}
+          </div>
+
+          {/* 위키 칩 — 제목과 별개로 저장(0023). 하루 마감·주간 돌아보기의 위키 집계 기준 */}
+          <div className="flex items-start gap-2">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
+            <PlanWikiChips value={wikiLinks} onChange={setWikiLinks} className="flex-1 min-w-0" />
           </div>
 
           {/* 색상 */}

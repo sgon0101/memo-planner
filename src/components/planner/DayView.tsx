@@ -12,6 +12,7 @@ import type { Plan } from '@/types'
 import { useInboxDragStore } from '@/store/inboxDragStore'
 import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
+import { isOverInbox } from '@/lib/planner/dropTarget'
 import { plainTitle } from '@/lib/planner/titleTokens'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -63,7 +64,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
   const plansRef = useRef<Plan[]>(plans)
 
   const [currentTop, setCurrentTop] = useState(nowTop())
-  const { editPlan } = usePlanner()
+  const { editPlan, sendToInbox } = usePlanner()
   const inboxTarget = useInboxDragStore((s) => s.target)
   const [drag, setDrag] = useState<DragState | null>(null)
   useEffect(() => { dragRef.current = drag }, [drag])
@@ -118,6 +119,8 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     const dy = e.clientY - d.startClientY
     const moved = d.moved || Math.abs(dy) > DRAG_THRESHOLD_PX
     const next = { ...d, deltaY: dy, moved }
+    // 캘린더 → 인박스: 시간 블록을 인박스 패널 위로 끌면 패널이 받을 준비 표시
+    if (d.mode === 'move') useInboxDragStore.getState().setOverInbox(isOverInbox(e.clientX, e.clientY))
     dragRef.current = next
     setDrag(next)
   }, [])
@@ -131,6 +134,15 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     cleanupRef.current = null
 
     if (!plan) { setDrag(null); return }
+
+    // 인박스 패널 위에서 놓음 → 인박스로 (날짜·시간 비움, 토스트 되돌리기는 sendToInbox가 처리)
+    if (d.mode === 'move' && isOverInbox(e.clientX, e.clientY)) {
+      justDragged.current = true
+      setTimeout(() => { justDragged.current = false }, 400)
+      setDrag(null)
+      try { await sendToInbox(plan) } catch (err) { reportSaveError('인박스로 보내지 못했어요.')(err) }
+      return
+    }
 
     if (!d.moved) {
       setDrag(null)
@@ -173,7 +185,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       }
     }
     setDrag(null)
-  }, [editPlan, onEditPlan])
+  }, [editPlan, onEditPlan, sendToInbox])
 
   const startDrag = useCallback((
     plan: Plan,
@@ -205,6 +217,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
       document.removeEventListener('pointermove', onDocMove)
       document.removeEventListener('pointerup', onDocUp)
       document.removeEventListener('pointercancel', onDocUp)
+      useInboxDragStore.getState().setOverInbox(false)
       document.body.style.overflow = oldBodyOverflow
       if (scrollEl) scrollEl.style.overflowY = oldScrollOverflow
       try { target.style.touchAction = '' } catch { /* ignore */ }

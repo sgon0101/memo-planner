@@ -9,8 +9,11 @@ import { Fragment } from 'react'
 import { cn } from '@/lib/utils'
 import { splitPlanTitle } from '@/lib/planner/titleTokens'
 
-export default function PlanTitle({ title, className, chips = true }: { title: string; className?: string; chips?: boolean }) {
+export default function PlanTitle({ title, className, chips = true, wikis }: { title: string; className?: string; chips?: boolean; wikis?: readonly string[] }) {
+  // 위키 칩(plans.wiki_links)은 제목 뒤에 붙여 같은 모양으로 — 제목 속 [[위키]]와 겹치면 한 번만
   const parts = splitPlanTitle(title)
+  const inTitle = new Set(parts.filter((p) => p.kind === 'wiki').map((p) => p.text))
+  if (chips) for (const w of wikis ?? []) if (!inTitle.has(w)) parts.push({ text: w, kind: 'wiki' })
   return (
     <span className={className}>
       {parts.map((p, i) => {

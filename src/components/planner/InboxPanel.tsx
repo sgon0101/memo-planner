@@ -11,12 +11,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { X, CornerDownLeft, ArrowRight } from 'lucide-react'
+import { X, CornerDownLeft, ArrowRight, Inbox as InboxIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlanner, useInboxQuery, useTodayListQuery } from '@/hooks/usePlanner'
 import { parseQuickAdd } from '@/lib/planner/quickAdd'
 import { minToTime, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
-import { plainTitle } from '@/lib/planner/titleTokens'
+import { plainTitle, splitWikisFromText } from '@/lib/planner/titleTokens'
 import { resolveDropTarget } from '@/lib/planner/dropTarget'
 import { DRAG_THRESHOLD_PX } from '@/lib/planner/dragHelpers'
 import { pushPlanUndo } from '@/lib/planner/planUndo'
@@ -69,7 +69,9 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
     inputRef.current?.focus()
   }, [focusSignal])
 
-  const parsed = text.trim() ? parseQuickAdd(text) : null
+  // [[위키]]는 칩으로 떼어 내고(제목에 남기지 않음) 나머지에서 날짜·시간을 읽는다
+  const wikiSplit = splitWikisFromText(text.trim())
+  const parsed = text.trim() ? parseQuickAdd(wikiSplit.title) : null
 
   async function submit(raw: boolean) {
     const value = text.trim()
@@ -80,10 +82,11 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
       // '오늘' 탭에서 날짜 없이 적으면 오늘(종일)로 — 인박스로 사라지면 어색하다
       const fallbackDate = tab === 'today' ? today : null
       if (raw || !parsed) {
-        await createPlan({ title: value, date: raw ? null : fallbackDate, startDate: null, isAllDay: true })
+        await createPlan({ title: wikiSplit.title, wikiLinks: wikiSplit.wikis, date: raw ? null : fallbackDate, startDate: null, isAllDay: true })
       } else {
         const created = await createPlan({
           title: parsed.title,
+          wikiLinks: wikiSplit.wikis,
           date: parsed.date ?? fallbackDate,
           startDate: null,
           startTime: parsed.startTime,
@@ -145,6 +148,8 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
   const dragMove = useInboxDragStore((s) => s.move)
   const dragEnd = useInboxDragStore((s) => s.end)
   const draggingId = useInboxDragStore((s) => s.planId)
+  // 캘린더에서 끌어온 플랜이 이 패널 위에 있을 때 — 놓으면 인박스로
+  const receiving = useInboxDragStore((s) => s.overInbox || (s.source === 'calendar' && s.target?.kind === 'inbox'))
   const cleanupRef = useRef<(() => void) | null>(null)
   const lastPointerType = useRef<string>('')
   useEffect(() => () => { cleanupRef.current?.() }, [])
@@ -173,7 +178,7 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
       }
       const target = cancelled ? null : resolveDropTarget(ev.clientX, ev.clientY, 60)
       dragEnd()
-      if (!target) return
+      if (!target || target.kind === 'inbox') return
       try {
         if (target.kind === 'timed') {
           await schedulePlan(plan, {
@@ -229,11 +234,20 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
 
   return (
     <div
+      // 캘린더 → 인박스 드래그의 놓을 자리 (데스크톱 좌측 패널만)
+      data-drop-kind={variant === 'side' ? 'inbox' : undefined}
       className={cn(
-        'flex flex-col bg-white dark:bg-gray-900',
+        'relative flex flex-col bg-white dark:bg-gray-900',
         variant === 'side' ? 'w-72 h-full border-r border-gray-200 dark:border-gray-800' : 'h-full w-full',
       )}
     >
+      {variant === 'side' && receiving && (
+        <div className="pointer-events-none absolute inset-1.5 z-20 rounded-xl border-2 border-dashed border-violet-400 bg-violet-50/80 dark:bg-violet-950/60 flex items-center justify-center" aria-hidden="true">
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-700 dark:text-violet-300">
+            <InboxIcon size={15} /> 여기에 놓으면 인박스로
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-1 px-3 pt-3 pb-2" role="tablist" aria-label="인박스와 오늘">
         {tabBtn('inbox', '인박스', openInbox.length)}
         {tabBtn('today', '오늘', todayOpenCount)}
@@ -288,6 +302,9 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
               ) : (
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">인박스</span>
               )}
+              {wikiSplit.wikis.map((w) => (
+                <span key={w} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{w}</span>
+              ))}
               <span className="text-gray-400 inline-flex items-center gap-1">
                 <CornerDownLeft size={11} aria-hidden="true" /> 저장
                 {(parsed.date || tab === 'today') && <> · Shift+Enter 인박스로</>}
@@ -338,7 +355,7 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
                         className="w-5 h-5 flex-shrink-0 rounded border-2 border-gray-300 dark:border-gray-600 hover:border-violet-500 relative before:absolute before:-inset-2.5 before:content-['']"
                       />
                       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: plan.color }} aria-hidden="true" />
-                      <PlanTitle title={plan.title} className="flex-1 min-w-0 truncate" />
+                      <PlanTitle title={plan.title} wikis={plan.wikiLinks} className="flex-1 min-w-0 truncate" />
                     </div>
                   </li>
                 ))}
@@ -420,7 +437,7 @@ function TodayRow({
         onClick={() => onOpen(plan)}
         className={cn('flex-1 min-w-0 text-left truncate', plan.isCompleted ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200')}
       >
-        <PlanTitle title={plan.title} chips={!plan.isCompleted} />
+        <PlanTitle title={plan.title} wikis={plan.wikiLinks} chips={!plan.isCompleted} />
       </button>
       {overdueLabel ? (
         <>

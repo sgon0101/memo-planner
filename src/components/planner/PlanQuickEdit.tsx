@@ -23,6 +23,7 @@ import { timeToMinutes } from '@/lib/planner/dragHelpers'
 import { pushPlanUndo } from '@/lib/planner/planUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import PlanTitle from './PlanTitle'
+import PlanWikiChips from './PlanWikiChips'
 import type { Plan } from '@/types'
 
 interface PlanQuickEditProps {
@@ -82,7 +83,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
   async function openFull() {
     await saveTitle()
     await saveNote()
-    onFullEdit({ ...plan, title: savedTitle.current, description: savedNote.current, isCompleted: completed })
+    onFullEdit({ ...plan, title: savedTitle.current, description: savedNote.current, isCompleted: completed, wikiLinks: wikis })
   }
   const flushRef = useRef(flushAndClose)
   useEffect(() => { flushRef.current = flushAndClose })
@@ -99,6 +100,13 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
 
   const savedTitle = useRef(plan.title)
   const savedNote = useRef(plan.description ?? '')
+  const [wikis, setWikis] = useState<string[]>(plan.wikiLinks ?? [])
+  async function saveWikis(next: string[]) {
+    if (isInstance) return
+    const prev = wikis
+    setWikis(next)
+    try { await editPlan(id, { wikiLinks: next }) } catch (err) { setWikis(prev); reportSaveError('위키를 저장하지 못했어요.')(err) }
+  }
   async function saveTitle() {
     const t = titleRef.current.trim()
     if (isInstance || t === savedTitle.current) return
@@ -225,6 +233,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
               )}
             />
             {hasTokens && <PlanTitle title={title} className="block text-xs text-gray-500 mt-0.5" />}
+            <PlanWikiChips value={wikis} onChange={(next) => void saveWikis(next)} disabled={isInstance} className="mt-2" />
           </div>
         </div>
 

@@ -126,6 +126,7 @@ export async function refreshScheduled(): Promise<{ scheduled: number; skipped: 
     ddayTarget: row.dday_target ?? null,
     googleEventId: row.google_event_id ?? null,
     linkedMemoIds: row.linked_memo_ids ?? [],
+    wikiLinks: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))

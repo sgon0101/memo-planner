@@ -23,7 +23,7 @@ import { saveJournal } from '@/lib/planner/journalSave'
 import { timeToMinutes } from '@/lib/planner/dragHelpers'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { toast } from '@/components/ui/Toast'
-import { wikiNamesInTitle } from '@/lib/planner/titleTokens'
+import { planWikiNames } from '@/lib/planner/titleTokens'
 import PlanTitle from './PlanTitle'
 import type { Plan } from '@/types'
 
@@ -93,7 +93,7 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
   // 오늘 엮인 위키 — 완료 플랜 제목 + 그날 메모의 위키
   const wikiCounts = useMemo(() => {
     const m = new Map<string, { plans: number; memos: number }>()
-    for (const p of done) for (const w of wikiNamesInTitle(p.title)) {
+    for (const p of done) for (const w of planWikiNames(p)) {
       const c = m.get(w) ?? { plans: 0, memos: 0 }; c.plans++; m.set(w, c)
     }
     for (const memo of memos) for (const w of memo.wiki_links ?? []) {
@@ -131,7 +131,8 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
         done: done.map((p) => ({ title: p.title, time: !p.isAllDay && p.startTime ? p.startTime.slice(0, 5) : null })),
         moved,
         memos: memos.slice(0, 10).map((m) => ({ title: m.title })),
-        memoWikis: memos.flatMap((m) => m.wiki_links ?? []),
+        // 완료한 플랜의 위키 칩 + 그날 메모의 위키 (제목 속 [[위키]]는 본문 추출로 이미 엮임)
+        memoWikis: [...done.flatMap((p) => p.wikiLinks ?? []), ...memos.flatMap((m) => m.wiki_links ?? [])],
       }, format(new Date(), 'HH:mm'))
       queryClient.invalidateQueries({ queryKey: memoKeys.all() })
       queryClient.invalidateQueries({ queryKey: folderKeys.all() })
@@ -202,7 +203,7 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
             <ul className="space-y-1.5">
               {leftovers.map((p) => (
                 <li key={p.id} className="flex items-center gap-2 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 px-3 min-h-11 text-sm">
-                  <PlanTitle title={p.title} className="flex-1 min-w-0 truncate" />
+                  <PlanTitle title={p.title} wikis={p.wikiLinks} className="flex-1 min-w-0 truncate" />
                   <button type="button" onClick={() => moveTomorrow(p)} className="min-h-9 px-2 rounded-md text-xs text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 inline-flex items-center gap-0.5">내일로 <ArrowRight size={11} aria-hidden="true" /></button>
                   <button type="button" onClick={() => moveInbox(p)} aria-label={`'${p.title}' 인박스로`} className="min-h-9 px-2 rounded-md text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 inline-flex items-center gap-1"><Inbox size={12} aria-hidden="true" /> 인박스</button>
                 </li>
@@ -246,6 +247,10 @@ export default function DayCloseModal({ day, onClose }: DayCloseModalProps) {
             {saving ? '저장하는 중…' : '일지 메모로 저장하기'}
           </button>
           <p className="mt-2 text-center text-xs text-gray-500">‘{day} 일지’가 ‘{JOURNAL_FOLDER_NAME}’ 폴더에 {wikiCounts.length > 0 ? '생기고 위 위키들과 연결돼요' : '생겨요'}</p>
+          {/* 건너뛰기 — 일지를 남기지 않고 닫는다. 오늘은 다시 자동으로 뜨지 않음(닫기와 같음), 원하면 '하루 마감하기'로 다시 열 수 있다 */}
+          <button type="button" onClick={onClose} disabled={saving} className="mt-3 w-full min-h-11 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+            오늘은 건너뛰기 <span className="text-xs text-gray-400">· 일지는 남지 않아요</span>
+          </button>
         </div>
       </div>
     </div>

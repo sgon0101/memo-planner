@@ -5,7 +5,8 @@
  * 채우면 늘 '계획대로'가 되는 가짜 지표가 된다(Arch 실사용에서 확인한 함정).
  */
 
-import { wikiNamesInTitle } from '@/lib/planner/titleTokens'
+import { planWikiNames } from '@/lib/planner/titleTokens'
+import { wikiKey } from '@/lib/wiki/normalize'
 
 export interface ReviewPlan {
   title: string
@@ -14,6 +15,7 @@ export interface ReviewPlan {
   endTime: string | null
   isAllDay: boolean
   isCompleted: boolean
+  wikiLinks?: string[]
 }
 
 function minutes(p: ReviewPlan): number {
@@ -39,20 +41,22 @@ export interface WeekReview {
 /** 한 주(weekStart~weekEnd, 단일일 플랜) 요약 */
 export function summarizeWeek(plans: ReviewPlan[]): WeekReview {
   const done = plans.filter((p) => p.isCompleted)
-  const wiki = new Map<string, { min: number; count: number }>()
+  // 키는 wikiKey — '행동 경제학'/'행동경제학'처럼 표기만 다른 위키를 한 줄로 (이름은 처음 본 표기)
+  const wiki = new Map<string, { name: string; min: number; count: number }>()
   for (const p of done) {
-    for (const w of wikiNamesInTitle(p.title)) {
-      const c = wiki.get(w) ?? { min: 0, count: 0 }
+    for (const w of planWikiNames(p)) {
+      const k = wikiKey(w)
+      const c = wiki.get(k) ?? { name: w, min: 0, count: 0 }
       c.min += minutes(p); c.count += 1
-      wiki.set(w, c)
+      wiki.set(k, c)
     }
   }
   return {
     total: plans.length,
     completed: done.length,
     plannedMin: done.reduce((s, p) => s + minutes(p), 0),
-    wikiMinutes: [...wiki.entries()]
-      .map(([name, c]) => ({ name, ...c }))
+    wikiMinutes: [...wiki.values()]
+      .map((c) => c)
       .sort((a, b) => b.min - a.min || b.count - a.count)
       .slice(0, 6),
   }

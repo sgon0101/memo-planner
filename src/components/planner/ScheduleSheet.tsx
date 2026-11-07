@@ -99,7 +99,7 @@ export default function ScheduleSheet({ plan, onClose, onEdit }: ScheduleSheetPr
         <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-700 mx-auto mb-3 md:hidden" aria-hidden="true" />
         <div className="flex items-start gap-2">
           <h2 className="flex-1 text-lg font-bold leading-snug text-gray-900 dark:text-white">
-            <PlanTitle title={plan.title} />
+            <PlanTitle title={plan.title} wikis={plan.wikiLinks} />
             <span className="block text-sm font-normal text-gray-500 dark:text-gray-400 mt-0.5">언제 할까요?</span>
           </h2>
           <button type="button" onClick={() => onEdit(plan)} aria-label="전체 편집" className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">

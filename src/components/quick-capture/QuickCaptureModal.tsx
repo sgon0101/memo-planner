@@ -28,6 +28,7 @@ import { TemplateChip } from '@/components/planner/TemplateChip'
 import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
+import PlanWikiChips from '@/components/planner/PlanWikiChips'
 
 const PRESET_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'] as const
 
@@ -121,6 +122,7 @@ function QuickCaptureInner({
   // D-day 입력은 2026-11 옵션 정리로 제거 — 새 플랜은 항상 null
   const [ddayTarget] = useState<string | null>(null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>([])
+  const [wikiLinks, setWikiLinks] = useState<string[]>([])
   const [showMemoPopup, setShowMemoPopup] = useState(false)
   const [memoSearch, setMemoSearch] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -210,7 +212,7 @@ function QuickCaptureInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, memoTitle, memoBody, folderId, planTitle, description, color, isRange,
       singleDate, startDate, endDate, startTime, endTime, isAllDay,
-      recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds])
+      recurrence, notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks])
 
   function calcDuration(s: string, e: string) {
     const [sh, sm] = s.split(':').map(Number)
@@ -238,7 +240,7 @@ function QuickCaptureInner({
         title: planTitle.trim(), color,
         start_time: isAllDay ? null : (startTime || null),
         end_time: isAllDay ? null : (endTime || null),
-        is_all_day: isAllDay, linked_memo_ids: linkedMemoIds,
+        is_all_day: isAllDay, linked_memo_ids: linkedMemoIds, wiki_links: wikiLinks,
         description: description.trim() || null,
         rrule_str: buildRRule(recurrence, baseDate),
         notify_enabled: notifyEnabled,
@@ -271,6 +273,7 @@ function QuickCaptureInner({
       if (t.startTime) setStartTime(t.startTime.slice(0, 5))
       if (t.endTime) setEndTime(t.endTime.slice(0, 5))
     }
+    if (t.wikiLinks && t.wikiLinks.length > 0) setWikiLinks(t.wikiLinks)
     if (t.linkedMemoIds && t.linkedMemoIds.length > 0) { setLinkedMemoIds(t.linkedMemoIds); setShowAdvanced(true) }
     if (t.description) { setDescription(t.description); setShowAdvanced(true) }
     if (t.rruleStr) {
@@ -334,7 +337,7 @@ function QuickCaptureInner({
           endTime: isAllDay ? null : (endTime || null),
           rruleStr, repeatType: null,
           repeatEndDate: recurrence.endMode === 'until' ? recurrence.endUntil : null,
-          notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds,
+          notifyEnabled, notifyLeadMin, ddayTarget, linkedMemoIds, wikiLinks,
         })
         flashSuccess()
       } catch (err) {
@@ -573,6 +576,12 @@ function QuickCaptureInner({
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* 위키 칩 (0023) */}
+              <div className="flex items-start gap-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 w-10 flex-shrink-0 pt-1.5">위키</p>
+                <PlanWikiChips value={wikiLinks} onChange={setWikiLinks} className="flex-1 min-w-0" />
               </div>
 
               {/* 색상 */}
