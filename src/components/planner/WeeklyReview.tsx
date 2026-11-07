@@ -3,7 +3,7 @@
 /**
  * 돌아보기 (2026-11 플래너 개선 ⑥, 2차: 주·월·직접 지정 + 1년 스트릭).
  * 판단 없이 보여준다 — 숫자 + 짧은 사실 문장만. 집계는 lib/planner/review.ts (순수 함수, 단위 테스트).
- * 스트릭은 위 기간 선택과 무관하게 1월~12월 고정(연도만 넘김).
+ * '올해 기록'(1년 히트맵)은 위 기간 선택과 무관하게 1월~12월 고정(연도만 넘김).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -21,6 +21,7 @@ import {
   yearGrid, streakLevel, type ReviewMode,
 } from '@/lib/planner/review'
 import { journalStreak } from '@/lib/planner/journal'
+import { plainTitle } from '@/lib/planner/titleTokens'
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
 const SHADES = ['bg-gray-100 dark:bg-gray-800', 'bg-violet-200 dark:bg-violet-900', 'bg-violet-400 dark:bg-violet-700', 'bg-violet-700 dark:bg-violet-500']
@@ -67,7 +68,7 @@ export default function WeeklyReview() {
         // 단일일 플랜 (기간·반복·인박스 제외 — 하루 단위로 셀 수 있는 것만)
         supabase.from('plans').select('*').gte('date', fetchFrom).lte('date', to)
           .is('repeat_type', null).is('rrule_str', null),
-        supabase.from('memos').select('title, content_text').eq('is_deleted', false)
+        supabase.from('memos').select('id, title, content_text').eq('is_deleted', false)
           .like('title', '____-__-__ 일지').order('title', { ascending: false }).limit(800),
         // 하루 마감 기록(0024) — 일지 없이 건너뛴 날도 '마감한 날'
         supabase.from('plan_day_closes').select('day'),
@@ -77,7 +78,7 @@ export default function WeeklyReview() {
       if (closesRes.error) throw closesRes.error
       return {
         plans: (plansRes.data ?? []).map(toPlan),
-        journals: (journalsRes.data ?? []) as { title: string; content_text: string | null }[],
+        journals: (journalsRes.data ?? []) as { id: string; title: string; content_text: string | null }[],
         closes: (closesRes.data ?? []).map((r) => r.day as string),
       }
     },
@@ -92,12 +93,15 @@ export default function WeeklyReview() {
     // 마감한 날 = 일지가 있는 날 ∪ 마감 기록(건너뛰기 포함)
     const closedDays = new Set([...journalDays(titles), ...(data?.closes ?? [])])
     const closedInPeriod = [...closedDays].filter((d) => d >= from && d <= to).length
-    const periodJournals = (data?.journals ?? []).filter((j) => {
-      const d = j.title.slice(0, 10)
-      return d >= from && d <= to
-    }).sort((a, b) => b.title.localeCompare(a.title))
+    // 마감 기록 — 일지가 있는 날은 한 줄 회고, 일지 없이 마감(건너뛰기)한 날은 그날 끝낸 플랜으로 보여준다
+    const journalByDay = new Map((data?.journals ?? []).map((j) => [j.title.slice(0, 10), j]))
+    const closeEntries = [...closedDays].filter((d) => d >= from && d <= to).sort((a, b) => b.localeCompare(a)).map((d) => {
+      const j = journalByDay.get(d)
+      const done = plans.filter((p) => p.date === d && p.isCompleted).map((p) => p.title)
+      return { day: d, journal: j ?? null, done }
+    })
     return {
-      summary, focus, periodJournals, closedDays, closedInPeriod,
+      summary, focus, closedDays, closedInPeriod, closeEntries,
       streak: journalStreak([...closedDays].map((d) => `${d} 일지`), today),
     }
   }, [data, from, to, focusRange.from, focusRange.to, today])
@@ -234,17 +238,39 @@ export default function WeeklyReview() {
 
           <StreakCard today={today} closedDays={view.closedDays} />
 
-          <Card title={mode === 'week' ? '이번 주 일지' : `${scopeWord} 일지`} caption={view.periodJournals.length > 12 ? `최근 12개 · 전체 ${view.periodJournals.length}개` : undefined}>
-            {view.periodJournals.length === 0 ? (
-              <p className="text-sm text-gray-500">아직 일지가 없어요. 플래너의 ‘오늘’ 탭에서 하루를 마감하면 생겨요.</p>
+          <Card title={mode === 'week' ? '이번 주 마감 기록' : `${scopeWord} 마감 기록`} caption={view.closeEntries.length > 12 ? `최근 12일 · 전체 ${view.closeEntries.length}일` : undefined}>
+            {view.closeEntries.length === 0 ? (
+              <p className="text-sm text-gray-500">아직 마감한 날이 없어요. 플래너의 ‘오늘’ 탭에서 하루를 마감하면 여기에 쌓여요.</p>
             ) : (
               <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {view.periodJournals.slice(0, 12).map((j) => (
-                  <li key={j.title} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-                    <p className="text-xs text-gray-500">{format(parseISO(j.title.slice(0, 10)), 'M/d (eee)', { locale: ko })}</p>
-                    <p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{reflectionOf(j.content_text) || '회고 없이 마감'}</p>
-                  </li>
-                ))}
+                {view.closeEntries.slice(0, 12).map((e) => {
+                  const dayLabel = format(parseISO(e.day), 'M/d (eee)', { locale: ko })
+                  const body = e.journal
+                    ? reflectionOf(e.journal.content_text) || '회고 없이 마감'
+                    : e.done.length
+                      ? e.done.slice(0, 3).map(plainTitle).join(' · ') + (e.done.length > 3 ? ` 외 ${e.done.length - 3}개` : '')
+                      : '끝낸 플랜 없이 마감'
+                  const inner = (
+                    <>
+                      <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                        {dayLabel}
+                        <span className={cn('px-1.5 rounded-full text-[10px]', e.journal ? 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400')}>
+                          {e.journal ? '일지' : `일지 없음${e.done.length ? ` · 완료 ${e.done.length}` : ''}`}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{body}</p>
+                    </>
+                  )
+                  return (
+                    <li key={e.day}>
+                      {e.journal ? (
+                        <Link href={`/memo/${e.journal.id}`} className="block h-full rounded-xl border border-gray-200 dark:border-gray-700 p-3 hover:border-violet-300">{inner}</Link>
+                      ) : (
+                        <div className="h-full rounded-xl border border-gray-200 dark:border-gray-700 p-3">{inner}</div>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </Card>
@@ -255,8 +281,9 @@ export default function WeeklyReview() {
 }
 
 /**
- * 1년 스트릭 — 위 기간 선택과 무관하게 1월~12월 고정, 연도만 넘긴다.
- * 칸 색 = 그날 완료한 플랜 수(단일일), 테두리 = 하루 마감한 날(일지 저장 또는 건너뛰기, 0024).
+ * 올해 기록(1년 히트맵) — 위 기간 선택과 무관하게 1월~12월 고정, 연도만 넘긴다.
+ * 칸 색 = 그날 완료한 플랜 수(단일일). 하루 마감 여부는 칸에 따로 표시하지 않고(테두리가 색을 가렸음)
+ * 숫자와 칸 툴팁으로만 알려준다. 완료 0개로 마감만 한 날은 가장 옅은 색으로 칠해 빈칸과 구분한다.
  */
 function StreakCard({ today, closedDays }: { today: string; closedDays: ReadonlySet<string> }) {
   const thisYear = Number(today.slice(0, 4))
@@ -289,8 +316,8 @@ function StreakCard({ today, closedDays }: { today: string; closedDays: Readonly
   return (
     <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <h2 className="text-base font-bold text-gray-900 dark:text-white">스트릭</h2>
-        <span className="order-last basis-full sm:order-none sm:basis-auto text-xs text-gray-500 dark:text-gray-400">완료한 날 {activeDays}일 · 마감한 날 {closedCount}일</span>
+        <h2 className="text-base font-bold text-gray-900 dark:text-white">{year === thisYear ? '올해 기록' : `${year}년 기록`}</h2>
+        <span className="order-last basis-full sm:order-none sm:basis-auto text-xs text-gray-500 dark:text-gray-400">플랜을 끝낸 날 {activeDays}일 · 하루를 마감한 날 {closedCount}일</span>
         <div className="flex-1" />
         <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="이전 해" className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronLeft size={16} /></button>
         <span className="text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">{year}</span>
@@ -305,15 +332,14 @@ function StreakCard({ today, closedDays }: { today: string; closedDays: Readonly
               <span key={m.month} className="absolute top-0" style={{ left: m.col * 15 }}>{m.month}월</span>
             ))}
           </div>
-          <div className="grid grid-rows-7 grid-flow-col gap-[3px]" role="img" aria-label={`${year}년 완료한 날 ${activeDays}일, 마감한 날 ${closedCount}일`}>
+          <div className="grid grid-rows-7 grid-flow-col gap-[3px]" role="img" aria-label={`${year}년 플랜을 끝낸 날 ${activeDays}일, 하루를 마감한 날 ${closedCount}일`}>
             {grid.weeks.flat().map((c) => (
               <span
                 key={c.d}
-                title={c.inYear ? `${c.d} · 완료 ${c.count}개${c.closed ? ' · 마감' : ''}` : undefined}
+                title={c.inYear ? `${c.d} · 끝낸 플랜 ${c.count}개${c.closed ? ' · 하루 마감' : ''}` : undefined}
                 className={cn(
                   'w-3 h-3 rounded-sm',
-                  !c.inYear ? 'bg-transparent' : c.future ? 'bg-gray-50 dark:bg-gray-800/40' : STREAK_SHADES[streakLevel(c.count)],
-                  c.closed && 'ring-1 ring-inset ring-violet-700 dark:ring-violet-200',
+                  !c.inYear ? 'bg-transparent' : c.future ? 'bg-gray-50 dark:bg-gray-800/40' : STREAK_SHADES[Math.max(streakLevel(c.count), c.closed ? 1 : 0)],
                   c.d === today && 'outline outline-1 outline-offset-1 outline-gray-400',
                 )}
               />
@@ -323,11 +349,8 @@ function StreakCard({ today, closedDays }: { today: string; closedDays: Readonly
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm ring-1 ring-inset ring-violet-700 dark:ring-violet-200" aria-hidden="true" /> 하루 마감
-        </span>
         <span className="inline-flex items-center gap-1">
-          적음
+          끝낸 플랜 적음
           {STREAK_SHADES.map((s, i) => <span key={i} className={cn('w-3 h-3 rounded-sm', s)} aria-hidden="true" />)}
           많음
         </span>
