@@ -290,7 +290,7 @@ function StreakCard({ today, closedDays }: { today: string; closedDays: Readonly
     <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <h2 className="text-base font-bold text-gray-900 dark:text-white">스트릭</h2>
-        <span className="text-xs text-gray-500 dark:text-gray-400">완료한 날 {activeDays}일 · 마감한 날 {closedCount}일</span>
+        <span className="order-last basis-full sm:order-none sm:basis-auto text-xs text-gray-500 dark:text-gray-400">완료한 날 {activeDays}일 · 마감한 날 {closedCount}일</span>
         <div className="flex-1" />
         <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="이전 해" className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronLeft size={16} /></button>
         <span className="text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">{year}</span>
