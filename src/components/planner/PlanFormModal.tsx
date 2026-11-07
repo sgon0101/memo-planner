@@ -517,8 +517,8 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
             </div>
           </div>
 
-          {/* 날짜 유형 + 종일 */}
-          <div className="flex items-center gap-4">
+          {/* 날짜 유형 + 종일 + 알림 — 좁은 화면에선 글자를 쪼개지 않고 줄을 바꾼다 */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div role="group" aria-label="날짜 유형" className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
               {([['single', '하루'], ['range', '기간'], ['none', '미정']] as const)
                 // 반복 플랜을 '미정'으로 바꾸면 시리즈 전체가 인박스로 가고 완료 기록이 고아가 된다 — 숨김
@@ -531,7 +531,7 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
                   onClick={() => setDateMode(mode)}
                   title={mode === 'none' ? '날짜를 정하지 않고 인박스에 둡니다' : undefined}
                   className={cn(
-                    'px-2.5 py-1 text-xs rounded-md transition-colors',
+                    'px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap',
                     dateMode === mode
                       ? 'bg-white dark:bg-gray-700 text-violet-700 dark:text-violet-300 font-semibold shadow-sm'
                       : 'text-gray-500 dark:text-gray-400',
@@ -546,7 +546,7 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
             <button
               type="button"
               onClick={() => setIsAllDay((v) => !v)}
-              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none whitespace-nowrap shrink-0"
             >
               <span
                 className={cn(
@@ -574,7 +574,7 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
               }}
               aria-pressed={notifyEnabled}
               title="시작 10분 전에 알려드려요"
-              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none"
+              className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 select-none whitespace-nowrap shrink-0"
             >
               <span
                 className={cn(
