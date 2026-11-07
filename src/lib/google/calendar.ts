@@ -13,7 +13,10 @@ export function getAuthUrl(state: string) {
   return client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar'],
+    // 최소 권한 (2026-11-07): 동기화는 기본 캘린더(사용자 소유)에 일정을 추가만 한다(events.insert, calendarId 'primary').
+    // 예전 'calendar'(모든 캘린더 보기·수정·삭제·공유)는 필요 이상이라 브랜드·앱 인증 심사에 불리 →
+    // '내가 소유한 캘린더의 일정' 범위로 축소. Google Cloud 콘솔 Data Access의 선언 범위도 같게 맞출 것.
+    scope: ['https://www.googleapis.com/auth/calendar.events.owned'],
     state,
   })
 }
