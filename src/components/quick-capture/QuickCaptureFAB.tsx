@@ -12,6 +12,10 @@
  * 위치:
  *  - 모바일: bottom-20 (MobileNav h-14 위) + right-4
  *  - 데스크탑: bottom-6 right-6, 좀 더 작게
+ *
+ * 화면별 (2026-11-08): 홈 = 메모/플랜 선택, 플래너 = 바로 새 플랜(플래너의 플랜 창, 고른 날짜로).
+ * 그 밖의 화면(메모 목록·편집, 그래프, AI, 설정)에선 숨김 — 메모 목록엔 '새 메모' 버튼이 있고,
+ * 메모 편집에선 본문을 가렸다. 단축키(빠른 캡처)는 그대로 어디서나 열린다.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -21,9 +25,10 @@ import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
 
 export default function QuickCaptureFAB() {
-  // AI 대화 페이지에선 입력창 send 버튼과 겹쳐서 UX 방해 — FAB 숨김
   const pathname = usePathname()
-  const hideFAB = pathname?.startsWith('/insights')
+  const onPlanner = pathname === '/planner'
+  const hideFAB = !(pathname === '/home' || onPlanner)
+  const requestNewPlan = useUIStore((s) => s.requestNewPlan)
 
   const open = useUIStore((s) => s.openQuickCapture)
   const modalOpen = useUIStore((s) => s.quickCaptureOpen)
@@ -185,7 +190,7 @@ export default function QuickCaptureFAB() {
 
         <button
           ref={fabBtnRef}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => (onPlanner ? requestNewPlan() : setExpanded((v) => !v))}
           className={cn(
             'flex items-center justify-center rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/30 transition-all duration-300 active:scale-95',
             'w-14 h-14 md:w-12 md:h-12',
@@ -193,8 +198,8 @@ export default function QuickCaptureFAB() {
             // FAB 뒤에 텍스트가 있으면 반투명 → 글씨가 비침. 펼치거나 hover/active 시 즉시 복원.
             overText && !expanded && 'opacity-40 hover:opacity-100 focus-visible:opacity-100 active:opacity-100',
           )}
-          aria-label={expanded ? '캡처 메뉴 닫기' : '빠른 캡처 (메모/플랜)'}
-          aria-expanded={expanded}
+          aria-label={onPlanner ? '새 플랜' : expanded ? '캡처 메뉴 닫기' : '빠른 캡처 (메모/플랜)'}
+          aria-expanded={onPlanner ? undefined : expanded}
         >
           <Plus size={22} strokeWidth={2.5} />
         </button>
