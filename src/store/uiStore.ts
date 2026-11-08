@@ -16,6 +16,9 @@ interface UIStore {
   openQuickCapture: (mode?: QuickCaptureMode) => void
   closeQuickCapture: () => void
   toggleQuickCaptureMode: () => void
+  /** 플래너 화면의 + 버튼 → 플래너의 새 플랜 창을 연다 (CalendarView가 값 변화를 구독) */
+  newPlanRequest: number
+  requestNewPlan: () => void
 }
 
 export const useUIStore = create<UIStore>()(
@@ -33,6 +36,8 @@ export const useUIStore = create<UIStore>()(
       closeQuickCapture: () => set({ quickCaptureOpen: false }),
       toggleQuickCaptureMode: () =>
         set((s) => ({ quickCaptureMode: s.quickCaptureMode === 'memo' ? 'plan' : 'memo' })),
+      newPlanRequest: 0,
+      requestNewPlan: () => set((s) => ({ newPlanRequest: s.newPlanRequest + 1 })),
     }),
     {
       name: 'memo-planner-ui',
