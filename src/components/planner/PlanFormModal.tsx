@@ -19,7 +19,6 @@ import { deleteTemplateWithUndo } from '@/lib/planner/templateUndo'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { isInboxPlan, INBOX_RESET_FIELDS } from '@/lib/planner/inbox'
 import { dedupeTemplates, upsertTemplate, rowToTemplate } from '@/lib/planner/templates'
-import { toast } from '@/components/ui/Toast'
 import PlanWikiChips from './PlanWikiChips'
 import { usePlanHints } from '@/hooks/usePlanHints'
 import { suggestWikis, colorForWiki } from '@/lib/planner/planHints'
@@ -131,6 +130,9 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
   const [ddayTarget]   = useState<string | null>(plan?.ddayTarget ?? null)
   const [linkedMemoIds, setLinkedMemoIds] = useState<string[]>(plan?.linkedMemoIds ?? [])
   const [wikiLinks, setWikiLinks] = useState<string[]>(plan?.wikiLinks ?? [])
+  // 즐겨찾기 저장 결과 표시 — 저장한 제목과 지금 제목이 같을 때만 '저장됨'
+  const [templateSavedTitle, setTemplateSavedTitle] = useState<string | null>(null)
+  const templateSaved = !!title.trim() && templateSavedTitle === title.trim()
   // 위키·색상 추천 — 새 플랜이고 색을 직접 고르지 않았을 때만 위키에 맞춰 색을 바꾼다(기존 플랜 색은 건드리지 않음)
   const hints = usePlanHints()
   const colorTouched = useRef(!!plan)
@@ -234,7 +236,7 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
     const baseDate = isRange ? startDate : singleDate
     const tplRrule = isUndated ? null : buildRRule(recurrence, baseDate)
     try {
-      const { row, updated } = await upsertTemplate(supabase, user.id, {
+      const { row } = await upsertTemplate(supabase, user.id, {
         title: title.trim(),
         color,
         start_time: isAllDay || isUndated ? null : (startTime || null),
@@ -249,8 +251,8 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
       })
       const saved = rowToTemplate(row)
       setTemplates((prev) => dedupeTemplates([saved, ...prev.filter((t) => t.id !== saved.id)]))
-      // 칩 줄이 없어져 저장 결과가 화면에 안 보이므로 토스트로 알린다
-      toast.success(updated ? '즐겨찾기를 업데이트했어요.' : '즐겨찾기에 저장했어요. 제목을 입력하면 불러올 수 있어요.')
+      // 토스트 대신 저장 버튼이 '저장됨'(채워진 북마크)으로 바뀐다 (2026-11-08 토스트 정리)
+      setTemplateSavedTitle(title.trim())
     } catch (err) {
       reportSaveError('즐겨찾기에 저장하지 못했어요.', handleSaveTemplate)(err)
     }
@@ -436,11 +438,16 @@ export default function PlanFormModal({ date, plan: planProp, initialStartTime, 
             />
             <button
               type="button"
-              title="즐겨찾기에 저장"
+              title={templateSaved ? '즐겨찾기에 저장됨 — 제목을 입력하면 불러올 수 있어요' : '즐겨찾기에 저장'}
+              aria-label={templateSaved ? '즐겨찾기에 저장됨' : '즐겨찾기에 저장'}
+              aria-pressed={templateSaved}
               onClick={handleSaveTemplate}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-amber-400 transition-colors"
+              className={cn(
+                'absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors',
+                templateSaved ? 'text-amber-400' : 'text-gray-400 hover:text-amber-400',
+              )}
             >
-              <Bookmark size={14} />
+              {templateSaved ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
             </button>
 
             {/* 즐겨찾기 자동완성 — 제목이 비어 있으면(새 플랜) 자주 쓰는 순, 입력하면 일치 항목.

@@ -25,10 +25,12 @@ let last: UndoEntry | null = null
 export function pushPlanUndo(
   message: string,
   undo: () => Promise<unknown>,
-  opts: { windowMs?: number } = {},
+  opts: { windowMs?: number; silent?: boolean } = {},
 ): void {
   const entry: UndoEntry = { undo, at: Date.now(), used: false, windowMs: opts.windowMs ?? UNDO_WINDOW_MS }
   last = entry
+  // silent: 결과가 화면에 바로 보이는 조작은 토스트 없이 ⌘/Ctrl+Z로만 되돌린다 (2026-11-08 토스트 정리)
+  if (opts.silent) return
   toast.success(message, {
     duration: TOAST_MS,
     action: { label: '되돌리기', onClick: () => { void runUndo(entry) } },
@@ -52,9 +54,8 @@ async function runUndo(entry: UndoEntry): Promise<boolean> {
 export async function undoLastPlanAction(): Promise<boolean> {
   const entry = last
   if (!entry || entry.used || Date.now() - entry.at > entry.windowMs) return false
-  const ok = await runUndo(entry)
-  if (ok) toast.info('되돌렸어요.')
-  return ok
+  // 되돌린 결과가 화면에 바로 보이므로 '되돌렸어요' 토스트는 띄우지 않는다
+  return runUndo(entry)
 }
 
 /** 테스트·로그아웃용 */

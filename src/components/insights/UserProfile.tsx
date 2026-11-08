@@ -61,8 +61,6 @@ export default function UserProfile() {
           const hoursPassed = (Date.now() - new Date(data.last_analyzed_at).getTime()) / 36e5
           const hoursLeft = Math.max(1, Math.ceil(24 - hoursPassed))
           toast.info(`24시간 이내 분석 결과를 보여드리고 있어요. 재분석은 약 ${hoursLeft}시간 후 가능해요.`)
-        } else {
-          toast.success('프로필 분석이 완료됐어요.')
         }
       } else {
         const { error } = await res.json().catch(() => ({ error: null }))

@@ -132,7 +132,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
     const before = { endTime: plan.endTime }
     try {
       await editPlan(id, { endTime })
-      pushPlanUndo(`'${plan.title}' 길이를 ${durLabel(min)}으로 바꿨어요`, () => editPlan(id, before))
+      pushPlanUndo(`'${plan.title}' 길이를 ${durLabel(min)}으로 바꿨어요`, () => editPlan(id, before), { silent: true })
       onClose()
     } catch (err) { reportSaveError('길이를 바꾸지 못했어요.')(err) }
   }
@@ -141,7 +141,7 @@ export default function PlanQuickEdit({ plan, anchor, onClose, onFullEdit }: Pla
     const before = { isAllDay: plan.isAllDay, startTime: plan.startTime, endTime: plan.endTime }
     try {
       await editPlan(id, { isAllDay: true, startTime: null, endTime: null })
-      pushPlanUndo(`'${plan.title}'을(를) 종일로 바꿨어요`, () => editPlan(id, before))
+      pushPlanUndo(`'${plan.title}'을(를) 종일로 바꿨어요`, () => editPlan(id, before), { silent: true })
       onClose()
     } catch (err) { reportSaveError('종일로 바꾸지 못했어요.')(err) }
   }

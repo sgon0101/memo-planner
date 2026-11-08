@@ -119,7 +119,7 @@ export default function InboxPanel({ variant, onClose, onSchedule, onEditPlan, f
   async function completeInbox(plan: Plan) {
     try {
       await editPlan(plan.id, { date: today, startDate: null, isAllDay: true, isCompleted: true })
-      pushPlanUndo(`'${plainTitle(plan.title)}'을(를) 완료했어요`, () => editPlan(plan.id, { ...INBOX_RESET_FIELDS, isCompleted: false }))
+      pushPlanUndo(`'${plainTitle(plan.title)}'을(를) 완료했어요`, () => editPlan(plan.id, { ...INBOX_RESET_FIELDS, isCompleted: false }), { silent: true })
     } catch (err) {
       reportSaveError('완료 처리하지 못했어요.')(err)
     }

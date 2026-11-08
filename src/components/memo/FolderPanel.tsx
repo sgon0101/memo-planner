@@ -12,7 +12,6 @@ import { TRASH_ID, memoKeys } from '@/hooks/useMemos'
 import type { Memo } from '@/types'
 import ColorWheelModal from './ColorWheelModal'
 import { useConfirm } from '@/components/ui/ConfirmModal'
-import { toast } from '@/components/ui/Toast'
 import type { Folder as FolderType } from '@/types'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 
@@ -256,9 +255,6 @@ export default function FolderPanel() {
     .filter((f) => f.parentId === null)
     .sort((a, b) => a.orderIndex - b.orderIndex)
 
-  function showToast(msg: string) {
-    toast.success(msg)
-  }
 
   const handleDrop = useCallback(async (memoId: string, folderId: string | null) => {
     setDragOverFolderId(null)
@@ -269,7 +265,6 @@ export default function FolderPanel() {
       await supabase.from('memos').update({ is_starred: true }).eq('id', memoId)
       queryClient.setQueryData<Memo[]>(memoKeys.all(),
         (old) => old?.map((m) => m.id === memoId ? { ...m, isStarred: true } : m))
-      showToast('메모가 중요로 표시됐어요')
       return
     }
 
@@ -278,12 +273,8 @@ export default function FolderPanel() {
     // React Query 단일 출처 — 목록 캐시 직접 패치 (드랍 즉시 목록에서 이동 반영)
     queryClient.setQueryData<Memo[]>(memoKeys.all(),
       (old) => old?.map((m) => m.id === memoId ? { ...m, folderId: resolvedFolderId } : m))
-    const folderName = resolvedFolderId
-      ? folders.find((f) => f.id === resolvedFolderId)?.name ?? '폴더'
-      : '전체 메모'
-    showToast(`메모가 ${folderName}으로 이동됐어요`)
     void queryClient.invalidateQueries({ queryKey: ['memo-folder-counts'] })
-  }, [folders, queryClient])
+  }, [queryClient])
 
   // ESC 우선순위: 컨텍스트 메뉴 → 색상 모달 → 새 폴더 모달
   useEffect(() => {

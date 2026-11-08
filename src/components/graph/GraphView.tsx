@@ -139,7 +139,6 @@ export default function GraphView() {
     setRefreshing(true)
     try {
       await reload()
-      toast.success('그래프를 최신 데이터로 갱신했어요. 유사도 연결은 분석되는 대로 반영돼요.')
     } catch {
       toast.error('그래프 갱신에 실패했어요. 잠시 후 다시 시도해주세요.')
     } finally {
