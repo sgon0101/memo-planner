@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Inbox, BarChart3, Pa
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePlannerStore } from '@/store/plannerStore'
+import { useUIStore } from '@/store/uiStore'
 import { usePlanner, useInboxQuery, useTodayListQuery } from '@/hooks/usePlanner'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -269,6 +270,12 @@ export default function CalendarView() {
   const [formState, setFormState] = useState<{ open: boolean; date: string; plan?: Plan; initialTime?: string; initialEndTime?: string }>({
     open: false, date: '',
   })
+  // 플래너 화면의 + 버튼 → 고른 날짜(없으면 오늘)로 새 플랜 창 (QuickCaptureFAB → uiStore.requestNewPlan)
+  useEffect(() => useUIStore.subscribe((s, prev) => {
+    if (s.newPlanRequest === prev.newPlanRequest) return
+    const day = usePlannerStore.getState().selectedDate ?? format(new Date(), 'yyyy-MM-dd')
+    setFormState({ open: true, date: day })
+  }), [])
   useEffect(() => { modalOpenRef.current = formState.open || !!scheduleTarget || !!quickEdit || dayCloseOpen }, [formState.open, scheduleTarget, quickEdit, dayCloseOpen])
   const [syncing, setSyncing] = useState(false)
   // Google Calendar는 선택 기능 — 설정에서 연결한 사용자에게만 동기화 버튼을 보인다 (2026-11)
