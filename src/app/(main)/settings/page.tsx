@@ -364,9 +364,8 @@ export default function SettingsPage() {
       await refreshScheduled()
       // ② 백그라운드 Web Push 구독 (cron이 발송할 수 있게)
       const ok = await push.subscribe()
-      if (ok) {
-        toast.success('알림이 활성화됐어요. 앱이 닫혀있어도 알림이 와요.')
-      } else {
+      // 성공은 토글 상태로 보이고, 백그라운드 구독 실패만 알린다 (2026-11-08 토스트 정리)
+      if (!ok) {
         // 푸시 구독 실패해도 포어그라운드는 동작하므로 그대로 진행
         toast.error(push.error
           ? `포어그라운드 알림만 활성화됐어요 — 백그라운드 실패: ${push.error}`
@@ -378,9 +377,7 @@ export default function SettingsPage() {
       if (push.subscribed) {
         unsubscribed = await push.unsubscribe()
       }
-      if (unsubscribed) {
-        toast.success('알림이 꺼졌어요. 백그라운드 알림도 중단됩니다.')
-      } else {
+      if (!unsubscribed) {
         toast.error('포어그라운드 알림은 꺼졌지만 백그라운드 해제에 실패했어요. 잠시 후 다시 시도해주세요.')
       }
     }
@@ -429,7 +426,6 @@ export default function SettingsPage() {
       setAutoBackup(data.autoBackup)
       setBackupPeriod(data.period)
       setNextBackupAt(data.nextBackupAt ?? null)
-      toast.success('자동 백업 설정이 저장되었습니다.')
     } catch {
       toast.error('설정 저장에 실패했습니다.')
     } finally {
@@ -491,11 +487,8 @@ export default function SettingsPage() {
     const error = searchParams.get('error')
     if (!connected && !error) return
     queueMicrotask(() => {
-      if (connected === 'calendar') {
-        toast.success('Google Calendar가 연결되었습니다.')
-      } else if (connected === 'drive') {
-        toast.success('Google Drive가 연결되었습니다.')
-      } else if (error === 'calendar_auth_failed') {
+      // 연결 성공은 설정 화면의 '연결됨' 표시로 보이므로 실패만 알린다 (2026-11-08 토스트 정리)
+      if (error === 'calendar_auth_failed') {
         toast.error('Google Calendar 연결에 실패했습니다.')
       } else if (error === 'drive_auth_failed') {
         toast.error('Google Drive 연결에 실패했습니다.')
@@ -525,7 +518,6 @@ export default function SettingsPage() {
     try {
       const { error } = await supabase.auth.updateUser({ data: { display_name: nickname.trim() } })
       if (error) throw error
-      toast.success('별명이 저장되었습니다.')
     } catch {
       toast.error('저장 중 오류가 발생했습니다.')
     } finally {
@@ -609,7 +601,6 @@ export default function SettingsPage() {
       a.download = `backup-${new Date().toISOString().slice(0, 10)}.${ext}`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('내보내기가 완료되었습니다.')
     } catch {
       toast.error('내보내기 중 오류가 발생했습니다.')
     } finally {

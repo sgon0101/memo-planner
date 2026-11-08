@@ -722,7 +722,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
     if (!exists) return
 
     base64MigratingRef.current = true
-    let migrated = 0
     try {
       // 매회 fresh 스캔으로 첫 data: 노드를 처리 — 업로드 중 편집으로 인한 pos 변동에 안전
       for (let guard = 0; guard < 20; guard++) {
@@ -758,10 +757,6 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           return applied
         })
         if (!applied) break
-        migrated++
-      }
-      if (migrated > 0) {
-        toast.success(`붙여넣은 이미지 ${migrated}개를 저장소로 옮겼어요 (메모 용량 최적화)`)
       }
     } catch { /* 실패 시 다음 onUpdate에서 자동 재시도 */ }
     finally { base64MigratingRef.current = false }
@@ -791,13 +786,7 @@ export default function MemoEditor({ memoId, initialTitle, initialContent, initi
           width: '50%',
         },
       }).run()
-      const orig = ((result.originalSize ?? 0) / 1024 / 1024).toFixed(1)
-      const comp = ((result.compressedSize ?? 0) / 1024 / 1024).toFixed(1)
-      if ((result.savedPercent ?? 0) > 0) {
-        showUploadToast(`이미지가 ${result.savedPercent}% 압축됐어요 (${orig}MB → ${comp}MB)`)
-      } else {
-        showUploadToast('이미지가 업로드됐어요')
-      }
+      // 업로드 성공은 본문에 이미지가 바로 보이므로 토스트 생략 (2026-11-08 토스트 정리)
     } catch (e) {
       // server validation/quota 실패 등 — 토스트로 알리고 종료
       const msg = e instanceof Error ? e.message : '이미지 업로드 실패'
