@@ -403,7 +403,6 @@ function SourceNoteBody({ onClose }: { onClose: () => void }) {
                 ])
                 resetJob()
                 onClose()
-                toast.success('노트를 만들었어요')
                 router.push(`/memo/${data.memoId}`)
               } catch (e) {
                 const msg = e instanceof Error ? e.message : '노트를 만들지 못했어요.'
