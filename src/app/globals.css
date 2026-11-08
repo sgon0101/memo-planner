@@ -12,9 +12,9 @@
 
 @theme inline {
   /* Fonts */
-  /* 본문 = Noto Sans KR 하나로 통일 (2026-11-07). next/font가 html에 --font-noto를 단다. 고정폭은 @fontsource-variable/jetbrains-mono.
+  /* 본문 = Noto Sans KR 하나로 통일 (2026-11-07). 폰트 파일은 @fontsource-variable(noto-sans-kr, jetbrains-mono) — layout.tsx에서 import.
      예전엔 Pretendard CDN을 받아 놓고도 next/font 변수(--font-sans)가 덮어써 실제론 Noto만 쓰였다. */
-  --font-sans: var(--font-noto), 'Noto Sans KR', system-ui, sans-serif;
+  --font-sans: 'Noto Sans KR Variable', 'Noto Sans KR', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
 
   /* Brand — Violet */
