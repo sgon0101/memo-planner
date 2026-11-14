@@ -49,23 +49,40 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // getClaims(): 먼저 getSession()으로 만료 토큰을 갱신(쿠키 저장 포함)한 뒤, 비대칭 서명키(ES256)면
+  // Supabase Auth 서버에 묻지 않고 JWKS로 서명만 검증한다 — 매 요청 getUser() 왕복을 없애 첫 화면을 빠르게.
+  // (대칭키면 내부에서 getUser()로 돌아가 예전과 동일.) 실제 데이터 접근은 RLS가 막고,
+  // 계정 삭제처럼 최신 상태가 필요한 API 라우트는 계속 getUser()를 쓴다.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const isLoggedIn = !!claimsData?.claims?.sub
+
+  // 갱신된 토큰 쿠키를 리디렉트 응답에도 옮겨 담는다 — 빠뜨리면 갱신 토큰을 잃고 로그아웃될 수 있다.
+  const redirectTo = (path: string) => {
+    const res = NextResponse.redirect(new URL(path, request.url))
+    supabaseResponse.cookies.getAll().forEach((c) => res.cookies.set(c))
+    return res
+  }
 
   // 로그아웃 상태 전용 화면. /reset-password는 재설정 링크로 만든 세션이 필요하므로 여기 넣지 않는다.
   const isAuthRoute =
     pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password')
 
-  // 공개 페이지(/, /privacy, /terms) — 로그인 여부와 관계없이 연다. '/'의 로그인 사용자 → /home은 page.tsx가 처리
+  // 로그인 사용자의 '/'는 페이지를 렌더하지 않고 바로 /home으로 (예전엔 page.tsx가 렌더 중 판단)
+  if (pathname === '/' && isLoggedIn) {
+    return redirectTo('/home')
+  }
+
+  // 공개 페이지(/, /about, /privacy, /terms) — 로그아웃 상태에서도 그대로 연다
   if (isPublicPage(pathname)) {
     return supabaseResponse
   }
 
-  if (!user && !isAuthRoute) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  if (!isLoggedIn && !isAuthRoute) {
+    return redirectTo('/login')
   }
 
-  if (user && isAuthRoute) {
-    return NextResponse.redirect(new URL('/memo', request.url))
+  if (isLoggedIn && isAuthRoute) {
+    return redirectTo('/memo')
   }
 
   return supabaseResponse
