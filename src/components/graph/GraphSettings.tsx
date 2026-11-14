@@ -80,6 +80,7 @@ export default function GraphSettings({ onReset }: Props) {
             { key: 'showIsolated', label: '고립 메모 표시' },
             { key: 'showWiki',     label: '[[위키]] 허브 + 링크' },
             { key: 'showTag',      label: '#태그 허브 + 링크' },
+            { key: 'showSimilarity', label: '의미가 비슷한 메모끼리 연결' },
           ].map(({ key, label }) => (
             <label key={key} className="flex items-center gap-2 cursor-pointer">
               <input
@@ -155,7 +156,7 @@ export default function GraphSettings({ onReset }: Props) {
           {[
             { color: 'rgba(29,158,117,0.8)', label: '위키링크 화살표' },
             { color: 'rgba(55,138,221,0.8)', label: '태그링크 화살표' },
-            { color: 'rgba(127,119,221,0.5)', label: '키워드 유사도' },
+            { color: 'rgba(127,119,221,0.35)', label: '의미 유사도 (메모↔메모)' },
           ].map(({ color, label }) => (
             <div key={label} className="flex items-center gap-2">
               <div className="w-6 h-0.5 flex-shrink-0" style={{ backgroundColor: color }} />

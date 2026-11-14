@@ -1,69 +1,39 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-// 한국어 불용어
-const STOPWORDS = new Set([
-  '이', '그', '저', '것', '수', '등', '및', '또', '의', '가', '이', '은', '는', '을', '를',
-  '에', '에서', '로', '으로', '와', '과', '도', '만', '을', '를', '이다', '있다', '하다',
-  '되다', '않다', '없다', '같다', '크다', '작다', '많다', '적다', '좋다', '나쁘다',
-  'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'is', 'are',
-  'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'could', 'should', 'may', 'might', 'can', 'that', 'this', 'these', 'those', 'it', 'its',
-])
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w가-힣\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 1 && !STOPWORDS.has(t))
-}
-
-function topKeywords(text: string, n = 10): Set<string> {
-  const freq = new Map<string, number>()
-  for (const t of tokenize(text)) {
-    freq.set(t, (freq.get(t) ?? 0) + 1)
-  }
-  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
-  return new Set(sorted.map(([w]) => w))
-}
+/**
+ * 그래프 유사도 링크 — 임베딩 상호 최근접(mutual kNN)
+ *
+ * 2026-11-14 교체: 예전엔 메모별 빈출 단어 상위 10개 중 2개 이상 겹치면 연결했는데,
+ * 상위 단어가 '있는·내가·그리고' 같은 일상어라 링크 85%가 주제와 무관했고
+ * 그 그물이 모든 메모를 그래프 중앙으로 끌어당겼다.
+ *
+ * 지금은 DB 함수 graph_similarity_links(0025)가 계산한다:
+ * 서로가 서로의 가장 비슷한 메모 상위 K개 안에 있고 유사도가 MIN_SIM 이상일 때만 연결.
+ * 상호 조건이라 메모당 링크가 최대 K개 — 모든 걸 끌어당기는 노드가 생기지 않는다.
+ * 잠금·삭제·임베딩 없는 메모는 DB 함수에서 제외된다.
+ */
+const K = 5
+const MIN_SIM = 0.5
 
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: memos } = await supabase
-    .from('memos')
-    .select('id, title, content_text, tags, wiki_links')
-    .eq('user_id', user.id)
-    .eq('is_deleted', false)
-    .eq('is_locked', false)
-
-  if (!memos) return NextResponse.json({ links: [] })
-
-  // 키워드 맵 구성
-  const keywordMap = new Map<string, Set<string>>() // memoId → keywords
-  for (const m of memos) {
-    if (m.content_text) {
-      keywordMap.set(m.id, topKeywords(m.content_text))
-    }
+  const { data, error } = await supabase.rpc('graph_similarity_links', { p_k: K, p_min_sim: MIN_SIM })
+  if (error) {
+    // 실패를 빈 링크로 위장하지 않는다 — 클라이언트는 !ok면 기존 캐시 표시를 유지
+    console.error('[graph/analyze] graph_similarity_links 실패', error.message)
+    return NextResponse.json({ error: '유사도 계산에 실패했어요' }, { status: 500 })
   }
 
-  // 유사도 링크 생성 (공통 키워드 2개 이상)
-  const links: { source: string; target: string; type: 'similarity' }[] = []
-  const ids = [...keywordMap.keys()]
-  for (let i = 0; i < ids.length; i++) {
-    for (let j = i + 1; j < ids.length; j++) {
-      const a = keywordMap.get(ids[i])!
-      const b = keywordMap.get(ids[j])!
-      let common = 0
-      for (const kw of a) { if (b.has(kw)) common++ }
-      if (common >= 2) {
-        links.push({ source: ids[i], target: ids[j], type: 'similarity' })
-      }
-    }
-  }
+  const links = (data ?? []).map((r: { source: string; target: string; similarity: number }) => ({
+    source: r.source,
+    target: r.target,
+    type: 'similarity' as const,
+    similarity: Math.round(r.similarity * 1000) / 1000,
+  }))
 
   return NextResponse.json({ links })
 }
