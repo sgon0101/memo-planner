@@ -26,11 +26,22 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
 // 링크 strength — d3 표준형: 양 끝 degree 중 작은 쪽에 반비례
 // (기존 1/(1+maxDeg*0.5)는 허브 링크의 인력을 사실상 0으로 만들어 구조가 무너졌음)
+// 링크 종류별 물리 (2026-11-14): 그래프의 뼈대는 위키·태그 허브, 의미 유사도 링크는 보조선.
+// 유사도 링크가 허브 링크와 같은 힘으로 당기면 허브 주변 무리(부채꼴)가 서로 끌려 한 덩어리가 된다.
+// → 유사도 링크는 더 길고(SIM_DISTANCE_SCALE) 약하게(SIM_STRENGTH_SCALE), 비슷할수록 조금 더 세게.
+const SIM_DISTANCE_SCALE = 1.8
+const SIM_STRENGTH_SCALE = 0.3
 const linkStrength = (l: GraphLink) => {
   const src = l.source as GraphNode
   const tgt = l.target as GraphNode
-  return 1 / Math.min(src.linkCount || 1, tgt.linkCount || 1)
+  const base = 1 / Math.min(src.linkCount || 1, tgt.linkCount || 1)
+  if (l.type !== 'similarity') return base
+  // 유사도 0.5 → ×0.3, 0.75↑ → ×0.6 (기준값 0.5는 analyze 라우트의 MIN_SIM과 같다)
+  const closeness = Math.min(Math.max(((l.similarity ?? 0.5) - 0.5) / 0.25, 0), 1)
+  return base * SIM_STRENGTH_SCALE * (1 + closeness)
 }
+const linkDistance = (v: number) => (l: GraphLink) =>
+  toDistance(v) * (l.type === 'similarity' ? SIM_DISTANCE_SCALE : 1)
 
 // 반발력 — 허브 배율 sqrt + 상한 3배 (기존 1+lc*0.3은 상한 없이 비례 → 노드 늘수록 비대칭 확산)
 const chargeStrength = (repulsion: number) => (n: GraphNode) =>
@@ -310,7 +321,9 @@ export default function GraphView() {
       } else if (l.type === 'tag') {
         ctx.strokeStyle = `rgba(55,138,221,${op})`
       } else {
-        ctx.strokeStyle = `rgba(127,119,221,${Math.max(op * 0.6, 0.04)})`
+        // 보조선: 기본은 옅게, 비슷할수록 진하게 (유사도 0.5 → ×0.35, 0.75↑ → ×0.7)
+        const closeness = Math.min(Math.max(((l.similarity ?? 0.5) - 0.5) / 0.25, 0), 1)
+        ctx.strokeStyle = `rgba(127,119,221,${Math.max(op * (0.35 + 0.35 * closeness), 0.04)})`
       }
 
       if (l.type !== 'similarity') {
@@ -534,7 +547,7 @@ export default function GraphView() {
 
     const sim = d3.forceSimulation<GraphNode, GraphLink>([])
       .force('link', d3.forceLink<GraphNode, GraphLink>([]).id((n) => n.id)
-        .distance(toDistance(s.linkDistance))
+        .distance(linkDistance(s.linkDistance))
         .strength(linkStrength))
       .force('charge', d3.forceManyBody<GraphNode>()
         .strength(chargeStrength(s.repulsion))
@@ -751,7 +764,7 @@ export default function GraphView() {
     }
 
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>)
-      ?.distance(toDistance(settings.linkDistance))
+      ?.distance(linkDistance(settings.linkDistance))
       .strength(linkStrength)
     ;(sim.force('charge') as d3.ForceManyBody<GraphNode>)
       ?.strength(chargeStrength(settings.repulsion))

@@ -9,14 +9,17 @@ import { buildCanonicalMap, tagKey, wikiKey } from '@/lib/wiki/normalize'
 import type { Memo, Folder } from '@/types'
 
 // 유사도 분석 캐시 — localStorage 승격 (2026-07-05)
+// 2026-11-14: 키워드 겹침 → 임베딩 상호 최근접으로 교체. 캐시 형식이 바뀌어(similarity 점수 추가)
+// 옛 키워드 링크가 남지 않도록 CACHE_FORMAT으로 구분 — 형식이 다르면 캐시를 버리고 재분석.
 // 표시와 재검증을 분리: 캐시가 있으면 나이와 무관하게 즉시 표시(첫 진입에도
 // 고연결 보라 노드가 처음부터 완전체로 보임), 재분석 API 호출은 마지막 분석 후
 // REANALYZE_INTERVAL_MS 경과 시에만(호출 빈도는 구 sessionStorage 5분 캐시와 동일).
 // 키는 buildUserCacheKey 네임스페이스 — 로그아웃/계정 전환 시 clearUserNamespace가 자동 청소.
 const REANALYZE_INTERVAL_MS = 5 * 60 * 1000  // 5분
 const MAX_CACHED_LINKS = 5000                // LS 용량 압박 방지 — 초과 시 저장 생략
+const CACHE_FORMAT = 'emb-v1'                // 캐시 형식 — 바꾸면 기존 캐시 무효
 
-type SimLink = { source: string; target: string }
+type SimLink = { source: string; target: string; similarity?: number }
 
 function readAnalyzeCache(): { links: SimLink[]; ts: number } | null {
   if (typeof window === 'undefined') return null
@@ -26,8 +29,10 @@ function readAnalyzeCache(): { links: SimLink[]; ts: number } | null {
     if (!k || !kts) return null
     const raw = localStorage.getItem(k)
     if (!raw) return null
-    const links = JSON.parse(raw) as SimLink[]
-    if (!Array.isArray(links)) return null
+    const parsed = JSON.parse(raw) as { format?: string; links?: SimLink[] } | SimLink[]
+    // 옛 형식(배열 그대로 = 키워드 링크)은 버린다
+    if (Array.isArray(parsed) || parsed.format !== CACHE_FORMAT || !Array.isArray(parsed.links)) return null
+    const links = parsed.links
     const ts = parseInt(localStorage.getItem(kts) ?? '0', 10) || 0
     return { links, ts }
   } catch { return null }
@@ -45,7 +50,7 @@ function writeAnalyzeCache(links: SimLink[]): void {
       localStorage.removeItem(kts)
       return
     }
-    localStorage.setItem(k, JSON.stringify(links))
+    localStorage.setItem(k, JSON.stringify({ format: CACHE_FORMAT, links }))
     localStorage.setItem(kts, String(Date.now()))
   } catch { /* quota — ignore */ }
 }
@@ -78,7 +83,7 @@ interface RawMemo {
 
 interface RawData {
   memos: RawMemo[]
-  simLinks: Array<{ source: string; target: string }>
+  simLinks: SimLink[]
 }
 
 function toMemoNode(m: Memo & { created_at?: string; content_text?: string }, linkCount: number): GraphNode {
@@ -195,12 +200,12 @@ export function useGraphData() {
       memoLinkCounts.set(m.id, count)
     }
 
-    // 3단계: 유사도 링크 (캐시된 결과 재사용)
+    // 3단계: 유사도 링크 (캐시된 결과 재사용) — 설정에서 끄면 허브 구조만 남는다
     // memos.some() 쌍 비교(O(L×N)) → Set 조회(O(L))로 교체
     const memoIdSet = new Set(memos.map((m) => m.id))
-    for (const sl of simLinks) {
+    for (const sl of (s.showSimilarity ? simLinks : [])) {
       if (memoIdSet.has(sl.source) && memoIdSet.has(sl.target)) {
-        links.push({ source: sl.source, target: sl.target, type: 'similarity' })
+        links.push({ source: sl.source, target: sl.target, type: 'similarity', similarity: sl.similarity })
         memoLinkCounts.set(sl.source, (memoLinkCounts.get(sl.source) ?? 0) + 1)
         memoLinkCounts.set(sl.target, (memoLinkCounts.get(sl.target) ?? 0) + 1)
       }
@@ -300,7 +305,8 @@ export function useGraphData() {
     const needReanalyze = !cached || Date.now() - cached.ts > REANALYZE_INTERVAL_MS
     if (needReanalyze) {
       fetch('/api/graph/analyze')
-        .then((res) => res.ok ? res.json() : { links: [] })
+        // 실패 응답을 '링크 0개'로 받으면 캐시가 빈 값으로 덮인다 → throw로 기존 표시 유지
+        .then((res) => { if (!res.ok) throw new Error(`analyze ${res.status}`); return res.json() })
         .then((json) => {
           const newSimLinks: SimLink[] = json.links ?? []
           writeAnalyzeCache(newSimLinks) // 동일 결과여도 ts 갱신 → 5분 억제 리셋
@@ -315,10 +321,10 @@ export function useGraphData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // settingsRef / supabase (singleton) / buildGraph (안정적 참조)
 
-  // showIsolated / showWiki / showTag 변경 → 페인트 전에 동기 반영
+  // showIsolated / showWiki / showTag / showSimilarity 변경 → 페인트 전에 동기 반영
   useLayoutEffect(() => {
     buildGraph()
-  }, [settings.showIsolated, settings.showWiki, settings.showTag, buildGraph])
+  }, [settings.showIsolated, settings.showWiki, settings.showTag, settings.showSimilarity, buildGraph])
 
   // folderFilter 변경 → SQL 조건이 바뀌므로 re-fetch (마운트 포함)
   useEffect(() => {

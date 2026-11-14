@@ -24,6 +24,8 @@ export interface GraphLink {
   source: string | GraphNode
   target: string | GraphNode
   type: 'wiki' | 'tag' | 'similarity'
+  /** similarity 링크 전용 — 임베딩 코사인 유사도(0~1). 선 투명도·당기는 힘에 사용 */
+  similarity?: number
 }
 
 export interface GraphSettings {
@@ -35,6 +37,8 @@ export interface GraphSettings {
   showIsolated: boolean
   showWiki: boolean
   showTag: boolean
+  /** 의미 유사도(메모↔메모) 링크 표시 — 끄면 위키·태그 허브 구조만 남는다 */
+  showSimilarity: boolean
   folderFilter: string | null
   tagFilter: string
 }
@@ -65,6 +69,7 @@ const DEFAULT_SETTINGS: GraphSettings = {
   showIsolated: true,
   showWiki: true,
   showTag: true,
+  showSimilarity: true,
   folderFilter: null,
   tagFilter: '',
 }
