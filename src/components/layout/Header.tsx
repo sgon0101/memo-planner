@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Menu, LogOut, Moon, Sun, Keyboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
+import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
 
 const PAGE_TITLES: Record<string, string> = {
   '/home':     '홈',
@@ -23,6 +24,7 @@ export default function Header() {
 
   async function handleLogout() {
     const supabase = createClient()
+    markGoogleSignedOut() // 로그인 화면에서 원탭이 바로 다시 로그인시키지 않게
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
