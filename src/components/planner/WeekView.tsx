@@ -316,14 +316,26 @@ export default function WeekView({
     }
   }
 
-  // 리사이즈 핸들 — long-press 없이 즉시 시작 (영역이 명확하니까)
+  // 리사이즈 핸들 — 마우스는 즉시 시작, 터치는 블록 이동과 같은 long-press 뒤에만
+  // (터치로 즉시 시작하면 스크롤하던 손가락이 8px 핸들에 걸렸을 때 스크롤이 멈추고 플랜 길이가 바뀌었다)
   function onResizeDown(e: React.PointerEvent, plan: Plan, mode: 'resize-top' | 'resize-bottom') {
     if (!isDraggable(plan)) return
     e.stopPropagation()
     // 리사이즈 핸들은 블록 안의 자식이라 target을 블록(부모)으로 잡아야 setPointerCapture가 의미 있음
     const handleEl = e.currentTarget as HTMLElement
     const blockEl = (handleEl.parentElement as HTMLElement) ?? handleEl
-    if (e.pointerType === 'touch') e.preventDefault()
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+      const { pointerId, clientX, clientY } = e
+      longPressStart.current = { x: clientX, y: clientY }
+      longPressTimer.current = setTimeout(() => {
+        longPressTimer.current = null
+        startDrag(plan, pointerId, clientX, clientY, blockEl, mode)
+        longPressStart.current = null
+        navigator.vibrate?.(40)
+      }, LONG_PRESS_MS)
+      return
+    }
     startDrag(plan, e.pointerId, e.clientX, e.clientY, blockEl, mode)
   }
 
@@ -686,9 +698,12 @@ export default function WeekView({
                 onPointerUp={handleColumnPointerUp}
                 onPointerCancel={handleColumnPointerCancel}
                 onContextMenu={(e) => e.preventDefault()}
-                // pan-y: 세로 스크롤은 브라우저가 처리 (long-press 후 드래그-생성은 lockScrollForRangeSelect가 차단)
+                // pan-x pan-y: 스크롤은 브라우저가 처리 (long-press 후 드래그-생성은 lockScrollForRangeSelect가 차단).
+                //   pan-y만 두면 손가락이 살짝 비스듬히(가로 우세로) 출발한 제스처는 그 손을 뗄 때까지 아예 스크롤되지 않아
+                //   모바일에서 '스크롤이 막혔다가 다음 쓸어내림에 풀리는' 현상이 났다 (2026-11-14). 가로 스와이프(주 이동)는
+                //   브라우저가 제스처를 가져가도 useSwipeGesture의 touch 파이프라인이 그대로 받는다
                 // touchCallout/userSelect none: Android long-press 텍스트 선택·Touch to Search 차단
-                style={{ touchAction: 'pan-y', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+                style={{ touchAction: 'pan-x pan-y', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
               >
                 {/* 인박스에서 끌어온 플랜이 놓일 자리 (1시간) */}
                 {inboxTarget?.kind === 'timed' && inboxTarget.date === dayStr && (
@@ -772,7 +787,7 @@ export default function WeekView({
                         color: plan.color,
                         transform: isThisDragging ? `translateX(${translateX}px)` : undefined,
                         transition: isThisDragging ? 'none' : 'top 0.15s ease-out, height 0.15s ease-out',
-                        touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
+                        touchAction: drag?.planId === plan.id ? 'none' : 'pan-x pan-y',
                         WebkitTouchCallout: 'none',
                         WebkitUserSelect: 'none',
                       }}
@@ -802,7 +817,7 @@ export default function WeekView({
                             onClick={(e) => e.stopPropagation()}
                             style={{
                               position: 'absolute', top: 0, left: 0, right: 0, height: 8,
-                              cursor: 'ns-resize', touchAction: 'none',
+                              cursor: 'ns-resize', touchAction: 'pan-x pan-y',
                               // 호버 시 살짝 보이는 막대 (안 보이지만 클릭 영역 확보)
                             }}
                             className="group hover:bg-violet-400/30"
@@ -812,7 +827,7 @@ export default function WeekView({
                             onClick={(e) => e.stopPropagation()}
                             style={{
                               position: 'absolute', bottom: 0, left: 0, right: 0, height: 8,
-                              cursor: 'ns-resize', touchAction: 'none',
+                              cursor: 'ns-resize', touchAction: 'pan-x pan-y',
                             }}
                             className="group hover:bg-violet-400/30"
                           />
