@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useDarkModeValue } from '@/store/uiStore'
 import { GoogleIcon } from '@/components/auth/AuthControls'
+import { clearGoogleSignedOut, wasGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
 
 /**
  * Google 로그인 — 원탭 + Google 공식 버튼 (2026-11-14)
@@ -34,6 +35,7 @@ interface GsiApi {
   renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void
   prompt: () => void
   cancel: () => void
+  disableAutoSelect: () => void
 }
 declare global {
   interface Window { google?: { accounts?: { id?: GsiApi } } }
@@ -107,6 +109,7 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
       setStatus('fallback') // 같은 실패가 반복되지 않게 기존 방식으로 전환
       return
     }
+    clearGoogleSignedOut() // 직접 로그인했으니 다음부터 자동 로그인 다시 허용
     router.push(successPath)
     router.refresh()
   }, [router, successPath])
@@ -119,6 +122,7 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
     ;(async () => {
       try {
         const [api, nonce] = await Promise.all([loadGsi(), makeNonce()])
+        const signedOut = wasGoogleSignedOut()
         if (cancelled || !boxRef.current) return
         nonceRef.current = nonce.raw
         api.initialize({
@@ -127,10 +131,13 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
           nonce: nonce.hashed,
           context: mode === 'signup' ? 'signup' : 'signin',
           ux_mode: 'popup',
-          auto_select: mode === 'signin', // 이전에 로그인한 계정이 하나뿐이면 원탭에서 자동 로그인
+          // 이전에 로그인한 계정이 하나뿐이면 원탭에서 자동 로그인 — 단, 직접 로그아웃한 뒤엔 하지 않는다
+          // (안 그러면 로그아웃하자마자 다시 로그인돼 '로그아웃이 안 되는' 루프)
+          auto_select: mode === 'signin' && !signedOut,
           itp_support: true,
           use_fedcm_for_prompt: true,
         })
+        if (signedOut) api.disableAutoSelect()
         const width = Math.min(Math.max(boxRef.current.clientWidth, 200), 400)
         boxRef.current.innerHTML = ''
         api.renderButton(boxRef.current, {

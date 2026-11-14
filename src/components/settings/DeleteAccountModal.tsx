@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { clearLocalAccountData } from '@/lib/account/clearLocalData'
 import { reportSaveError } from '@/lib/ui/reportSaveError'
 import { cn } from '@/lib/utils'
+import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
 
 const CONFIRM_TEXT = '계정 삭제'
 
@@ -45,6 +46,7 @@ export default function DeleteAccountModal({ onClose, onGoToExport }: DeleteAcco
 
       // 서버 삭제 완료 — 이후 단계는 실패해도 로그인 화면으로 보낸다
       await clearLocalAccountData()
+      markGoogleSignedOut() // 삭제된 계정으로 원탭 자동 로그인을 시도하지 않게
       // 서버 세션은 계정과 함께 지워졌으므로 로컬 세션만 정리
       await createClient().auth.signOut({ scope: 'local' }).catch(() => {})
       // 전체 이동 — React Query 메모리 캐시까지 비운다
@@ -57,6 +59,7 @@ export default function DeleteAccountModal({ onClose, onGoToExport }: DeleteAcco
 
   async function handleReauth() {
     setBusy(true)
+    markGoogleSignedOut() // 재로그인은 사용자가 직접 — 원탭 자동 로그인 금지
     await createClient().auth.signOut().catch(() => {})
     window.location.replace('/login?reauth=delete')
   }

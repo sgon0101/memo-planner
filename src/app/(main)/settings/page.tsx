@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/Toast'
 import { isRealtimeEnabled, setRealtimeEnabled } from '@/hooks/useRealtimeSync'
 import { lsLastDriveBackup } from '@/lib/cache/lsKeys'
 import DeleteAccountModal from '@/components/settings/DeleteAccountModal'
+import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
@@ -542,6 +543,7 @@ export default function SettingsPage() {
   }
 
   async function handleLogout() {
+    markGoogleSignedOut() // 로그인 화면에서 원탭이 바로 다시 로그인시키지 않게
     await supabase.auth.signOut()
     router.push('/login')
   }
