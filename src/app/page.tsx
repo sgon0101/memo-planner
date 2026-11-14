@@ -29,8 +29,9 @@ export const metadata: Metadata = {
 
 export default async function RootPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) redirect('/home')
+  // 로그인 사용자는 proxy가 먼저 /home으로 보낸다. 여기는 예비 판단 — getClaims()는 서명키 검증이라 빠르다.
+  const { data } = await supabase.auth.getClaims()
+  if (data?.claims?.sub) redirect('/home')
 
   return (
     <PublicShell hideHeader>
