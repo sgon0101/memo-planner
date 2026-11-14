@@ -914,6 +914,10 @@ export default function GraphView() {
   }
 
   function onMouseMove(e: React.MouseEvent) {
+    // 터치 탭 직후 브라우저가 보내는 synthetic mousemove 차단 — 막지 않으면 탭한 노드에
+    // 호버 강조가 켜진 채 남아, 선택 해제 탭이 '그 노드로 넘어간' 것처럼 보인다.
+    // (React touchstart는 passive라 preventDefault로 호환 마우스 이벤트를 막을 수 없음)
+    if (Date.now() - lastTouchEndAtRef.current < 600) return
     const { mx, my } = canvasXY(e)
     const dx = mx - dragStartRef.current.x, dy = my - dragStartRef.current.y
     if (Math.sqrt(dx * dx + dy * dy) > 5) isDraggingRef.current = true
@@ -939,7 +943,7 @@ export default function GraphView() {
       if (canvasRef.current) canvasRef.current.style.cursor = canvasDragRef.current ? 'grabbing' : 'default'
     }
 
-    // 호버 하이라이트 — 드래그/패닝 중에는 비활성 (터치는 mousemove 미발생 → 자동 제외)
+    // 호버 하이라이트 — 드래그/패닝 중에는 비활성 (터치 직후 synthetic mousemove는 위에서 차단)
     const newHoverId = hn && !dragNodeRef.current && !canvasDragRef.current ? hn.id : null
     if (hoveredNodeIdRef.current !== newHoverId) {
       hoveredNodeIdRef.current = newHoverId
@@ -1034,6 +1038,12 @@ export default function GraphView() {
     }
     if (e.touches.length !== 1) return
     e.preventDefault()
+    // 터치에는 호버가 없다 — 이전에 남은 호버 강조·툴팁 정리
+    if (hoveredNodeIdRef.current !== null) {
+      hoveredNodeIdRef.current = null
+      drawRef.current()
+    }
+    setTooltip(null)
     const t = e.touches[0]
     onMouseDown({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} } as unknown as React.MouseEvent)
   }
