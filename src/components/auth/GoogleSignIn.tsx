@@ -16,13 +16,17 @@ import { GoogleIcon } from '@/components/auth/AuthControls'
  * 보안: nonce — 원문은 메모리에만 두고 Google에는 SHA-256 해시를 넘긴다. Supabase가
  * 토큰 속 해시와 원문을 대조하므로, 가로챈 토큰을 다른 곳에서 재사용할 수 없다.
  *
- * 폴백: 클라이언트 ID가 없거나 GIS 스크립트가 4초 안에 준비되지 않으면 기존 OAuth 버튼을 보여준다.
+ * 폴백: 클라이언트 ID가 없거나, GIS 스크립트가 4초 안에 준비되지 않거나, 버튼이 그려지지 않으면
+ * (Google Cloud '승인된 JavaScript 원본'에 없는 주소) 기존 OAuth 버튼을 보여준다.
  * 원탭 창은 Google이 표시 여부를 정한다(닫으면 한동안 안 뜸) — 그래서 버튼은 항상 함께 둔다.
  */
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ''
 const GSI_SRC = 'https://accounts.google.com/gsi/client'
 const LOAD_TIMEOUT_MS = 4000
+// 버튼이 실제로 그려졌는지 확인하는 시점. 승인되지 않은 출처(Google Cloud의 '승인된 JavaScript 원본'에
+// 없는 주소)면 Google이 버튼 iframe을 0×0으로 두고 콘솔에만 에러를 남긴다 → 빈칸 대신 폴백으로 전환.
+const RENDER_CHECK_MS = 3500
 
 interface GsiCredentialResponse { credential?: string }
 interface GsiApi {
@@ -111,6 +115,7 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
   useEffect(() => {
     if (!CLIENT_ID || status === 'fallback') return
     let cancelled = false
+    let renderCheck: ReturnType<typeof setTimeout> | undefined
     ;(async () => {
       try {
         const [api, nonce] = await Promise.all([loadGsi(), makeNonce()])
@@ -139,6 +144,15 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
           width,
         })
         setStatus('gis')
+        // 실제로 그려졌는지 확인 — 0×0이면 출처 미승인 등으로 Google이 거부한 것
+        renderCheck = setTimeout(() => {
+          const frame = boxRef.current?.querySelector('iframe')
+          if (!frame || frame.getBoundingClientRect().height === 0) {
+            console.error('[auth:google-gsi] button not rendered (origin not authorized?)', window.location.origin)
+            window.google?.accounts?.id?.cancel()
+            setStatus('fallback')
+          }
+        }, RENDER_CHECK_MS)
         if (mode === 'signin') api.prompt()
       } catch (e) {
         if (cancelled) return
@@ -148,6 +162,7 @@ export default function GoogleSignIn({ mode, disabled, onError, successPath = '/
     })()
     return () => {
       cancelled = true
+      if (renderCheck) clearTimeout(renderCheck)
       window.google?.accounts?.id?.cancel()
     }
   // status는 'fallback' 전환 시 정리만 하면 되므로 의존성에서 뺀다 (gis로 바뀔 때 재실행 방지)
