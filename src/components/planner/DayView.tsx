@@ -258,13 +258,25 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
     }
   }
 
-  // 리사이즈 핸들 — long-press 없이 즉시
+  // 리사이즈 핸들 — 마우스는 즉시, 터치는 long-press 뒤
   function onResizeDown(e: React.PointerEvent, plan: Plan, mode: 'resize-top' | 'resize-bottom') {
     if (!isDraggable(plan)) return
     e.stopPropagation()
     const handleEl = e.currentTarget as HTMLElement
     const blockEl = (handleEl.parentElement as HTMLElement) ?? handleEl
-    if (e.pointerType === 'touch') e.preventDefault()
+    // 터치는 블록 이동과 같은 long-press 뒤에만 — 스크롤하던 손가락이 핸들에 걸려 스크롤이 멈추고 길이가 바뀌던 문제
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+      const { pointerId, clientX, clientY } = e
+      longPressStart.current = { x: clientX, y: clientY }
+      longPressTimer.current = setTimeout(() => {
+        longPressTimer.current = null
+        startDrag(plan, pointerId, clientY, blockEl, mode)
+        longPressStart.current = null
+        navigator.vibrate?.(40)
+      }, LONG_PRESS_MS)
+      return
+    }
     startDrag(plan, e.pointerId, e.clientY, blockEl, mode)
   }
 
@@ -424,7 +436,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                     borderLeft: `3px solid ${plan.color}`,
                     color: plan.color,
                     transition: isThisDragging ? 'none' : 'top 0.15s ease-out, height 0.15s ease-out',
-                    touchAction: drag?.planId === plan.id ? 'none' : 'pan-y',
+                    touchAction: drag?.planId === plan.id ? 'none' : 'pan-x pan-y',
                     WebkitTouchCallout: 'none',
                     WebkitUserSelect: 'none',
                   }}
@@ -454,7 +466,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                         onClick={(e) => e.stopPropagation()}
                         style={{
                           position: 'absolute', top: 0, left: 0, right: 0, height: 8,
-                          cursor: 'ns-resize', touchAction: 'none',
+                          cursor: 'ns-resize', touchAction: 'pan-x pan-y',
                         }}
                         className="hover:bg-violet-400/30"
                       />
@@ -463,7 +475,7 @@ export default function DayView({ date, plans, onNewPlan, onEditPlan }: DayViewP
                         onClick={(e) => e.stopPropagation()}
                         style={{
                           position: 'absolute', bottom: 0, left: 0, right: 0, height: 8,
-                          cursor: 'ns-resize', touchAction: 'none',
+                          cursor: 'ns-resize', touchAction: 'pan-x pan-y',
                         }}
                         className="hover:bg-violet-400/30"
                       />
