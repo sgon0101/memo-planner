@@ -53,8 +53,31 @@ export async function proxy(request: NextRequest) {
   // Supabase Auth 서버에 묻지 않고 JWKS로 서명만 검증한다 — 매 요청 getUser() 왕복을 없애 첫 화면을 빠르게.
   // (대칭키면 내부에서 getUser()로 돌아가 예전과 동일.) 실제 데이터 접근은 RLS가 막고,
   // 계정 삭제처럼 최신 상태가 필요한 API 라우트는 계속 getUser()를 쓴다.
-  const { data: claimsData } = await supabase.auth.getClaims()
-  const isLoggedIn = !!claimsData?.claims?.sub
+  //
+  // 판정이 '모름'일 때는 로그인 화면으로 보내지 않는다(2026-11-14): 모바일 네트워크 순간 끊김·Supabase 5xx·
+  // JWKS 조회 실패처럼 일시적인 이유로 토큰 갱신/검증이 실패하면 예전엔 바로 /login으로 보내 '갑자기 로그아웃'처럼
+  // 보였다. 이때 세션 쿠키는 그대로 남아 있으므로(auth-js는 재시도 가능한 오류에선 세션을 지우지 않음) 요청을
+  // 그대로 통과시키고, 화면의 클라이언트가 다시 갱신하게 둔다. 데이터 접근은 어차피 RLS가 막는다.
+  // 4xx(갱신 토큰 폐기·잘못된 토큰 등)만 확실한 로그아웃으로 본다.
+  let isLoggedIn = false
+  let authUnknown = false
+  try {
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims()
+    isLoggedIn = !!claimsData?.claims?.sub
+    if (!isLoggedIn && claimsError) {
+      const status = (claimsError as { status?: number }).status ?? 0
+      authUnknown = !(status >= 400 && status < 500)
+      if (authUnknown) {
+        console.error('[weave:auth] 로그인 판정 일시 실패 — 리디렉트 없이 통과', pathname, claimsError.name, status)
+      }
+    }
+  } catch (e) {
+    authUnknown = true
+    console.error('[weave:auth] 로그인 판정 예외 — 리디렉트 없이 통과', pathname, e instanceof Error ? e.name : e)
+  }
+  if (authUnknown) {
+    return supabaseResponse
+  }
 
   // 갱신된 토큰 쿠키를 리디렉트 응답에도 옮겨 담는다 — 빠뜨리면 갱신 토큰을 잃고 로그아웃될 수 있다.
   const redirectTo = (path: string) => {
