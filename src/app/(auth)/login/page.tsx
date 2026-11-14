@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  FormAlert, GoogleIcon, PasswordInput,
+  FormAlert, PasswordInput,
   authInputClass, authLabelClass, authPrimaryButtonClass,
 } from '@/components/auth/AuthControls'
+import GoogleSignIn from '@/components/auth/GoogleSignIn'
 
 export default function LoginPage() {
   return (
@@ -42,7 +43,6 @@ function LoginForm() {
     return '로그인에 실패했습니다. 다시 시도해주세요.'
   })
   const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
 
@@ -80,23 +80,6 @@ function LoginForm() {
     router.refresh()
   }
 
-  async function handleGoogleLogin() {
-    setGoogleLoading(true)
-    setError('')
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    })
-    if (error) {
-      setError('Google 로그인 중 오류가 발생했습니다.')
-      setGoogleLoading(false)
-    }
-  }
-
   return (
     <div className="w-full max-w-sm">
       <div className="mb-8 text-center">
@@ -116,16 +99,8 @@ function LoginForm() {
       )}
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8 space-y-5">
-        {/* 구글 로그인 버튼 */}
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-medium text-gray-700 dark:text-gray-300 disabled:opacity-50"
-        >
-          <GoogleIcon />
-          {googleLoading ? '연결 중...' : 'Google로 로그인'}
-        </button>
+        {/* 구글 로그인 — 원탭 + 공식 버튼 (실패 시 기존 리디렉트 방식으로 자동 전환) */}
+        <GoogleSignIn mode="signin" disabled={loading} onError={setError} />
 
         {/* 구분선 */}
         <div className="flex items-center gap-3">
@@ -191,7 +166,7 @@ function LoginForm() {
 
           <FormAlert id="login-error" message={error} />
 
-          <button type="submit" disabled={loading || googleLoading} className={authPrimaryButtonClass}>
+          <button type="submit" disabled={loading} className={authPrimaryButtonClass}>
             {loading ? '로그인 중...' : '로그인'}
           </button>
         </form>
