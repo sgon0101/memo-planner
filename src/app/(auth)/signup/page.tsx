@@ -4,9 +4,10 @@ import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
-  FormAlert, GoogleIcon, MIN_PASSWORD_LENGTH, PasswordChecklist, PasswordInput,
+  FormAlert, MIN_PASSWORD_LENGTH, PasswordChecklist, PasswordInput,
   authInputClass, authLabelClass, authPrimaryButtonClass,
 } from '@/components/auth/AuthControls'
+import GoogleSignIn from '@/components/auth/GoogleSignIn'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -15,30 +16,12 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const confirmRef = useRef<HTMLInputElement>(null)
 
   const lengthOk = password.length >= MIN_PASSWORD_LENGTH
   const matchOk = confirm.length > 0 && password === confirm
-
-  async function handleGoogleSignup() {
-    setGoogleLoading(true)
-    setError('')
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    })
-    if (error) {
-      setError('Google 연동 중 오류가 발생했습니다.')
-      setGoogleLoading(false)
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -101,16 +84,8 @@ export default function SignupPage() {
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8 space-y-5">
-        {/* 구글 회원가입 버튼 */}
-        <button
-          type="button"
-          onClick={handleGoogleSignup}
-          disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-medium text-gray-700 dark:text-gray-300 disabled:opacity-50"
-        >
-          <GoogleIcon />
-          {googleLoading ? '연결 중...' : 'Google로 계속하기'}
-        </button>
+        {/* 구글 가입 — 원탭 공식 버튼 (실패 시 기존 리디렉트 방식으로 자동 전환) */}
+        <GoogleSignIn mode="signup" disabled={loading} onError={setError} />
 
         {/* 구분선 */}
         <div className="flex items-center gap-3">
@@ -177,7 +152,7 @@ export default function SignupPage() {
 
           <FormAlert id="signup-error" message={error} />
 
-          <button type="submit" disabled={loading || googleLoading} className={authPrimaryButtonClass}>
+          <button type="submit" disabled={loading} className={authPrimaryButtonClass}>
             {loading ? '가입 중...' : '회원가입'}
           </button>
         </form>
