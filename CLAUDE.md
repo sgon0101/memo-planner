@@ -186,6 +186,8 @@ memo-planner/
 │   │   ├── review.ts               # 기간 요약·집중 시간대·기간 계산·1년 스트릭 그리드
 │   │   ├── dayCloses.ts            # 하루 마감 기록 (0024 plan_day_closes — 저장/건너뛰기)
 │   │   └── planHints.ts            # 위키·색상 추천 (지난 플랜의 위키별 색, 제목 낱말 겹침)
+│   ├── pwa/
+│   │   └── homeShell.ts            # 홈 앱 셸 캐시(sw.js SHELL_CACHE와 같은 이름) 삭제·빌드 시각 읽기
 │   ├── ui/
 │   │   └── reportSaveError.ts      # 저장 실패 공용 catch 핸들러 (Sentry + 오프라인 문구 + '다시 시도' 토스트 10초)
 │   ├── tiptap/
@@ -199,7 +201,8 @@ memo-planner/
 │   │   └── markdown.ts             # Markdown 내보내기
 │   └── utils.ts
 ├── components/providers/
-│   └── ActivityPing.tsx            # 리텐션 측정 '앱 열기' — 하루(KST) 1회 track_open RPC (쓰기는 DB 트리거가 수집)
+│   ├── ActivityPing.tsx            # 리텐션 측정 '앱 열기' — 하루(KST) 1회 track_open RPC (쓰기는 DB 트리거가 수집)
+│   └── AppShellWatcher.tsx         # 홈 셸 뒤처리 — 로그인 끊김 → /login, 새 버전 자동 새로고침·안내, ChunkLoadError 1회 복구
 ├── store/
 │   ├── memoStore.ts                # 메모 UI 신호만 (서버 상태는 RQ — 이중화 정리 1단계)
 │   ├── plannerStore.ts             # 캘린더 UI 상태만 (서버 상태는 RQ — 이중화 정리 2단계)
@@ -603,6 +606,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-11-15 | 홈 화면 앱 셸 — 콜드 스타트 대기 없이 바로 열기 (`perf/home-shell`, PR #384) | 사용자 신고: 몇 시간 뒤 첫 실행만 3초 이상. 운영 실측으로 원인 확정 — 함수 지역은 sin1(Supabase 싱가포르와 같음)이라 문제없고, **Vercel 함수 콜드 스타트**(첫 요청 `/home` 0.70초·API 1.83초 vs 직후 0.22·0.35초) + 1시간 지난 토큰 갱신이 겹침. 사용자 결정: 상업 공개 후에도 유효한 1안(앱 셸), 2안(주기적 깨우기)은 미적용 — Hobby는 비상업 전용이라 공개 시 Pro 전환 필요(Skew Protection·콜드 스타트 방지 포함). ①**sw.js**: `/home`(검색 파라미터 없는 navigate)만 stale-while-revalidate — 저장된 셸(`weave-shell-v1`, `x-weave-cached-at`)을 즉시 반환하고 뒤에서 갱신, 7일 넘으면 서버 대기. 리디렉트(opaqueredirect)·401이면 셸 삭제 + `weave-auth-lost` 알림 ②**로그인 끊김**: (main) 레이아웃 인라인 스크립트가 로그인 쿠키(`sb-*-auth-token`) 없으면 첫 페인트 전 `/login`, `AppShellWatcher`가 시작 시 `getSession()` 직접 확인(세션 없고 오류 없음/4xx면 `/login`, 일시 오류는 유지 — proxy와 같은 규칙) + SW 알림 + SIGNED_OUT ③**셸 삭제**: 로그인 화면 진입·헤더/설정 로그아웃(이름·이메일 포함 HTML) ④**새 버전**: `NEXT_PUBLIC_BUILD_TIME`(next.config, 빌드 시각) + 루트 `<meta name="weave-build">` — 셸이 더 새 빌드면 백그라운드 복귀 시 편집 중(`/memo/[id]`·입력 포커스) 아니면 자동 새로고침(같은 빌드엔 1회만 — 배포 되돌리기 반복 방지), 그 외 '새 버전이 있어요 · 새로고침' 토스트 ⑤**ChunkLoadError**: 셸 삭제 후 1회 새로고침(1분 내 반복 금지). **미리보기 검증**: 셸 응답 TTFB 33ms(서버 경유 `/planner` 366ms, 서버가 깨어 있을 때 기준), 새 배포 후 셸이 새 빌드로 교체됨, 셸 빌드를 인위로 올리자 토스트 → 탭 복귀 시 자동 새로고침, 로그인 쿠키 삭제 → `/login`·셸 삭제, 가짜 만료 세션(Supabase 400) → 3초 안에 `/login`·셸 삭제(1차 구현은 SW 알림을 페이지가 놓쳐 `/home`에 머묾 → 시작 시 직접 확인 추가로 해결), 로그아웃 버튼 → `/login`·셸 삭제. 테스트용으로 세션 쿠키를 미리보기 sessionStorage에 잠시 보관 후 삭제. 알려진 한계: 서버에서만 폐기된 토큰은 액세스 토큰 만료(최대 1시간) 전까지 감지 불가(JWT 특성, 기존과 동일). tsc 0·ESLint 클린 | 100% |
 | 2026-11-14 | 일시 오류로 로그인 판정 실패 시 로그인 화면으로 보내지 않기 (`fix/auth-transient`, PR #382) | 예방 조치. proxy의 `getClaims()`가 모바일 네트워크 순간 끊김·Supabase 5xx·JWKS 조회 실패로 실패하면, 세션 쿠키가 남아 있는데도(auth-js는 재시도 가능한 오류에선 세션을 지우지 않음) `/login`으로 보내 '갑자기 로그아웃'처럼 보이던 경로(getUser 시절부터 있던 동작 + JWKS 조회 실패는 getClaims로 새로 생긴 경로). **오류 status가 4xx(갱신 토큰 폐기·잘못된 토큰)일 때만 확실한 로그아웃**, 그 외(status 없음·5xx·예외)는 리디렉트 없이 통과 + `[weave:auth]` 로그(Vercel 런타임 로그로 빈도 확인). 데이터는 RLS가 막고 API 라우트는 자체 getUser. JWKS는 auth-js가 서버 인스턴스 전역에 10분 캐시. **미리보기 검증**: 로그아웃 `/home`→`/login`, 로그아웃 `/` 소개 페이지, 가짜 만료 세션 쿠키 → Supabase 400 → `/login` + 쿠키 삭제(확실한 로그아웃 경로 정상). 일시 오류 경로는 네트워크 장애 재현이 어려워 코드로만 확인. tsc 0·ESLint 클린 | 100% |
 | 2026-11-14 | 모바일 첫 진입 속도 — 시작 주소 /home + proxy getClaims (`perf/fast-start`, PR #380) | ①`manifest.json` start_url `/` → `/home`(로그인 사용자가 `/` 렌더 → `/home` 이동을 거치지 않게), **`id: "/"` 명시**(id가 없으면 Chrome이 start_url을 앱 식별자로 써서 설치 앱이 다른 앱으로 인식될 수 있음) ②proxy 로그인 판정 `getUser()` → `getClaims()` — 프로젝트 서명키가 **ES256 비대칭**(JWKS 확인)이라 매 요청 Auth 서버 왕복 없이 서명만 검증, 토큰 갱신·쿠키 저장은 내부 `getSession()`이 그대로 처리 ③로그인 사용자의 `/`는 proxy에서 바로 `/home`, 로그아웃 상태 `/`는 소개 페이지 유지 ④리디렉트 응답(`/home`·`/login`·`/memo`)에 갱신된 세션 쿠키 복사 ⑤`page.tsx` 예비 판단도 getClaims, API 라우트는 getUser 유지(계정 삭제 등 최신 상태 필요). 알려진 차이: 다른 기기 로그아웃·계정 삭제 후에도 이미 받은 토큰 만료(최대 1시간)까지 화면 진입 가능 — 데이터는 RLS·CASCADE로 보호. **미리보기 검증**: 로그아웃 `/home`→`/login`, 로그아웃 `/` 소개 페이지, Google 로그인, 로그인 `/`→`/home`(리디렉트 1회·TTFB 577ms), **토큰 만료 시뮬레이션**(쿠키 expires_at을 과거로) 후 `/` 진입 → 로그아웃 없이 새 토큰(60분)으로 `/home`, 로그아웃 → `/login`·`/home` 재진입 차단. tsc 0·ESLint 클린 | 100% |
 | 2026-11-14 | 그래프 모바일 탭 후 다른 노드로 넘어가 보이던 문제 (`fix/graph-touch-hover`, PR #376) | 코드상 '활성 중 탭 = 해제만'은 이미 구현돼 있었으나, 터치 후 브라우저가 보내는 synthetic mousemove가 탭한 노드에 호버 강조를 켜고 남겨 그 노드로 넘어간 것처럼 보였음(React touchstart는 passive라 preventDefault로 호환 마우스 이벤트 차단 불가 — 기존 주석 '터치는 mousemove 미발생' 전제 오류, mousedown·mouseup만 600ms 가드). mousemove에도 같은 가드 + 터치 시작 시 호버·툴팁 정리. PC 호버·검색 중 메모 탭 즉시 이동(사용자 결정 A안)은 유지. tsc 0·verify-changes 통과, 사용자 휴대폰 미리보기 확인 후 배포 | 100% |

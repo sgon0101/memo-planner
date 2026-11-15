@@ -45,6 +45,8 @@ export default function RootLayout({
     <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* Supabase API 서버에 대한 TCP+TLS 연결을 HTML 파싱 시점부터 미리 시작 */}
+        {/* 빌드 시각 — 저장된 홈 셸이 새 버전인지 판단(lib/pwa/homeShell, sw.js) */}
+        <meta name="weave-build" content={process.env.NEXT_PUBLIC_BUILD_TIME || '0'} />
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         {/* 다크모드 FOUC 제거 — 첫 페인트 전에 persist(memo-planner-ui)를 읽어 dark 클래스 적용.

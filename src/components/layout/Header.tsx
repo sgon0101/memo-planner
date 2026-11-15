@@ -5,6 +5,7 @@ import { Menu, LogOut, Moon, Sun, Keyboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
 import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
+import { clearHomeShell } from '@/lib/pwa/homeShell'
 
 const PAGE_TITLES: Record<string, string> = {
   '/home':     '홈',
@@ -25,6 +26,7 @@ export default function Header() {
   async function handleLogout() {
     const supabase = createClient()
     markGoogleSignedOut() // 로그인 화면에서 원탭이 바로 다시 로그인시키지 않게
+    void clearHomeShell() // 저장된 홈 셸(이름·이메일 포함) 삭제
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
