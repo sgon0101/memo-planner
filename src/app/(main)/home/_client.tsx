@@ -14,6 +14,7 @@ import {
   lsMemosCache, lsMemosTotalCount,
 } from '@/lib/cache/lsKeys'
 import { subscribeUserId } from '@/lib/auth/currentUser'
+import { markStartup } from '@/lib/perf/startupTrace'
 
 const HOME_STALE = 5 * 60 * 1000
 
@@ -95,7 +96,7 @@ export default function HomePageClient() {
   const totalMemos = allMemos?.length ?? prevCount
 
   // 홈 전용 경량 쿼리 — 최근 5개만 (count 없음, 단일 요청)
-  const { data: homeMemos } = useQuery<HomeMemos>({
+  const { data: homeMemos, dataUpdatedAt: homeMemosAt } = useQuery<HomeMemos>({
     queryKey: ['home-memos'],
     queryFn: async (): Promise<HomeMemos> => {
       const supabase = createClient()
@@ -120,6 +121,13 @@ export default function HomePageClient() {
     initialData: readHomeMemoCache,
     initialDataUpdatedAt: readHomeMemoTs,
   })
+
+  // 시작 속도 측정 (임시 진단) — 저장된 최근 메모가 처음 보인 시점 / 서버에서 새로 받은 시점
+  useEffect(() => {
+    if (!homeMemos?.recentMemos?.length) return
+    markStartup('home')
+    if (homeMemosAt > performance.timeOrigin) markStartup('homeFresh')
+  }, [homeMemos, homeMemosAt])
 
   useEffect(() => {
     if (homeMemos) {
