@@ -35,3 +35,30 @@ export async function readShellBuildTime(): Promise<number | null> {
     return null
   }
 }
+
+/**
+ * 셸을 브라우저에서 직접 새로 받아 저장한다.
+ * 서비스워커가 꺼져 있을 때는 sw.js 정적 라우팅이 캐시에서 바로 꺼내 주므로 sw.js의 뒤 갱신이 돌지 않는다
+ * → 그 경우에만 페이지가 대신 갱신한다. 로그인 화면으로 보내는 응답이면 셸을 지우고 'auth-lost'를 돌려준다.
+ */
+export async function refreshHomeShell(): Promise<'ok' | 'auth-lost' | 'skip'> {
+  try {
+    if (typeof caches === 'undefined') return 'skip'
+    const res = await fetch('/home', { redirect: 'manual', credentials: 'same-origin', cache: 'no-store' })
+    if (res.type === 'opaqueredirect' || res.redirected || res.status === 401) {
+      await clearHomeShell()
+      return 'auth-lost'
+    }
+    if (!res.ok || !(res.headers.get('content-type') || '').includes('text/html')) return 'skip'
+    const headers = new Headers(res.headers)
+    headers.set('x-weave-cached-at', String(Date.now()))
+    // 정적 라우팅은 실제 탐색 요청으로 캐시를 찾으므로 Vary(RSC·Accept-Encoding 등) 때문에 빗나가지 않게 뺀다
+    headers.delete('vary')
+    const body = await res.blob()
+    const cache = await caches.open(SHELL_CACHE)
+    await cache.put('/home', new Response(body, { status: res.status, statusText: res.statusText, headers }))
+    return 'ok'
+  } catch {
+    return 'skip'
+  }
+}

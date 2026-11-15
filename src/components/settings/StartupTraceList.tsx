@@ -16,7 +16,8 @@ function rows(e: StartupEntry): [string, string][] {
   if (e.kind === 'resume') return [['백그라운드에 있던 시간', `${e.hiddenMin}분`]]
   const m = e.marks
   return [
-    ['화면 틀 도착', sec(e.html) + (e.sw ? ' (폰에 저장된 것)' : ' (서버)')],
+    ['화면 틀 도착', sec(e.html) + (e.sw ? ' (서비스워커 경유)' : ' (바로 꺼냄·또는 서버)')],
+    ['서비스워커 깨우기', e.swBoot === undefined ? '–' : e.swBoot === 0 ? '안 깨움' : sec(e.swBoot)],
     ['첫 화면 표시', sec(e.fcp)],
     ['앱 코드 준비 끝', sec(m.hydrated)],
     ['저장된 메모 표시', sec(m.home)],
