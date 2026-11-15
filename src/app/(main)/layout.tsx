@@ -16,6 +16,12 @@ import { ActivityPing } from '@/components/providers/ActivityPing'
 import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import QuickCaptureFAB from '@/components/quick-capture/QuickCaptureFAB'
 import QuickCaptureModal from '@/components/quick-capture/QuickCaptureModal'
+import { AppShellWatcher } from '@/components/providers/AppShellWatcher'
+
+// sw.js가 저장해 둔 홈 셸은 서버(proxy)를 거치지 않고 뜬다 — 이 기기에서 로그아웃해 로그인 쿠키가 없으면
+// 첫 페인트 전에 로그인 화면으로 보낸다(예전 화면이 잠깐도 보이지 않게). 서버에서 온 HTML이면 항상 통과.
+const NO_SESSION_REDIRECT =
+  "try{if(!/(?:^|; )sb-[^=]*-auth-token(?:\\.0)?=/.test(document.cookie)){location.replace('/login')}}catch(e){}"
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -32,6 +38,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   return (
     <QueryProvider>
+    <script dangerouslySetInnerHTML={{ __html: NO_SESSION_REDIRECT }} />
+    <AppShellWatcher />
     <ToastProvider />
     <SyncBootstrap />
     <ActivityPing />

@@ -24,6 +24,7 @@ import { isRealtimeEnabled, setRealtimeEnabled } from '@/hooks/useRealtimeSync'
 import { lsLastDriveBackup } from '@/lib/cache/lsKeys'
 import DeleteAccountModal from '@/components/settings/DeleteAccountModal'
 import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
+import { clearHomeShell } from '@/lib/pwa/homeShell'
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
@@ -544,6 +545,7 @@ export default function SettingsPage() {
 
   async function handleLogout() {
     markGoogleSignedOut() // 로그인 화면에서 원탭이 바로 다시 로그인시키지 않게
+    void clearHomeShell() // 저장된 홈 셸(이름·이메일 포함) 삭제
     await supabase.auth.signOut()
     router.push('/login')
   }
