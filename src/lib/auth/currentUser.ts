@@ -28,6 +28,34 @@ export function subscribeUserId(fn: (uid: string | null) => void): () => void {
   return () => { subscribers.delete(fn) }
 }
 
+/** 로그인 쿠키(sb-<ref>-auth-token, 나뉘어 저장되면 .0 .1 …)에서 userId를 네트워크 없이 읽는다.
+ *  검증용이 아니라 이 브라우저에 저장된 캐시 위치를 찾는 용도 — 실제 확인은 getSession()이 한다. */
+function readUserIdFromCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  try {
+    const parts: { idx: number; val: string }[] = []
+    for (const c of document.cookie.split('; ')) {
+      const eq = c.indexOf('=')
+      const name = c.slice(0, eq)
+      const m = /^sb-[^.]+-auth-token(?:\.(\d+))?$/.exec(name)
+      if (m) parts.push({ idx: m[1] ? Number(m[1]) : -1, val: decodeURIComponent(c.slice(eq + 1)) })
+    }
+    if (parts.length === 0) return null
+    parts.sort((a, b) => a.idx - b.idx)
+    let raw = parts.map((p) => p.val).join('')
+    if (raw.startsWith('base64-')) {
+      const b64 = raw.slice(7).replace(/-/g, '+').replace(/_/g, '/')
+      const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
+      raw = new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)))
+    }
+    const parsed = JSON.parse(raw) as { user?: { id?: unknown } } | unknown[]
+    const id = Array.isArray(parsed) ? null : parsed.user?.id
+    return typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
 export function getCurrentUserId(): string | null {
   return cachedUserId
 }
@@ -36,13 +64,26 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
   if (initialized) return
   initialized = true
 
+  // 로그인 쿠키에서 userId를 먼저 읽어 바로 알린다 — 몇 시간 뒤 열면 액세스 토큰이 만료돼
+  // getSession()이 Supabase에 토큰 갱신을 다녀올 때까지 기다리고, 그동안 userId가 없어
+  // 홈이 저장된 캐시(메모·이번 주 플랜)를 못 읽고 빈 화면으로 있었다. userId는 만료와 무관하게 같다.
+  const quickId = readUserIdFromCookie()
+  if (quickId) {
+    cachedUserId = quickId
+    notify()
+  }
+
   try {
     // getUser()는 토큰 refresh fetch를 시도해 offline에서 throw → namespace 캐시 실패
     // getSession()은 cookie/localStorage sync 읽기라 offline-safe
     const { data: { session } } = await supabase.auth.getSession()
-    cachedUserId = session?.user?.id ?? null
+    const sessionId = session?.user?.id ?? null
+    // 쿠키로 먼저 알린 값과 다르면(다른 계정·로그아웃) 이전 사용자 캐시를 정리
+    if (quickId && quickId !== sessionId) clearUserNamespace(quickId)
+    cachedUserId = sessionId
   } catch {
-    cachedUserId = null
+    // 오프라인 등 일시 오류 — 쿠키에서 읽은 값을 유지
+    cachedUserId = quickId
   }
   notify()  // 초기화 완료 알림
 
