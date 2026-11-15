@@ -5,6 +5,10 @@
 import { useEffect, useState } from 'react'
 import { clearStartupTrace, readStartupTrace, type StartupEntry } from '@/lib/perf/startupTrace'
 
+const PAGE_LABEL: Record<string, string> = {
+  '/home': '홈', '/memo': '메모', '/planner': '플래너', '/graph': '그래프', '/insights': 'AI', '/settings': '설정',
+}
+
 const sec = (ms?: number) => (ms === undefined ? '–' : `${(ms / 1000).toFixed(2)}초`)
 
 function timeLabel(at: number) {
@@ -16,8 +20,9 @@ function rows(e: StartupEntry): [string, string][] {
   if (e.kind === 'resume') return [['백그라운드에 있던 시간', `${e.hiddenMin}분`]]
   const m = e.marks
   return [
-    ['화면 틀 도착', sec(e.html) + (e.sw ? ' (서비스워커 경유)' : ' (바로 꺼냄·또는 서버)')],
-    ['서비스워커 깨우기', e.swBoot === undefined ? '–' : e.swBoot === 0 ? '안 깨움' : sec(e.swBoot)],
+    ['열린 화면', PAGE_LABEL[e.path] ?? e.path],
+    ['화면 틀 도착', sec(e.html)],
+    ['서비스워커', e.sw === undefined ? '–' : e.sw ? '거쳐 감 (깨어 있었거나 깨움)' : '안 거치고 바로 꺼냄'],
     ['첫 화면 표시', sec(e.fcp)],
     ['앱 코드 준비 끝', sec(m.hydrated)],
     ['저장된 메모 표시', sec(m.home)],

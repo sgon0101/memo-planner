@@ -21,7 +21,6 @@ export interface StartupEntry {
   path: string
   navType?: string          // navigate | reload | back_forward | prerender
   sw?: boolean              // 서비스워커가 응답했는지
-  swBoot?: number           // 서비스워커를 깨우는 데 걸린 시간 (0이면 깨우지 않음)
   discarded?: boolean       // 폰이 탭을 메모리에서 지웠다가 다시 연 경우 true
   hiddenMin?: number        // resume: 백그라운드에 있던 시간(분)
   html?: number             // HTML 첫 바이트 도착 (ms, 시작 기준)
@@ -97,7 +96,6 @@ export function startStartupTrace(): void {
       path: location.pathname,
       navType: nav?.type,
       sw: nav ? nav.workerStart > 0 : undefined,
-      swBoot: nav && nav.workerStart > 0 ? Math.round(nav.fetchStart - nav.workerStart) : 0,
       discarded: (document as Document & { wasDiscarded?: boolean }).wasDiscarded,
       html: nav ? Math.round(nav.responseStart) : undefined,
       dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : undefined,
