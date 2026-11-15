@@ -10,6 +10,7 @@ import {
   Download, Upload, FileText, FileJson, HardDrive,
   CloudUpload, Bell, BellOff, Radio, Sparkles,
   Image as ImageIcon,
+  Timer,
 } from 'lucide-react'
 import {
   isNotifSupported, getNotifPermission, isNotifEnabled, setNotifEnabled,
@@ -25,6 +26,7 @@ import { lsLastDriveBackup } from '@/lib/cache/lsKeys'
 import DeleteAccountModal from '@/components/settings/DeleteAccountModal'
 import { markGoogleSignedOut } from '@/lib/auth/googleAutoSelect'
 import { clearHomeShell } from '@/lib/pwa/homeShell'
+import StartupTraceList from '@/components/settings/StartupTraceList'
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
@@ -1201,6 +1203,13 @@ export default function SettingsPage() {
             계정 삭제
           </button>
         </SettingRow>
+      </Section>
+
+      {/* 시작 속도 기록 (임시 진단 — 원인 확인 후 제거, 2026-11-15) */}
+      <Section title="시작 속도 기록" icon={<Timer size={15} />}>
+        <div className="px-4 py-3 bg-white dark:bg-gray-900">
+          <StartupTraceList />
+        </div>
       </Section>
 
       {/* 버전 */}

@@ -15,6 +15,7 @@ import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/components/ui/Toast'
 import { BUILD_TIME, clearHomeShell, readShellBuildTime } from '@/lib/pwa/homeShell'
+import { startStartupTrace } from '@/lib/perf/startupTrace'
 
 const CHUNK_RELOAD_KEY = 'weave:chunk-reload-at'
 const UPDATE_RELOAD_KEY = 'weave:update-reloaded-for'
@@ -34,6 +35,9 @@ function isEditing(): boolean {
 
 export function AppShellWatcher() {
   // ① 로그인 끊김
+  // 시작 속도 측정 (임시 진단)
+  useEffect(() => { startStartupTrace() }, [])
+
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type === 'weave-auth-lost') goLogin()

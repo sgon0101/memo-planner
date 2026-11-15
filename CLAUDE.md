@@ -109,6 +109,7 @@ memo-planner/
 │   │   ├── AuthControls.tsx        # 인증 폼 공용 — label 연결 입력·비밀번호 표시 토글·role="alert" 오류
 │   │   └── GoogleSignIn.tsx        # Google 원탭+공식 버튼(GIS) → signInWithIdToken(nonce), 미준비·미렌더·실패 시 리디렉트 버튼 폴백
 │   ├── settings/
+│   │   ├── StartupTraceList.tsx    # 시작 속도 기록 표시·복사 (임시 진단)
 │   │   └── DeleteAccountModal.tsx  # 계정 삭제 확인 (삭제/미삭제 안내·확인 문구 입력·REAUTH 안내·진행 중 닫기 불가)
 │   ├── insights/
 │   │   ├── GapAnalysis.tsx         # 생각-행동 갭 분석
@@ -186,6 +187,8 @@ memo-planner/
 │   │   ├── review.ts               # 기간 요약·집중 시간대·기간 계산·1년 스트릭 그리드
 │   │   ├── dayCloses.ts            # 하루 마감 기록 (0024 plan_day_closes — 저장/건너뛰기)
 │   │   └── planHints.ts            # 위키·색상 추천 (지난 플랜의 위키별 색, 제목 낱말 겹침)
+│   ├── perf/
+│   │   └── startupTrace.ts         # 앱 시작 속도 측정 (임시 진단 — 원인 확인 후 제거)
 │   ├── pwa/
 │   │   └── homeShell.ts            # 홈 앱 셸 캐시(sw.js SHELL_CACHE와 같은 이름) 삭제·빌드 시각 읽기
 │   ├── ui/
@@ -606,6 +609,7 @@ GAP 분석 없이 다음 단계로 넘어가거나 새로운 기능을 추가하
 
 | 날짜 | 단계 | 내용 | GAP 충족률 |
 |---|---|---|---|
+| 2026-11-15 | 앱 시작 속도 측정 — 임시 진단 (`perf/startup-trace`, PR #388) | 홈 캐시 즉시 표시 배포 후에도 '몇 시간 뒤 첫 실행이 두 번째보다 느림' — 추측 수정 대신 폰 실측부터. `lib/perf/startupTrace.ts`(시작 후 10초간 HTML 도착·FCP·hydrated·userId·home(저장 메모 표시)·homeFresh(서버 메모)·token·prefetch(메모 전체)·longtask 합·읽은 JS 크기/네트워크 파일 수·navType·SW 응답·wasDiscarded, 백그라운드 복귀는 resume+숨어 있던 분) → LS `weave:startup-trace` 최근 8개, 설정 맨 아래 '시작 속도 기록'(표시·복사·지우기, `components/settings/StartupTraceList.tsx`). 시간 숫자만 저장. **원인 확인 후 제거할 것**. 미리보기 PC 실측(같은 기기 두 번째 로드): 셸 0.03초·FCP 0.28·준비 0.49·저장 메모 0.80·로그인 확인 0.87·최신 메모 0.85, JS 19파일 1,287KB(모두 캐시), 멈춤 0.12초. **발견**: 메모 전체 받기(MemoListPrefetch)가 9.2초 걸림(첫 로드 5.4초) — 화면을 막지는 않으나 오래 회선을 씀, 후속 확인 대상 | 100% |
 | 2026-11-15 | 홈 캐시를 토큰 갱신 전에 표시 (`perf/instant-user-id`, PR #386) | 앱 셸 배포 후에도 '몇 시간 뒤엔 바로 안 뜸' 신고. 그래프 뷰는 그래프 탭에서만 로드돼 무관. 원인: `initCurrentUser`가 `getSession()`을 기다린 뒤 userId를 알리는데, 액세스 토큰(1시간)이 만료되면 getSession이 Supabase 토큰 갱신 왕복을 기다림 → 그동안 userId가 없어 사용자별 LS 캐시(`weave-<uid>-…`)를 못 읽어 홈 최근 메모·이번 주 플랜이 비어 있었음(1시간 안에 다시 열면 빠른 이유). 수정: 로그인 쿠키(`sb-*-auth-token`, `.0/.1` 청크, `base64-` 접두)에서 user.id를 네트워크 없이 읽어 즉시 notify, getSession 결과가 다르면 쿠키 쪽 네임스페이스 정리, 일시 오류면 쿠키 값 유지. hydration 불일치 방지 위해 렌더 중이 아니라 SyncBootstrap effect에서 설정. **미리보기 검증**(쿠키 expires_at을 2시간 전으로): 최근 메모 표시 0.54초 < 토큰 갱신 완료 0.93초 < 서버 메모 응답 1.69초, 갱신 후 로그인 유지. 다음 후보: MemoListPrefetch(메모 약 600개)를 몇 초 늦추기. tsc 0·ESLint 클린 | 100% |
 | 2026-11-15 | 홈 화면 앱 셸 — 콜드 스타트 대기 없이 바로 열기 (`perf/home-shell`, PR #384) | 사용자 신고: 몇 시간 뒤 첫 실행만 3초 이상. 운영 실측으로 원인 확정 — 함수 지역은 sin1(Supabase 싱가포르와 같음)이라 문제없고, **Vercel 함수 콜드 스타트**(첫 요청 `/home` 0.70초·API 1.83초 vs 직후 0.22·0.35초) + 1시간 지난 토큰 갱신이 겹침. 사용자 결정: 상업 공개 후에도 유효한 1안(앱 셸), 2안(주기적 깨우기)은 미적용 — Hobby는 비상업 전용이라 공개 시 Pro 전환 필요(Skew Protection·콜드 스타트 방지 포함). ①**sw.js**: `/home`(검색 파라미터 없는 navigate)만 stale-while-revalidate — 저장된 셸(`weave-shell-v1`, `x-weave-cached-at`)을 즉시 반환하고 뒤에서 갱신, 7일 넘으면 서버 대기. 리디렉트(opaqueredirect)·401이면 셸 삭제 + `weave-auth-lost` 알림 ②**로그인 끊김**: (main) 레이아웃 인라인 스크립트가 로그인 쿠키(`sb-*-auth-token`) 없으면 첫 페인트 전 `/login`, `AppShellWatcher`가 시작 시 `getSession()` 직접 확인(세션 없고 오류 없음/4xx면 `/login`, 일시 오류는 유지 — proxy와 같은 규칙) + SW 알림 + SIGNED_OUT ③**셸 삭제**: 로그인 화면 진입·헤더/설정 로그아웃(이름·이메일 포함 HTML) ④**새 버전**: `NEXT_PUBLIC_BUILD_TIME`(next.config, 빌드 시각) + 루트 `<meta name="weave-build">` — 셸이 더 새 빌드면 백그라운드 복귀 시 편집 중(`/memo/[id]`·입력 포커스) 아니면 자동 새로고침(같은 빌드엔 1회만 — 배포 되돌리기 반복 방지), 그 외 '새 버전이 있어요 · 새로고침' 토스트 ⑤**ChunkLoadError**: 셸 삭제 후 1회 새로고침(1분 내 반복 금지). **미리보기 검증**: 셸 응답 TTFB 33ms(서버 경유 `/planner` 366ms, 서버가 깨어 있을 때 기준), 새 배포 후 셸이 새 빌드로 교체됨, 셸 빌드를 인위로 올리자 토스트 → 탭 복귀 시 자동 새로고침, 로그인 쿠키 삭제 → `/login`·셸 삭제, 가짜 만료 세션(Supabase 400) → 3초 안에 `/login`·셸 삭제(1차 구현은 SW 알림을 페이지가 놓쳐 `/home`에 머묾 → 시작 시 직접 확인 추가로 해결), 로그아웃 버튼 → `/login`·셸 삭제. 테스트용으로 세션 쿠키를 미리보기 sessionStorage에 잠시 보관 후 삭제. 알려진 한계: 서버에서만 폐기된 토큰은 액세스 토큰 만료(최대 1시간) 전까지 감지 불가(JWT 특성, 기존과 동일). tsc 0·ESLint 클린 | 100% |
 | 2026-11-14 | 일시 오류로 로그인 판정 실패 시 로그인 화면으로 보내지 않기 (`fix/auth-transient`, PR #382) | 예방 조치. proxy의 `getClaims()`가 모바일 네트워크 순간 끊김·Supabase 5xx·JWKS 조회 실패로 실패하면, 세션 쿠키가 남아 있는데도(auth-js는 재시도 가능한 오류에선 세션을 지우지 않음) `/login`으로 보내 '갑자기 로그아웃'처럼 보이던 경로(getUser 시절부터 있던 동작 + JWKS 조회 실패는 getClaims로 새로 생긴 경로). **오류 status가 4xx(갱신 토큰 폐기·잘못된 토큰)일 때만 확실한 로그아웃**, 그 외(status 없음·5xx·예외)는 리디렉트 없이 통과 + `[weave:auth]` 로그(Vercel 런타임 로그로 빈도 확인). 데이터는 RLS가 막고 API 라우트는 자체 getUser. JWKS는 auth-js가 서버 인스턴스 전역에 10분 캐시. **미리보기 검증**: 로그아웃 `/home`→`/login`, 로그아웃 `/` 소개 페이지, 가짜 만료 세션 쿠키 → Supabase 400 → `/login` + 쿠키 삭제(확실한 로그아웃 경로 정상). 일시 오류 경로는 네트워크 장애 재현이 어려워 코드로만 확인. tsc 0·ESLint 클린 | 100% |
