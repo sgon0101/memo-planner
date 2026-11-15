@@ -7,6 +7,31 @@ const SHELL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 일주일 넘게 안 열었�
 const STATIC_ASSETS = ['/manifest.json', '/offline.html']
 
 self.addEventListener('install', (event) => {
+  // 정적 라우팅(Chrome 123+, 2026-11-15) — 몇 시간 뒤 앱을 열면 폰이 서비스워커를 내려 둔 상태라
+  // 다시 깨우는 데 1초 넘게 걸렸다(실측 화면 틀 도착 1.64초 vs 깨어 있을 때 0.33초).
+  // 서비스워커가 꺼져 있을 때만 홈 셸과 앱 코드(_next/static)를 브라우저가 캐시에서 바로 꺼내게 한다.
+  // 캐시에 없으면 브라우저가 네트워크로 받는다. 깨어 있을 때는 아래 fetch 처리(갱신·로그인 끊김 감지)를 그대로 쓴다.
+  if (typeof event.addRoutes === 'function' && typeof URLPattern === 'function') {
+    try {
+      event.addRoutes([
+        {
+          condition: {
+            urlPattern: new URLPattern({ pathname: '/home', search: '', baseURL: self.location.origin }),
+            requestMode: 'navigate',
+            runningStatus: 'not-running',
+          },
+          source: { cacheName: SHELL_CACHE },
+        },
+        {
+          condition: {
+            urlPattern: new URLPattern({ pathname: '/_next/static/*', baseURL: self.location.origin }),
+            runningStatus: 'not-running',
+          },
+          source: { cacheName: CACHE_NAME },
+        },
+      ])
+    } catch (_) { /* 미지원·형식 오류면 기존 방식 그대로 */ }
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
   )
@@ -136,6 +161,8 @@ async function serveHomeShell(event) {
       try {
         const headers = new Headers(res.headers)
         headers.set('x-weave-cached-at', String(Date.now()))
+        // 정적 라우팅은 실제 탐색 요청으로 캐시를 찾으므로 Vary(RSC·Accept-Encoding 등) 때문에 빗나가지 않게 뺀다
+        headers.delete('vary')
         const body = await res.clone().blob()
         await cache.put('/home', new Response(body, { status: res.status, statusText: res.statusText, headers }))
       } catch (_) {}

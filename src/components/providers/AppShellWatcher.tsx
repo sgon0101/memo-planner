@@ -14,7 +14,7 @@
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/components/ui/Toast'
-import { BUILD_TIME, clearHomeShell, readShellBuildTime } from '@/lib/pwa/homeShell'
+import { BUILD_TIME, clearHomeShell, readShellBuildTime, refreshHomeShell } from '@/lib/pwa/homeShell'
 import { startStartupTrace } from '@/lib/perf/startupTrace'
 
 const CHUNK_RELOAD_KEY = 'weave:chunk-reload-at'
@@ -34,10 +34,22 @@ function isEditing(): boolean {
 }
 
 export function AppShellWatcher() {
-  // ① 로그인 끊김
   // 시작 속도 측정 (임시 진단)
   useEffect(() => { startStartupTrace() }, [])
 
+  // ⓪ 서비스워커가 꺼져 있어 셸을 브라우저가 캐시에서 바로 꺼낸 경우(sw.js 정적 라우팅) — sw.js 대신 셸 갱신
+  useEffect(() => {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (!nav || nav.workerStart > 0) return
+    if (location.pathname !== '/home' || location.search) return
+    if (!navigator.serviceWorker?.controller) return
+    const t = setTimeout(() => {
+      void refreshHomeShell().then((r) => { if (r === 'auth-lost') goLogin() })
+    }, 5000)
+    return () => clearTimeout(t)
+  }, [])
+
+  // ① 로그인 끊김
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type === 'weave-auth-lost') goLogin()
