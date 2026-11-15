@@ -4,7 +4,7 @@
  * 홈 화면 앱 셸(sw.js stale-while-revalidate)의 뒤처리 (2026-11-15).
  *
  * ① 로그인 끊김: 저장된 셸을 띄운 뒤 서버가 '로그인 필요'로 답하면 sw.js가 'weave-auth-lost'를 보낸다 →
- *    로그인 화면으로. Supabase가 갱신 실패로 SIGNED_OUT을 내도 같은 처리(이중 안전장치).
+ *    로그인 화면으로. 알림을 놓칠 수 있어 시작할 때 getSession()으로 직접도 확인하고, SIGNED_OUT도 같은 처리.
  * ② 새 버전: 뒤에서 받아 둔 셸이 지금 코드보다 새 빌드면 —
  *    앱을 다시 화면에 띄울 때(백그라운드 → 복귀) 편집 중이 아니면 조용히 새로고침,
  *    그 외에는 '새 버전이 있어요 · 새로고침' 안내(1회).
@@ -43,6 +43,14 @@ export function AppShellWatcher() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') goLogin()
     })
+    // sw.js 알림은 페이지가 듣기 전에 지나갈 수 있다(서버 응답이 빠를 때) → 시작할 때 직접 확인.
+    // getSession()은 만료 토큰이면 갱신을 시도한다. 세션이 없고 오류도 없거나(로그아웃 상태) 4xx(토큰 폐기)일 때만
+    // 로그인 화면으로 — 오프라인·5xx 같은 일시 오류에선 그대로 둔다(proxy와 같은 규칙).
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (data.session) return
+      const status = (error as { status?: number } | null)?.status ?? 0
+      if (!error || (status >= 400 && status < 500)) goLogin()
+    }).catch(() => {})
     return () => {
       navigator.serviceWorker?.removeEventListener('message', onMessage)
       subscription.unsubscribe()
