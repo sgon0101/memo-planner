@@ -9,6 +9,7 @@
 'use client'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markStartup } from '@/lib/perf/startupTrace'
 
 let cachedUserId: string | null = null
 let initialized = false
@@ -71,6 +72,7 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
   if (quickId) {
     cachedUserId = quickId
     notify()
+    markStartup('userId')
   }
 
   try {
@@ -86,6 +88,8 @@ export async function initCurrentUser(supabase: SupabaseClient): Promise<void> {
     cachedUserId = quickId
   }
   notify()  // 초기화 완료 알림
+  markStartup('token')
+  if (cachedUserId) markStartup('userId')
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const newUserId = session?.user?.id ?? null
