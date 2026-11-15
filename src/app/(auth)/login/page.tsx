@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -9,6 +9,7 @@ import {
   authInputClass, authLabelClass, authPrimaryButtonClass,
 } from '@/components/auth/AuthControls'
 import GoogleSignIn from '@/components/auth/GoogleSignIn'
+import { clearHomeShell } from '@/lib/pwa/homeShell'
 
 export default function LoginPage() {
   return (
@@ -29,6 +30,9 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
+
+  // 로그인 화면에 왔다면 저장된 홈 셸(이전 사용자의 이름·이메일 포함)은 더 쓰면 안 된다
+  useEffect(() => { void clearHomeShell() }, [])
   const [error, setError] = useState(() => {
     if (!urlError) return ''
     // 메일 링크(가입 인증 등)가 만료됐거나 이미 사용됨 — Google 로그인과 무관
