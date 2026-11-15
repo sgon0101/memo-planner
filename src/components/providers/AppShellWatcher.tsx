@@ -17,6 +17,7 @@ import { toast } from '@/components/ui/Toast'
 import { BUILD_TIME, clearHomeShell, readShellBuildTime } from '@/lib/pwa/homeShell'
 
 const CHUNK_RELOAD_KEY = 'weave:chunk-reload-at'
+const UPDATE_RELOAD_KEY = 'weave:update-reloaded-for'
 
 function goLogin() {
   if (window.location.pathname.startsWith('/login')) return
@@ -57,10 +58,16 @@ export function AppShellWatcher() {
     const check = async (fromBackground: boolean) => {
       const shellBuild = await readShellBuildTime()
       if (!shellBuild || shellBuild <= BUILD_TIME) return
-      if (fromBackground && !isEditing()) {
+      // 같은 새 버전으로는 자동 새로고침을 한 번만 — 배포 되돌리기(rollback)처럼 서버가 저장본보다
+      // 옛 버전을 주는 경우, 새로고침해도 버전이 안 바뀌어 화면 복귀 때마다 반복되는 것을 막는다
+      let alreadyReloaded = false
+      try { alreadyReloaded = sessionStorage.getItem(UPDATE_RELOAD_KEY) === String(shellBuild) } catch { /* 무시 */ }
+      if (fromBackground && !isEditing() && !alreadyReloaded) {
+        try { sessionStorage.setItem(UPDATE_RELOAD_KEY, String(shellBuild)) } catch { /* 무시 */ }
         window.location.reload()
         return
       }
+      if (alreadyReloaded) return
       if (notified) return
       notified = true
       toast.info('새 버전이 있어요', {
