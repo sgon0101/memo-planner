@@ -7,6 +7,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import Markdown from '@/components/ui/Markdown'
+import { buildUserCacheKey } from '@/lib/auth/currentUser'
 
 const MAX_MESSAGE_LEN = 4000 // 서버(api/ai/chat)와 동일 제한
 
@@ -49,13 +50,34 @@ function relativeTime(iso: string) {
   }
 }
 
+const ROOMS_CACHE = 'chat-rooms-cache'
+
+function readRoomsCache(): ChatRoom[] | null {
+  try {
+    const key = buildUserCacheKey(ROOMS_CACHE)
+    if (!key) return null
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as ChatRoom[]) : null
+  } catch { return null }
+}
+
+function writeRoomsCache(rooms: ChatRoom[]) {
+  try {
+    const key = buildUserCacheKey(ROOMS_CACHE)
+    if (key) localStorage.setItem(key, JSON.stringify(rooms.slice(0, 100)))
+  } catch { /* 저장 공간 부족 등은 무시 */ }
+}
+
 export default function AIChatLayout() {
-  const [rooms, setRooms] = useState<ChatRoom[]>([])
+  // 지난번 대화 목록을 바로 보여 주고(서버 응답 대기 없음) 뒤에서 최신으로 바꾼다
+  const [rooms, setRooms] = useState<ChatRoom[]>(() => readRoomsCache() ?? [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loadingRooms, setLoadingRooms] = useState(true)
+  const [loadingRooms, setLoadingRooms] = useState(() => readRoomsCache() === null)
   const [suggestion, setSuggestion] = useState<ProfileSuggestion | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [messagesLoading, setMessagesLoading] = useState(false)
@@ -69,13 +91,20 @@ export default function AIChatLayout() {
   // 언마운트 시 진행 중 스트림 정리
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
+  const roomsSyncedRef = useRef(false)
   const loadRooms = useCallback(async () => {
     const res = await fetch('/api/ai/chat-rooms')
     if (!res.ok) return
     const data = await res.json()
     setRooms(data)
     setLoadingRooms(false)
+    roomsSyncedRef.current = true
   }, [])
+
+  // 서버에서 한 번 받은 뒤의 목록(생성·삭제·제목 변경 포함)을 저장
+  useEffect(() => {
+    if (roomsSyncedRef.current) writeRoomsCache(rooms)
+  }, [rooms])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 비동기 로더 (loading 상태 동기 설정)
   useEffect(() => { loadRooms() }, [loadRooms])
