@@ -14,7 +14,8 @@
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/components/ui/Toast'
-import { BUILD_TIME, clearHomeShell, readShellBuildTime, refreshHomeShell } from '@/lib/pwa/homeShell'
+import { usePathname } from 'next/navigation'
+import { BUILD_TIME, clearHomeShell, readShellBuildTime, refreshShell, shellNeedsRefresh, SHELL_PATHS } from '@/lib/pwa/homeShell'
 import { startStartupTrace } from '@/lib/perf/startupTrace'
 
 const CHUNK_RELOAD_KEY = 'weave:chunk-reload-at'
@@ -41,13 +42,29 @@ export function AppShellWatcher() {
   useEffect(() => {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
     if (!nav || nav.workerStart > 0) return
-    if (location.pathname !== '/home' || location.search) return
+    if (!SHELL_PATHS.includes(location.pathname) || location.search) return
     if (!navigator.serviceWorker?.controller) return
+    const path = location.pathname
     const t = setTimeout(() => {
-      void refreshHomeShell().then((r) => { if (r === 'auth-lost') goLogin() })
+      void refreshShell(path).then((r) => { if (r === 'auth-lost') goLogin() })
     }, 5000)
     return () => clearTimeout(t)
   }, [])
+
+  // ⓪-2 앱 안에서 화면을 옮겼을 때 그 화면의 셸이 없거나 옛 빌드면 한 번 받아 둔다
+  // (안드로이드가 앱을 다시 열 때 마지막 화면으로 열기 때문 — 그때 저장본이 있어야 바로 뜬다)
+  const pathname = usePathname()
+  useEffect(() => {
+    if (!BUILD_TIME || !pathname || !SHELL_PATHS.includes(pathname)) return
+    if (!navigator.serviceWorker?.controller) return
+    const t = setTimeout(() => {
+      if (location.pathname !== pathname || location.search) return
+      void shellNeedsRefresh(pathname).then((need) => {
+        if (need) void refreshShell(pathname).then((r) => { if (r === 'auth-lost') goLogin() })
+      })
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [pathname])
 
   // ① 로그인 끊김
   useEffect(() => {

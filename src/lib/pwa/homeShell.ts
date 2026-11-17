@@ -10,6 +10,9 @@
 
 export const SHELL_CACHE = 'weave-shell-v1'
 
+/** 셸로 저장해 두는 화면 — public/sw.js의 SHELL_PATHS와 같아야 한다 */
+export const SHELL_PATHS = ['/home', '/memo', '/planner', '/graph', '/insights', '/settings']
+
 /** 지금 실행 중인 코드의 빌드 시각(ms). next.config가 빌드 때 주입, dev는 0 */
 export const BUILD_TIME = Number(process.env.NEXT_PUBLIC_BUILD_TIME || 0)
 
@@ -41,10 +44,11 @@ export async function readShellBuildTime(): Promise<number | null> {
  * 서비스워커가 꺼져 있을 때는 sw.js 정적 라우팅이 캐시에서 바로 꺼내 주므로 sw.js의 뒤 갱신이 돌지 않는다
  * → 그 경우에만 페이지가 대신 갱신한다. 로그인 화면으로 보내는 응답이면 셸을 지우고 'auth-lost'를 돌려준다.
  */
-export async function refreshHomeShell(): Promise<'ok' | 'auth-lost' | 'skip'> {
+export async function refreshShell(path: string): Promise<'ok' | 'auth-lost' | 'skip'> {
   try {
     if (typeof caches === 'undefined') return 'skip'
-    const res = await fetch('/home', { redirect: 'manual', credentials: 'same-origin', cache: 'no-store' })
+    if (!SHELL_PATHS.includes(path)) return 'skip'
+    const res = await fetch(path, { redirect: 'manual', credentials: 'same-origin', cache: 'no-store' })
     if (res.type === 'opaqueredirect' || res.redirected || res.status === 401) {
       await clearHomeShell()
       return 'auth-lost'
@@ -56,9 +60,22 @@ export async function refreshHomeShell(): Promise<'ok' | 'auth-lost' | 'skip'> {
     headers.delete('vary')
     const body = await res.blob()
     const cache = await caches.open(SHELL_CACHE)
-    await cache.put('/home', new Response(body, { status: res.status, statusText: res.statusText, headers }))
+    await cache.put(path, new Response(body, { status: res.status, statusText: res.statusText, headers }))
     return 'ok'
   } catch {
     return 'skip'
+  }
+}
+
+/** 저장된 셸이 없거나 지금 실행 중인 빌드보다 옛 빌드면 true */
+export async function shellNeedsRefresh(path: string): Promise<boolean> {
+  try {
+    if (typeof caches === 'undefined' || !SHELL_PATHS.includes(path)) return false
+    const res = await (await caches.open(SHELL_CACHE)).match(path)
+    if (!res) return true
+    const m = (await res.text()).match(/<meta name="weave-build" content="(\d+)"/)
+    return !m || Number(m[1]) < BUILD_TIME
+  } catch {
+    return false
   }
 }

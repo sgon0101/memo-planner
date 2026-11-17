@@ -2,6 +2,10 @@ const CACHE_NAME = 'memo-planner-v5'
 // 홈 앱 셸(2026-11-15) — /home HTML을 저장해 두고 앱을 열 때 서버를 기다리지 않고 바로 띄운다.
 // 이름은 src/lib/pwa/homeShell.ts의 SHELL_CACHE와 같아야 한다(로그아웃 시 브라우저가 지움).
 const SHELL_CACHE = 'weave-shell-v1'
+// 저장해 두고 바로 여는 화면(검색 파라미터 없는 주소만). 안드로이드는 앱을 메모리에서 지운 뒤에도 마지막에 보던
+// 주소로 다시 열기 때문에 홈만 저장하면 다른 화면으로 열릴 때 서버를 기다렸다(2026-11-17, 실측 2~2.7초).
+// src/lib/pwa/homeShell.ts의 SHELL_PATHS와 같아야 한다.
+const SHELL_PATHS = ['/home', '/memo', '/planner', '/graph', '/insights', '/settings']
 const SHELL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 일주일 넘게 안 열었으면 서버 응답을 기다린다
 // M2: offline.html도 precache — HTML navigation fallback shell
 const STATIC_ASSETS = ['/manifest.json', '/offline.html']
@@ -14,14 +18,14 @@ self.addEventListener('install', (event) => {
   if (typeof event.addRoutes === 'function' && typeof URLPattern === 'function') {
     try {
       event.addRoutes([
-        {
+        ...SHELL_PATHS.map((pathname) => ({
           condition: {
-            urlPattern: new URLPattern({ pathname: '/home', search: '', baseURL: self.location.origin }),
+            urlPattern: new URLPattern({ pathname, search: '', baseURL: self.location.origin }),
             requestMode: 'navigate',
             runningStatus: 'not-running',
           },
           source: { cacheName: SHELL_CACHE },
-        },
+        })),
         {
           condition: {
             urlPattern: new URLPattern({ pathname: '/_next/static/*', baseURL: self.location.origin }),
@@ -99,11 +103,11 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // 홈 화면 진입(앱 시작 주소): 저장된 셸을 바로 띄우고 뒤에서 최신 셸을 받는다 (stale-while-revalidate)
+  // 주요 화면 진입: 저장된 셸을 바로 띄우고 뒤에서 최신 셸을 받는다 (stale-while-revalidate)
   if (event.request.mode === 'navigate') {
     const u = new URL(url)
-    if (u.pathname === '/home' && !u.search) {
-      event.respondWith(serveHomeShell(event))
+    if (SHELL_PATHS.includes(u.pathname) && !u.search) {
+      event.respondWith(serveShell(event, u.pathname))
       return
     }
   }
@@ -143,16 +147,16 @@ async function notifyClients(type) {
   } catch (_) {}
 }
 
-async function serveHomeShell(event) {
+async function serveShell(event, path) {
   const cache = await caches.open(SHELL_CACHE)
-  const cached = await cache.match('/home')
+  const cached = await cache.match(path)
   const cachedAt = cached ? Number(cached.headers.get('x-weave-cached-at') || 0) : 0
   const useCached = !!cached && Date.now() - cachedAt < SHELL_MAX_AGE_MS
 
   const network = fetch(event.request).then(async (res) => {
     // 로그인 화면으로 보내는 응답(proxy 리디렉트) → 저장된 셸은 더 쓰면 안 된다
     if (res.type === 'opaqueredirect' || res.redirected || res.status === 401) {
-      await cache.delete('/home')
+      await caches.delete(SHELL_CACHE) // 이름·이메일이 든 다른 화면 셸도 함께 지운다
       if (useCached) await notifyClients('weave-auth-lost')
       return res
     }
@@ -164,7 +168,7 @@ async function serveHomeShell(event) {
         // 정적 라우팅은 실제 탐색 요청으로 캐시를 찾으므로 Vary(RSC·Accept-Encoding 등) 때문에 빗나가지 않게 뺀다
         headers.delete('vary')
         const body = await res.clone().blob()
-        await cache.put('/home', new Response(body, { status: res.status, statusText: res.statusText, headers }))
+        await cache.put(path, new Response(body, { status: res.status, statusText: res.statusText, headers }))
       } catch (_) {}
     }
     return res
