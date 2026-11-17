@@ -13,6 +13,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PrefetchKind } from 'next/dist/client/components/router-reducer/router-reducer-types'
+import { BUILD_TIME, SHELL_PATHS, preloadShellChunks, refreshShell, shellNeedsRefresh } from '@/lib/pwa/homeShell'
 
 const TABS = ['/home', '/memo', '/planner', '/graph', '/insights', '/settings']
 const REFRESH_MS = 5 * 60 * 1000
@@ -26,6 +27,23 @@ function whenIdle(fn: () => void, delay: number): () => void {
   return () => {
     clearTimeout(t)
     if (idleId !== null && 'cancelIdleCallback' in window) window.cancelIdleCallback(idleId)
+  }
+}
+
+/**
+ * 탭마다 화면 셸(HTML)을 받아 두고(안드로이드가 마지막 화면으로 다시 열 때도 바로 뜸 — 방문 전 탭 포함),
+ * 그 셸이 쓰는 코드 파일을 미리 받는다. 셸이 이미 이번 빌드면 HTML은 다시 받지 않는다(배포당 1회).
+ */
+let shellsWarmed = false
+async function warmShells() {
+  if (shellsWarmed || !BUILD_TIME || !navigator.serviceWorker?.controller) return
+  shellsWarmed = true
+  for (const path of SHELL_PATHS) {
+    if (await shellNeedsRefresh(path)) {
+      const r = await refreshShell(path)
+      if (r === 'auth-lost') return
+    }
+    await preloadShellChunks(path)
   }
 }
 
@@ -54,6 +72,7 @@ export function TabWarmup() {
         try { router.prefetch(href, { kind: PrefetchKind.FULL }) } catch { /* ignore */ }
       }
       preloadTabCode()
+      void warmShells()
     }
 
     const cancel = whenIdle(prefetchTabs, 2500)
