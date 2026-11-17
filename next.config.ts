@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.supabase.in' },
     ],
   },
+  // 탭 화면은 모두 클라이언트 컴포넌트라 서버 화면 정보(RSC)가 사실상 바뀌지 않는다 →
+  // 한 번 열었던 화면(앱을 처음 연 화면 포함)은 5분 동안 서버에 다시 묻지 않고 바로 바꾼다 (기본 0초).
+  experimental: {
+    staleTimes: { dynamic: 300 },
+  },
   compiler: {
     removeConsole: { exclude: ['error'] },
   },

@@ -79,3 +79,28 @@ export async function shellNeedsRefresh(path: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * 저장된 셸 HTML이 쓰는 앱 코드 파일(_next/static/chunks/*.js)을 미리 받아 둔다 (2026-11-17).
+ * 탭을 처음 누를 때 그 화면의 코드 파일을 내려받느라 기다리던 것(0.3초 안팎, 느린 회선이면 더)을 없앤다.
+ * 서비스워커가 _next/static을 받으면서 캐시에 넣으므로, 이미 받아 둔 파일은 건너뛴다.
+ */
+export async function preloadShellChunks(path: string): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return
+    const res = await (await caches.open(SHELL_CACHE)).match(path)
+    if (!res) return
+    const html = await res.text()
+    const srcs = new Set<string>()
+    for (const m of html.matchAll(/\/_next\/static\/chunks\/[^"'\s\\]+\.js/g)) srcs.add(m[0])
+    const names = await caches.keys()
+    const staticCache = names.find((n) => n.startsWith('memo-planner-'))
+    const cache = staticCache ? await caches.open(staticCache) : null
+    for (const src of srcs) {
+      if (cache && (await cache.match(src))) continue
+      await fetch(src, { credentials: 'same-origin' }).catch(() => {})
+    }
+  } catch {
+    /* 실패해도 탭을 누를 때 원래대로 받는다 */
+  }
+}
