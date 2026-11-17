@@ -8,6 +8,7 @@ import { ko } from 'date-fns/locale'
 import { useConfirm } from '@/components/ui/ConfirmModal'
 import Markdown from '@/components/ui/Markdown'
 import { buildUserCacheKey } from '@/lib/auth/currentUser'
+import { createClient } from '@/lib/supabase/client'
 
 const MAX_MESSAGE_LEN = 4000 // 서버(api/ai/chat)와 동일 제한
 
@@ -93,10 +94,13 @@ export default function AIChatLayout() {
 
   const roomsSyncedRef = useRef(false)
   const loadRooms = useCallback(async () => {
-    const res = await fetch('/api/ai/chat-rooms')
-    if (!res.ok) return
-    const data = await res.json()
-    setRooms(data)
+    // 읽기는 Supabase에서 바로(RLS로 본인 것만) — 서버 함수를 거치면 깨우기·로그인 확인 왕복으로 1초 넘게 걸렸다
+    const { data, error } = await createClient()
+      .from('chat_rooms')
+      .select('id, title, summary, last_message_at, message_count, created_at')
+      .order('last_message_at', { ascending: false })
+    if (error || !data) return
+    setRooms(data as ChatRoom[])
     setLoadingRooms(false)
     roomsSyncedRef.current = true
   }, [])
@@ -126,10 +130,14 @@ export default function AIChatLayout() {
     const expectEmpty = (room?.message_count ?? 0) === 0
     if (!expectEmpty) setMessagesLoading(true)
     try {
-      const res = await fetch(`/api/ai/chat-rooms/${id}`)
-      if (!res.ok) return
-      const data = await res.json()
-      if (selectedIdRef.current === id) setMessages(data)
+      const { data, error } = await createClient()
+        .from('chat_messages')
+        .select('id, role, content, created_at')
+        .eq('room_id', id)
+        .eq('is_summarized', false)
+        .order('created_at', { ascending: true })
+      if (error || !data) return
+      if (selectedIdRef.current === id) setMessages(data as ChatMessage[])
     } finally {
       if (selectedIdRef.current === id) setMessagesLoading(false)
     }
