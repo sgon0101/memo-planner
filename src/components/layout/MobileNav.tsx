@@ -5,14 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, FileText, CalendarDays, Network, Sparkles, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { AIChatTab, CalendarTab, GraphTab } from '@/components/tabs/lazyTabs'
-
-// 탭 본체 코드 — 손가락이 닿는 순간 읽기 시작(앱을 열자마자 눌러 미리 읽기가 끝나기 전이어도 스켈레톤 시간을 줄인다)
-const TAB_CODE: Record<string, () => Promise<void>> = {
-  '/planner': CalendarTab.preload,
-  '/graph': GraphTab.preload,
-  '/insights': AIChatTab.preload,
-}
+import { TAB_PRELOAD } from '@/components/tabs/lazyTabs'
 
 const NAV_ITEMS = [
   { href: '/home',     label: '홈',     icon: Home },
@@ -47,7 +40,7 @@ export default function MobileNav() {
             // 손가락이 닿는 순간 화면 정보 요청을 시작 — 손을 떼기까지 100ms 남짓을 번다(이미 받아 뒀으면 무시됨)
             onPointerDown={() => {
               try { router.prefetch(href) } catch { /* ignore */ }
-              TAB_CODE[href]?.().catch(() => {})
+              TAB_PRELOAD[href]?.().catch(() => {})
             }}
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
