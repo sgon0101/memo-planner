@@ -14,6 +14,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PrefetchKind } from 'next/dist/client/components/router-reducer/router-reducer-types'
 import { BUILD_TIME, SHELL_PATHS, preloadShellChunks, refreshShell, shellNeedsRefresh } from '@/lib/pwa/homeShell'
+import { AIChatTab, CalendarTab, GraphTab } from '@/components/tabs/lazyTabs'
 
 const TABS = ['/home', '/memo', '/planner', '/graph', '/insights', '/settings']
 const REFRESH_MS = 5 * 60 * 1000
@@ -52,9 +53,10 @@ function preloadTabCode() {
   if (chunksLoaded) return
   chunksLoaded = true
   // 실패해도 무시 — 탭을 누를 때 원래대로 받는다
-  void import('@/components/planner/CalendarView').catch(() => {})
-  void import('@/components/graph/GraphView').catch(() => {})
-  void import('@/components/insights/AIChatLayout').catch(() => {})
+  // lazyTabs의 preload — 다 읽어 두면 탭을 처음 열 때도 스켈레톤 없이 바로 그린다
+  void CalendarTab.preload().catch(() => {})
+  void AIChatTab.preload().catch(() => {})
+  void GraphTab.preload().catch(() => {})
 }
 
 export function TabWarmup() {
@@ -63,28 +65,42 @@ export function TabWarmup() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return
     let lastAt = 0
-    const prefetchTabs = () => {
-      if (!navigator.onLine) return
+    const canPrefetch = () =>
+      navigator.onLine &&
       // 데이터 절약 모드면 미리 받지 않는다
-      if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return
+      !(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData
+
+    // ① 탭 화면 정보(RSC) — 앱을 연 직후 바로 (2026-11-19).
+    //    홈은 저장된 셸로 서버 없이 뜨기 때문에, 예전엔 사용자가 처음 누른 탭이 잠든 Vercel 서버를 깨우는
+    //    첫 요청이 됐다(누른 뒤 1초 넘게 아무 반응 없음). 바로 보내면 서버가 그 사이 깨고, 누른 탭은
+    //    이미 출발한 요청을 이어받는다. 요청이 작아 홈 데이터 받기를 방해하지 않는다.
+    const prefetchRsc = () => {
+      if (!canPrefetch()) return
       lastAt = Date.now()
       for (const href of TABS) {
         try { router.prefetch(href, { kind: PrefetchKind.FULL }) } catch { /* ignore */ }
       }
+    }
+    // ② 탭 본체 코드 읽기·셸 저장 — 메인 스레드를 쓰므로 첫 화면이 자리 잡은 뒤 한가할 때
+    const warmHeavy = () => {
+      if (!canPrefetch()) return
       preloadTabCode()
       void warmShells()
     }
 
-    const cancel = whenIdle(prefetchTabs, 2500)
+    const rscTimer = setTimeout(prefetchRsc, 0)
+    const cancel = whenIdle(warmHeavy, 800)
     let cancelResume: (() => void) | null = null
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (Date.now() - lastAt < REFRESH_MS) return
+      prefetchRsc()
       cancelResume?.()
-      cancelResume = whenIdle(prefetchTabs, 1500)
+      cancelResume = whenIdle(warmHeavy, 800)
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
+      clearTimeout(rscTimer)
       cancel()
       cancelResume?.()
       document.removeEventListener('visibilitychange', onVisible)
