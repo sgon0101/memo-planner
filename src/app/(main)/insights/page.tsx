@@ -90,8 +90,9 @@ export default function InsightsPage() {
 
       {/* 탭 콘텐츠 */}
       <div className={cn('flex-1 overflow-hidden', tab !== 'chat' && 'overflow-y-auto')}>
+        {/* AI 대화는 Suspense 밖 — 코드가 덜 읽혔을 때 이 경계의 스켈레톤 대신 이전 화면을 유지하게 (lazyTabs 참고) */}
+        {tab === 'chat' && <AIChatTab />}
         <Suspense fallback={<InsightsSkeleton />}>
-          {tab === 'chat'    && <AIChatTab />}
           {tab === 'profile' && <UserProfile />}
           {tab === 'gap'     && <GapAnalysis />}
           {tab === 'bubble'  && <BubbleChart />}

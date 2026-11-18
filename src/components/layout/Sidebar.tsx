@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Home,
   FileText,
@@ -19,6 +19,13 @@ import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/uiStore'
 import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
+import { TAB_PRELOAD } from '@/components/tabs/lazyTabs'
+
+/** 마우스가 올라가거나(PC) 손가락이 닿는 순간 화면 정보·본체 코드를 미리 받는다 — 누를 때쯤엔 준비돼 있게 (2026-11-19) */
+function warmTab(router: ReturnType<typeof useRouter>, href: string) {
+  try { router.prefetch(href) } catch { /* ignore */ }
+  TAB_PRELOAD[href]?.().catch(() => {})
+}
 
 const NAV_ITEMS = [
   { href: '/home',     label: '홈',          icon: Home },
@@ -38,6 +45,7 @@ interface SidebarProps {
 
 export default function Sidebar({ userEmail, userName }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore()
   const initial = (userName || userEmail)[0]?.toUpperCase() ?? '?'
 
@@ -195,6 +203,9 @@ export default function Sidebar({ userEmail, userName }: SidebarProps) {
                 key={href}
                 href={href}
                 prefetch={false}
+                onPointerEnter={() => warmTab(router, href)}
+                onPointerDown={() => warmTab(router, href)}
+                onFocus={() => warmTab(router, href)}
                 title={!sidebarOpen ? label : undefined}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => { if (isMobile()) setSidebarOpen(false) }}
