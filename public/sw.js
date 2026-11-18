@@ -16,6 +16,15 @@ self.addEventListener('install', (event) => {
   // 서비스워커가 꺼져 있을 때만 홈 셸과 앱 코드(_next/static)를 브라우저가 캐시에서 바로 꺼내게 한다.
   // 캐시에 없으면 브라우저가 네트워크로 받는다. 깨어 있을 때는 아래 fetch 처리(갱신·로그인 끊김 감지)를 그대로 쓴다.
   if (typeof event.addRoutes === 'function' && typeof URLPattern === 'function') {
+    // 탭 이동 때 Next가 받는 화면 정보(RSC, 주소에 ?_rsc=)는 서비스워커를 깨우지 않고 바로 네트워크로 (2026-11-19).
+    // 앱을 몇 시간 만에 열면 서비스워커가 꺼져 있어, 처음 누른 탭이 서비스워커가 다시 뜨기(1초 넘게)를 기다렸다.
+    // 다른 규칙과 따로 등록 — 이 규칙이 거부돼도 아래 셸 규칙은 살아 있게.
+    try {
+      event.addRoutes({
+        condition: { urlPattern: new URLPattern({ pathname: '/*', search: '*_rsc=*', baseURL: self.location.origin }) },
+        source: 'network',
+      })
+    } catch (_) { /* 미지원이면 fetch 처리에서 그냥 통과시킨다 */ }
     try {
       event.addRoutes([
         ...SHELL_PATHS.map((pathname) => ({
@@ -44,9 +53,18 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== SHELL_CACHE).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== SHELL_CACHE).map((k) => caches.delete(k)))
+      )
+      // 예전에 정적 파일 캐시에 잘못 쌓인 화면 정보(RSC) 응답 정리 (2026-11-19) — 앱 코드 파일은 그대로 둔다
+      .then(() => caches.open(CACHE_NAME))
+      .then(async (cache) => {
+        for (const req of await cache.keys()) {
+          if (req.url.includes('_rsc=')) await cache.delete(req)
+        }
+      })
+      .catch(() => {})
   )
   self.clients.claim()
 })
@@ -59,6 +77,10 @@ self.addEventListener('fetch', (event) => {
 
   // API 요청은 캐시하지 않음
   if (url.includes('/api/')) return
+
+  // 탭 이동용 화면 정보(RSC) — 서비스워커가 손대지 않는다. 예전엔 아래 HTML 처리로 떨어져
+  // 사용자 데이터가 든 응답이 정적 파일 캐시에 계속 쌓였다(2026-11-19)
+  if (url.includes('_rsc=') || event.request.headers.get('RSC') === '1') return
 
   // _next/static: Cache-first (콘텐츠 해시 버저닝으로 stale 없음)
   if (url.includes('/_next/static/')) {

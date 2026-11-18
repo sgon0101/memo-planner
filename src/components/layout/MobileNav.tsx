@@ -1,9 +1,18 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Home, FileText, CalendarDays, Network, Sparkles, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { AIChatTab, CalendarTab, GraphTab } from '@/components/tabs/lazyTabs'
+
+// 탭 본체 코드 — 손가락이 닿는 순간 읽기 시작(앱을 열자마자 눌러 미리 읽기가 끝나기 전이어도 스켈레톤 시간을 줄인다)
+const TAB_CODE: Record<string, () => Promise<void>> = {
+  '/planner': CalendarTab.preload,
+  '/graph': GraphTab.preload,
+  '/insights': AIChatTab.preload,
+}
 
 const NAV_ITEMS = [
   { href: '/home',     label: '홈',     icon: Home },
@@ -16,6 +25,12 @@ const NAV_ITEMS = [
 
 export default function MobileNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  // 누른 탭을 화면이 바뀌기 전에 바로 활성으로 표시 (2026-11-19).
+  // 서버 응답을 기다리는 동안 아무 변화가 없어 '안 눌린 것처럼' 보이던 문제 — 주소가 바뀌면 원래대로 pathname을 따른다.
+  // from: 누를 때의 주소 — 주소가 바뀌면 자동으로 무효(별도 정리 불필요)
+  const [pending, setPending] = useState<{ href: string; from: string } | null>(null)
+  const pendingHref = pending && pending.from === pathname ? pending.href : null
 
   return (
     <nav
@@ -23,12 +38,21 @@ export default function MobileNav() {
       aria-label="모바일 네비게이션"
     >
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-        const isActive = pathname.startsWith(href)
+        const isActive = pendingHref ? pendingHref === href : pathname.startsWith(href)
         return (
           <Link
             key={href}
             href={href}
             prefetch={false}
+            // 손가락이 닿는 순간 화면 정보 요청을 시작 — 손을 떼기까지 100ms 남짓을 번다(이미 받아 뒀으면 무시됨)
+            onPointerDown={() => {
+              try { router.prefetch(href) } catch { /* ignore */ }
+              TAB_CODE[href]?.().catch(() => {})
+            }}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+              if (pathname !== href) setPending({ href, from: pathname })
+            }}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
               'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-medium transition-colors duration-150 cursor-pointer',

@@ -5,8 +5,9 @@ import dynamic from 'next/dynamic'
 import { MessageCircle, TrendingUp, PieChart, BookOpen, UserCircle, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { InsightsSkeleton } from '@/components/ui/Skeleton'
+// AI 대화(기본 탭)는 미리 읽어 두면 처음에도 스켈레톤 없이 바로 그린다 — components/tabs/lazyTabs.tsx
+import { AIChatTab } from '@/components/tabs/lazyTabs'
 
-const AIChatLayout = dynamic(() => import('@/components/insights/AIChatLayout'), { loading: () => <InsightsSkeleton />, ssr: false })
 const GapAnalysis  = dynamic(() => import('@/components/insights/GapAnalysis'),  { loading: () => <InsightsSkeleton />, ssr: false })
 const BubbleChart  = dynamic(() => import('@/components/insights/BubbleChart'),  { loading: () => <InsightsSkeleton />, ssr: false })
 const RetroReport  = dynamic(() => import('@/components/insights/RetroReport'),  { loading: () => <InsightsSkeleton />, ssr: false })
@@ -90,7 +91,7 @@ export default function InsightsPage() {
       {/* 탭 콘텐츠 */}
       <div className={cn('flex-1 overflow-hidden', tab !== 'chat' && 'overflow-y-auto')}>
         <Suspense fallback={<InsightsSkeleton />}>
-          {tab === 'chat'    && <AIChatLayout />}
+          {tab === 'chat'    && <AIChatTab />}
           {tab === 'profile' && <UserProfile />}
           {tab === 'gap'     && <GapAnalysis />}
           {tab === 'bubble'  && <BubbleChart />}
