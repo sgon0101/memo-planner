@@ -48,14 +48,20 @@ async function warmShells() {
   }
 }
 
-let chunksLoaded = false
-function preloadTabCode() {
-  if (chunksLoaded) return
-  chunksLoaded = true
-  // 실패해도 무시 — 탭을 누를 때 원래대로 받는다
-  // lazyTabs의 preload — 다 읽어 두면 탭을 처음 열 때도 스켈레톤 없이 바로 그린다
+// lazyTabs의 preload — 다 읽어 두면 탭을 처음 열 때도 스켈레톤 없이 바로 그린다. 실패해도 무시(탭을 누를 때 다시 받는다).
+// 플래너·AI 대화는 앱을 연 직후 바로(2026-11-19 PC 실측: 한가할 때로 미루면 1.5초 시점까지도 안 읽혀 있었다),
+// 무거운 그래프(d3)는 한가할 때. 코드 파일은 서비스워커 캐시에서 오므로 받는 시간은 거의 없고 읽는 시간만 든다.
+let mainCodeLoaded = false
+function preloadMainTabCode() {
+  if (mainCodeLoaded) return
+  mainCodeLoaded = true
   void CalendarTab.preload().catch(() => {})
   void AIChatTab.preload().catch(() => {})
+}
+let graphCodeLoaded = false
+function preloadGraphCode() {
+  if (graphCodeLoaded) return
+  graphCodeLoaded = true
   void GraphTab.preload().catch(() => {})
 }
 
@@ -81,14 +87,18 @@ export function TabWarmup() {
         try { router.prefetch(href, { kind: PrefetchKind.FULL }) } catch { /* ignore */ }
       }
     }
-    // ② 탭 본체 코드 읽기·셸 저장 — 메인 스레드를 쓰므로 첫 화면이 자리 잡은 뒤 한가할 때
+    // ② 그래프 코드 읽기·셸 저장 — 메인 스레드를 쓰므로 첫 화면이 자리 잡은 뒤 한가할 때
     const warmHeavy = () => {
       if (!canPrefetch()) return
-      preloadTabCode()
+      preloadGraphCode()
       void warmShells()
     }
 
-    const rscTimer = setTimeout(prefetchRsc, 0)
+    const rscTimer = setTimeout(() => {
+      prefetchRsc()
+      // 데이터 절약 모드여도 코드는 서비스워커 캐시에서 읽으므로 받는다(오프라인이어도 캐시에 있으면 됨)
+      preloadMainTabCode()
+    }, 0)
     const cancel = whenIdle(warmHeavy, 800)
     let cancelResume: (() => void) | null = null
     const onVisible = () => {
